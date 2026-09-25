@@ -143,9 +143,9 @@ export class TaskCenter {
 		void run(ctx).then(
 			(result) => {
 				if (info.status !== 'running') return;
-				Object.assign(info, finish(result, info), {
+				// A finished task may leave a closing summary as its stage (e.g. slicer results).
+				Object.assign(info, { stage: 'Done' }, finish(result, info), {
 					status: 'done',
-					stage: 'Done',
 					finishedAt: new Date().toISOString()
 				});
 				this.emit(info);

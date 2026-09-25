@@ -15,7 +15,7 @@ export const AI_PROVIDER_VIA: Record<AiProviderId, string> = {
 	'anthropic-api': 'Anthropic API key, billed per use'
 };
 
-export type IntegrationId = AiProviderId | 'blender' | 'openscad' | 'printer';
+export type IntegrationId = AiProviderId | 'blender' | 'openscad' | 'slicer' | 'printer';
 
 export interface IntegrationStatus {
 	id: IntegrationId;

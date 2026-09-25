@@ -7,5 +7,6 @@ export const INTEGRATION_GLYPH: Record<IntegrationId, string> = {
 	'anthropic-api': '⌁',
 	blender: '◉',
 	openscad: '⬡',
+	slicer: '▤',
 	printer: '▣'
 };

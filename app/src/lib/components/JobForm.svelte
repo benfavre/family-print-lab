@@ -59,6 +59,8 @@
 		finishedAt: toLocalInput(src.finishedAt as string | null)
 	});
 	let busy = $state(false);
+	/** New jobs linked to a model: slice right after saving (when Bambu Studio is installed). */
+	let sliceAfter = $state(true);
 	// Attaching a sliced file changes the job on the server; the form then continues from that version.
 	let baseVersion = untrack(() => existing?.version ?? 0);
 	const live = $derived(existing ? lab.ws.jobs.find((j) => j.id === existing.id) : undefined);
@@ -161,8 +163,12 @@
 					{ ...body, version: baseVersion },
 					'Saved.'
 				)
-			: await lab.call('POST', '/api/jobs', body, 'Added to the print queue.');
+			: await lab.call<{ id: string }>('POST', '/api/jobs', body, 'Added to the print queue.');
 		busy = false;
+		if (ok && !existing && sliceAfter && body.modelVersionId && body.status === 'Queued') {
+			const created = lab.ws.jobs.find((j) => j.id === (ok as { id?: string }).id);
+			if (created) await act.sliceJob(created);
+		}
 		if (ok) onclose();
 	}
 	async function remove() {
@@ -229,9 +235,25 @@
 					>
 				{/if}
 			{:else if live?.status === 'Queued'}
-				<button type="button" class="mini" onclick={() => slicedInput?.click()}
-					>▤ Attach sliced file…</button
-				><small>Slice in Bambu Studio, then “Export plate sliced file” (.gcode.3mf).</small>
+				<div class="sb-head">
+					{#if live.modelVersionId && act.canSlice()}
+						<button
+							type="button"
+							class="mini primary-mini"
+							onclick={async () => {
+								if (live && (await act.sliceJob(live))) onclose();
+							}}>▤ Slice for X2D</button
+						>
+					{/if}
+					<button type="button" class="mini" onclick={() => slicedInput?.click()}
+						>Attach sliced file…</button
+					>
+				</div>
+				<small
+					>{live.modelVersionId && act.canSlice()
+						? 'Slices the linked model with the settings below (save changes first), or attach a file exported from Bambu Studio.'
+						: 'Slice in Bambu Studio, then “Export plate sliced file” (.gcode.3mf).'}</small
+				>
 			{/if}
 			<input
 				bind:this={slicedInput}
@@ -274,6 +296,11 @@
 			></label
 		>
 	</div>
+	{#if !existing && f.modelVersionId && act.canSlice()}
+		<label class="check slice-after"
+			><input type="checkbox" bind:checked={sliceAfter} /> Slice it for the X2D after saving (Bambu Studio)</label
+		>
+	{/if}
 	<div class="fields-row">
 		<label class="field"
 			>Spool<select bind:value={f.spoolId} onchange={onSpool}
@@ -385,6 +412,10 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+	.slice-after {
+		margin: -4px 0 10px;
+		font-size: 13px;
 	}
 	.sliced-box small {
 		font-size: 12px;

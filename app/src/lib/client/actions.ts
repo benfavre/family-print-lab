@@ -181,6 +181,21 @@ export function actions({ lab, ui }: AppContext) {
 				'Sliced file removed.'
 			));
 		},
+		/** Whether Bambu Studio is installed for slicing here. */
+		canSlice() {
+			return !!lab.integrations?.items.find((i) => i.id === 'slicer')?.available;
+		},
+		/** Slices a queued job's model version in Bambu Studio (background task); the file attaches itself. */
+		async sliceJob(job: Job) {
+			const res = await lab.call<{ task: { id: string } }>(
+				'POST',
+				`/api/jobs/${job.id}/slice`,
+				{},
+				'Slicing in Bambu Studio…'
+			);
+			if (res) ui.watching.add(res.task.id);
+			return !!res;
+		},
 		/** Opens the send window for a queued job with a sliced file. */
 		sendToPrinter(job: Job) {
 			ui.openSend(job.id);

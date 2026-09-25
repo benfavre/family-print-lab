@@ -110,7 +110,8 @@ function boot(): Runtime {
 				? fs.mkdtempSync(path.join(os.tmpdir(), 'print-lab-sliced-'))
 				: path.join(dataDir, dbName === 'printlab' ? 'sliced' : `${dbName}-sliced`)),
 		tasks,
-		printer
+		printer,
+		models
 	);
 	printing.sweep();
 

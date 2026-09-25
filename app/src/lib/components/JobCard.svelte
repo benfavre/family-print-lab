@@ -88,6 +88,16 @@
 	const sliced = $derived(job.sliced);
 	const slicedPlate = $derived(sliced?.plates.find((p) => p.index === sliced.plate) ?? null);
 	const canSend = $derived(!!sliced && lab.printer.configured);
+	const slicing = $derived(
+		lab.tasks.some(
+			(t) =>
+				t.kind === 'slice' &&
+				t.status === 'running' &&
+				!!model &&
+				t.modelId === model.m.id &&
+				t.projectId === job.projectId
+		)
+	);
 	let fileInput = $state<HTMLInputElement>();
 	let fileOver = $state(false);
 	const isFileDrag = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files');
@@ -214,7 +224,14 @@
 				<button class="mini primary-mini" onclick={() => act.transition(job, 'Printing')}
 					>Start</button
 				>
-				{#if !sliced}
+				{#if !sliced && job.modelVersionId && act.canSlice()}
+					<button
+						class="mini"
+						title="Slice {model?.m.name ?? 'the model'} for the X2D with this job's settings"
+						disabled={slicing}
+						onclick={() => act.sliceJob(job)}>{slicing ? 'Slicing…' : '▤ Slice for X2D'}</button
+					>
+				{:else if !sliced}
 					<button
 						class="mini"
 						title="Attach the sliced file (.gcode.3mf) from Bambu Studio, or drop it on this card"

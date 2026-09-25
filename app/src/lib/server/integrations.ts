@@ -8,6 +8,7 @@ import { AI_TASKS, AI_TASK_LABEL, getSettings } from './settings';
 import { blenderInfo, runJob } from './cad/blender';
 import { OPENSCAD_VERSION, renderScad } from './cad/openscad';
 import { writeStl } from './cad/mesh';
+import { findSlicer, slice } from './slicer';
 import { AppError } from './validation';
 import {
 	AI_PROVIDERS,
@@ -59,6 +60,7 @@ export async function integrations(rt: Runtime, refresh = false): Promise<Integr
 	const powers = (id: AiProviderId) =>
 		AI_TASKS.filter((t) => settings.ai.routing[t] === id).map((t) => AI_TASK_LABEL[t]);
 	const printer = rt.printerStatus();
+	const slicer = findSlicer();
 	const items: IntegrationStatus[] = [
 		...ai.map((s) => ({
 			id: s.id,
@@ -92,6 +94,33 @@ export async function integrations(rt: Runtime, refresh = false): Promise<Integr
 			version: OPENSCAD_VERSION,
 			powers: ['Parametric models', 'Live preview', 'Checking AI designs', 'Text'],
 			setup: []
+		},
+		{
+			id: 'slicer',
+			kind: 'tool',
+			name: 'Bambu Studio',
+			via: 'Local install, sliced headless for the X2D',
+			available: slicer.available,
+			detail: slicer.available ? slicer.path! : 'Not found on this computer.',
+			version: slicer.version,
+			powers: [
+				'Slices model versions with the job’s settings',
+				'Real print time and filament',
+				'X2D profiles for every material'
+			],
+			setup: slicer.available
+				? []
+				: [
+						{
+							text: 'Download the Linux AppImage from github.com/bambulab/BambuStudio/releases and unpack it',
+							command:
+								'cd ~/.local/opt && chmod +x BambuStudio_*.AppImage && ./BambuStudio_*.AppImage --appimage-extract && mv squashfs-root bambu-studio-<version>'
+						},
+						{
+							text: 'Or point the app at an unpacked install in app/.env',
+							command: 'BAMBU_STUDIO_PATH=/path/to/AppRun'
+						}
+					]
 		},
 		{
 			id: 'printer',
@@ -208,6 +237,27 @@ export async function testIntegration(
 			} finally {
 				fs.rmSync(dir, { recursive: true, force: true });
 			}
+		}
+		if (id === 'slicer') {
+			const r = await renderScad('cube([20, 20, 10]);');
+			const out = await slice({
+				stl: writeStl(r.soup!),
+				name: 'Test cube',
+				settings: {
+					nozzle: '0.4',
+					layerHeight: '0.20',
+					material: 'PLA',
+					supports: 'None',
+					infill: 15,
+					plate: 'Textured PEI'
+				},
+				signal
+			});
+			return {
+				ok: true,
+				ms: ms(),
+				detail: `Sliced a test cube for the X2D: ${out.minutes} min, ${out.grams} g (${out.choice.process}).`
+			};
 		}
 		if (id === 'printer') {
 			const s = rt.printerStatus();

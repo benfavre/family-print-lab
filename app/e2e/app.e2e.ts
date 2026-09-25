@@ -377,6 +377,29 @@ test('model workbench: live parameters, versions, restore, errors, downloads and
 	await expect(page.locator('.stage .hud-left')).toContainText('Imported');
 });
 
+test('a queued job linked to a model is sliced for the X2D in Bambu Studio', async ({ page }) => {
+	const ws = await workspace(page);
+	const model = ws.models.find((m: { versions: unknown[] }) => m.versions.length);
+	test.skip(!model, 'needs a model from the workbench test');
+	await page.goto('/jobs');
+	await ready(page);
+	const created = await page.request.post('/api/jobs', {
+		headers: { origin: new URL(page.url()).origin },
+		data: {
+			projectId: model.projectId,
+			revision: 'To slice',
+			modelVersionId: model.versions[0].id,
+			material: 'PLA',
+			layerHeight: '0.20'
+		}
+	});
+	const id = (await created.json()).id;
+	const card = page.locator(`.job-card[data-job="${id}"]`);
+	await card.getByRole('button', { name: '▤ Slice for X2D' }).click();
+	await expect(card.locator('.job-sliced')).toBeVisible({ timeout: 60_000 });
+	await expect(card.getByRole('button', { name: '▣ Send to printer' })).toBeVisible();
+});
+
 test('integrations: every tool has a status card, tools can be tested, AI routing can be changed', async ({
 	page
 }) => {

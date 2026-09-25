@@ -8,6 +8,8 @@ import type { Lab } from './lab';
 import type { TaskCenter } from './tasks';
 import type { BambuPrinter } from './printer/bambu';
 import { readSliced } from './printer/sliced';
+import type { ModelStore } from './models';
+import { slice } from './slicer';
 import { AppError } from './validation';
 import { loadedSlots, mappingProblems } from '$lib/shared/printing';
 import { ACTIVE_PRINTER_STATES, type Job, type SlicedInfo } from '$lib/shared/domain';
@@ -30,8 +32,60 @@ export class PrintFiles {
 		private lab: Lab,
 		readonly dir: string,
 		private tasks: TaskCenter,
-		private printer: BambuPrinter | null
+		private printer: BambuPrinter | null,
+		private models: ModelStore
 	) {}
+
+	/**
+	 * Slices the job's model version for the X2D with the job's settings (Bambu Studio, headless) and
+	 * attaches the result, as a background task.
+	 */
+	sliceJob(jobId: string) {
+		const job = this.job(jobId);
+		if (job.status !== 'Queued') throw new AppError(409, 'Only a queued job can be sliced.');
+		if (!job.modelVersionId)
+			throw new AppError(409, 'Link the job to a model version first (Model in the job editor).');
+		const ws = this.lab.snapshot();
+		const model = ws.models.find((m) => m.versions.some((v) => v.id === job.modelVersionId));
+		const version = model?.versions.find((v) => v.id === job.modelVersionId);
+		if (!model || !version) throw new AppError(404, 'That model version no longer exists.');
+		const spool = ws.spools.find((sp) => sp.id === job.spoolId);
+		const stlPath = this.models.path(model.id, version.id);
+		const pngPath = this.models.path(model.id, version.id, 'png');
+		return this.tasks.start(
+			{
+				kind: 'slice',
+				title: `Slice ${model.name} v${version.number}`,
+				projectId: job.projectId,
+				modelId: model.id,
+				stage: 'Choosing Bambu Studio profiles…'
+			},
+			async (ctx) => {
+				const r = await slice({
+					stl: fs.readFileSync(stlPath),
+					name: model.name,
+					thumbnail: fs.existsSync(pngPath) ? fs.readFileSync(pngPath) : null,
+					settings: {
+						nozzle: job.nozzle || '0.4',
+						layerHeight: job.layerHeight || '0.20',
+						material: job.material || spool?.material || 'PLA',
+						supports: (job.supports as 'None' | 'Normal' | 'Tree') || 'None',
+						infill: job.infill,
+						plate: job.plate || 'Textured PEI',
+						color: spool?.colorHex ?? null
+					},
+					signal: ctx.signal,
+					onStage: ctx.stage
+				});
+				ctx.stage('Attaching to the job…');
+				this.attach(jobId, r.data, `${model.name} v${version.number}.gcode.3mf`, 'app');
+				return r;
+			},
+			(r) => ({
+				stage: `${Math.round(r.minutes)} min · ${r.grams} g · ${r.choice.process} · ${r.choice.filament.replace(/ @BBL.*$/, '')}`
+			})
+		);
+	}
 
 	private job(id: string): Job {
 		const job = this.lab.snapshot().jobs.find((j) => j.id === id);
