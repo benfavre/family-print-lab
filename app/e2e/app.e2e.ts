@@ -381,6 +381,10 @@ test('a queued job linked to a model is sliced for the X2D in Bambu Studio', asy
 	const ws = await workspace(page);
 	const model = ws.models.find((m: { versions: unknown[] }) => m.versions.length);
 	test.skip(!model, 'needs a model from the workbench test');
+	// Slicing drives the real Bambu Studio, so it only runs where it is installed (not on CI).
+	const report = await (await page.request.get('/api/integrations')).json();
+	const slicer = report.items.find((i: { id: string }) => i.id === 'slicer');
+	test.skip(!slicer?.available, 'Bambu Studio is not installed on this computer');
 	await page.goto('/jobs');
 	await ready(page);
 	const created = await page.request.post('/api/jobs', {
