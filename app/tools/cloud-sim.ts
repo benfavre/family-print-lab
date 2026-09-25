@@ -125,6 +125,7 @@ export function startCloudSim(port = 0, host = '127.0.0.1'): Promise<CloudSim> {
 		},
 		setPlan(active) {
 			plan = active;
+			socket?.send(JSON.stringify({ type: 'plan', plan }));
 		},
 		unlink() {
 			devices.length = 0;

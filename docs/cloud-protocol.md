@@ -62,6 +62,7 @@ Cloud → app:
 | --------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `{"type": "welcome", "account": "a@b.c", "plan": true}`                                                                                 | Connected; `plan` says whether the Family plan is active (approvals from the phone need it)                |
 | `{"type": "decide", "commandId": "…", "requestId": "…", "version": 1, "decision": "approve" \| "decline", "reply": "…", "by": "a@b.c"}` | A grown-up answered on the phone. The app applies it only if the request is still waiting at that version. |
+| `{"type": "plan", "plan": true}`                                                                                                        | The Family plan started or ended (sent right away, not only on connect)                                    |
 | `{"type": "unlinked"}`                                                                                                                  | The device was removed on the cloud side; the app forgets its token.                                       |
 
 `RequestSummary`:

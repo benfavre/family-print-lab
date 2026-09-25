@@ -244,6 +244,9 @@ export class CloudLink extends EventEmitter {
 			this.ping = setInterval(() => ws.readyState === WebSocket.OPEN && ws.send('ping'), 30_000);
 			this.lastSent = '';
 			this.report();
+		} else if (m.type === 'plan') {
+			this.plan = m.plan === true;
+			this.emit('status', this.status());
 		} else if (m.type === 'decide') {
 			ws.send(JSON.stringify({ type: 'result', commandId: m.commandId, ...this.decide(m) }));
 		} else if (m.type === 'unlinked') {

@@ -77,6 +77,11 @@ describe('Print Lab Cloud link', () => {
 			plan: true,
 			pairing: null
 		});
+		// Plan changes arrive while connected.
+		sim.setPlan(false);
+		await until(() => link.status().plan === false, 'the plan change');
+		sim.setPlan(true);
+		await until(() => link.status().plan === true, 'the plan back');
 		expect(sim.state().hello).toEqual({ app: '2.0.0', protocol: 1 });
 		const { requestId } = await kidRequest();
 		await until(() => sim.state().requests.length === 1, 'the request');
