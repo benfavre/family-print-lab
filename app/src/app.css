@@ -860,20 +860,19 @@ kbd {
 	height: 26px;
 	font-size: 11px;
 }
-.profile-switcher select {
+.profile-switcher .profile-name {
 	border: 0;
 	background: transparent;
 	font-size: 13px;
 	font-weight: 500;
 	min-width: 0;
 	max-width: 130px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 	cursor: pointer;
 	outline: none;
 	padding-right: 2px;
-}
-.profile-switcher select option {
-	background: var(--menu);
-	color: var(--text);
 }
 #active-profile-avatar {
 	display: flex;
@@ -3401,7 +3400,7 @@ html[data-transition='swap']::view-transition-old(main) {
 	.ai-fab {
 		bottom: calc(76px + env(safe-area-inset-bottom)) !important;
 	}
-	.profile-switcher select {
+	.profile-switcher .profile-name {
 		max-width: 76px;
 	}
 }
@@ -3486,7 +3485,7 @@ html[data-transition='swap']::view-transition-old(main) {
 		font-size: 12.5px;
 		padding: 6px 6px;
 	}
-	.profile-switcher select {
+	.profile-switcher .profile-name {
 		max-width: 90px;
 	}
 	.ai-fab {

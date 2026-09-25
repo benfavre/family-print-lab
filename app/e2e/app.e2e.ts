@@ -7,6 +7,12 @@ const workspace = (page: Page) => page.request.get('/api/workspace').then((r) =>
 
 test.describe.configure({ mode: 'serial' });
 
+// These workspace tests start with an already selected family view. The entry/lock flow is
+// exercised independently in profiles.e2e.ts, including fresh tabs and unavailable storage.
+test.beforeEach(async ({ context }) => {
+	await context.addInitScript(() => sessionStorage.setItem('print-lab-profile', 'all'));
+});
+
 test('home shows the migrated workspace with live printer status', async ({ page }) => {
 	await page.goto('/');
 	await expect(page.getByRole('heading', { name: 'What shall we make?' })).toBeVisible();

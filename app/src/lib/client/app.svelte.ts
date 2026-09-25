@@ -76,6 +76,30 @@ export const THEMES = [
 
 export class UiState {
 	profile = $state('all');
+	profileLocked = $state(true);
+	hasEntered = $state(false);
+
+	selectProfile(id: string) {
+		this.profile = id;
+		this.status = 'All';
+		this.query = '';
+		this.selected = [];
+		this.profileLocked = false;
+		this.hasEntered = true;
+	}
+
+	lockProfile() {
+		this.profileLocked = true;
+		this.paletteOpen = false;
+		this.shortcutsOpen = false;
+		this.menu = null;
+		this.assistantOpen = false;
+		try {
+			sessionStorage.removeItem('print-lab-profile');
+		} catch {
+			/* Storage may be unavailable; the picker still works for this page. */
+		}
+	}
 	status = $state<'All' | ProjectStatus>('All');
 	query = $state('');
 	/** Open floating panels, oldest first (the newest sits at the right). */

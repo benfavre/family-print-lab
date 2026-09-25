@@ -111,25 +111,28 @@
 			<span class="capsule-sep" aria-hidden="true"></span>
 			<IntegrationsPill />
 		</div>
-		<label class="profile-switcher" title="Show one person's projects">
+		<button
+			class="profile-switcher"
+			aria-label="Lock screen or switch profile"
+			title="Lock screen or switch profile"
+			onclick={() => ui.lockProfile()}
+		>
 			<span id="active-profile-avatar" aria-hidden="true">
 				{#if ui.profile === 'all'}<span class="avatar green">✳</span>{:else}<Avatar
 						profile={lab.profile(ui.profile)}
 					/>{/if}
 			</span>
-			<select
-				aria-label="Show projects for"
-				bind:value={ui.profile}
-				onchange={() => {
-					ui.status = 'All';
-					ui.query = '';
-					if (!page.url.pathname.startsWith('/jobs')) goto(resolve('/'));
-				}}
-			>
-				<option value="all">Everyone</option>
-				{#each lab.ws.profiles as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
-			</select>
-		</label>
+			<span class="profile-name">{lab.profile(ui.profile)?.name ?? 'Everyone'}</span>
+			<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+				<path
+					d="M5 7V5a3 3 0 0 1 6 0v2M4 7h8v7H4z"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.3"
+					stroke-linejoin="round"
+				/>
+			</svg>
+		</button>
 		<div class="more-picker">
 			<button
 				class="icon-button"

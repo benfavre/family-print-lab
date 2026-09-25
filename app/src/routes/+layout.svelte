@@ -6,6 +6,7 @@
 	import { LabStore, UiState, setApp, syncThemeColor } from '$lib/client/app.svelte';
 	import { jobMenu, modelMenu, openMenu, projectMenu } from '$lib/client/actions';
 	import TopBar from '$lib/components/TopBar.svelte';
+	import ProfileSelector from '$lib/components/ProfileSelector.svelte';
 	import FloatingPanels from '$lib/components/FloatingPanels.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
@@ -25,6 +26,12 @@
 	const app = setApp({ lab, ui });
 
 	onMount(() => {
+		try {
+			const saved = sessionStorage.getItem('print-lab-profile');
+			if (saved === 'all' || lab.ws.profiles.some((p) => p.id === saved)) ui.selectProfile(saved!);
+		} catch {
+			/* Start with the chooser when session storage is unavailable. */
+		}
 		ui.theme = document.documentElement.dataset.themeChoice ?? 'auto';
 		syncThemeColor();
 		lab.connect();
@@ -34,16 +41,31 @@
 		const system = matchMedia('(prefers-color-scheme: light)');
 		const follow = () => ui.theme === 'auto' && ui.setTheme('auto');
 		system.addEventListener('change', follow);
-		// Home-screen shortcut: /?new=idea opens a fresh idea draft.
-		if (page.url.searchParams.get('new') === 'idea') {
-			ui.openEditor('project');
-			history.replaceState(history.state, '', page.url.pathname);
-		}
 		return () => {
 			lab.disconnect();
 			clearInterval(clock);
 			system.removeEventListener('change', follow);
 		};
+	});
+
+	let shortcutHandled = false;
+	$effect(() => {
+		if (ui.profileLocked) return;
+		if (ui.profile !== 'all' && !lab.profile(ui.profile)) {
+			ui.lockProfile();
+			return;
+		}
+		try {
+			sessionStorage.setItem('print-lab-profile', ui.profile);
+		} catch {
+			/* The selected profile still works without storage. */
+		}
+		// Defer home-screen shortcuts until a maker has been selected.
+		if (!shortcutHandled && page.url.searchParams.get('new') === 'idea') {
+			shortcutHandled = true;
+			ui.openEditor('project');
+			history.replaceState(history.state, '', page.url.pathname);
+		}
 	});
 
 	// Grid <-> project page: cards morph into sidebar rows (shared view-transition names) and back.
@@ -156,6 +178,7 @@
 	let goTimer: ReturnType<typeof setTimeout> | undefined;
 
 	function onKey(e: KeyboardEvent) {
+		if (ui.profileLocked) return;
 		const target = e.target as HTMLElement;
 		const typing = !!target.closest('input, textarea, select, [contenteditable]');
 		if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
@@ -225,6 +248,10 @@
 
 <svelte:window onkeydown={onKey} />
 <svelte:document
+	onkeydown={(e) => {
+		// Keep hidden workbench shortcuts inactive while the chooser is on screen.
+		if (ui.profileLocked) e.stopPropagation();
+	}}
 	oncontextmenu={onContextMenu}
 	onpointerdown={onPointerDown}
 	onpointermove={onPointerMove}
@@ -233,25 +260,30 @@
 	onclickcapture={onClickCapture}
 />
 
-<a class="skip-link" href="#main">Skip to content</a>
-{#if navigating.to}<div class="route-progress" aria-hidden="true"></div>{/if}
-<TopBar />
-{#if !lab.online}<div class="offline-banner" role="status">
-		Reconnecting to the app server…
-	</div>{/if}
-<main id="main" tabindex="-1">
-	{@render children()}
-	<footer>
-		<span>Made for your family, saved on this computer.</span><span
-			>Ideas are starting points; choose a model before printing.</span
-		>
-	</footer>
-</main>
-<FloatingPanels />
-<ConfirmDialog />
-<CommandPalette />
-{#if ui.shortcutsOpen}<ShortcutsDialog onclose={() => (ui.shortcutsOpen = false)} />{/if}
-<ContextMenu />
-<Toasts />
-<Assistant />
-<BottomNav />
+{#if ui.profileLocked}<ProfileSelector />{/if}
+{#if ui.hasEntered}
+	<div hidden={ui.profileLocked} inert={ui.profileLocked}>
+		<a class="skip-link" href="#main">Skip to content</a>
+		{#if navigating.to}<div class="route-progress" aria-hidden="true"></div>{/if}
+		<TopBar />
+		{#if !lab.online}<div class="offline-banner" role="status">
+				Reconnecting to the app server…
+			</div>{/if}
+		<main id="main" tabindex="-1">
+			{@render children()}
+			<footer>
+				<span>Made for your family, saved on this computer.</span><span
+					>Ideas are starting points; choose a model before printing.</span
+				>
+			</footer>
+		</main>
+		<FloatingPanels />
+		<ConfirmDialog />
+		<CommandPalette />
+		{#if ui.shortcutsOpen}<ShortcutsDialog onclose={() => (ui.shortcutsOpen = false)} />{/if}
+		<ContextMenu />
+		<Toasts />
+		<Assistant />
+		<BottomNav />
+	</div>
+{/if}
