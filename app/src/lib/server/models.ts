@@ -200,6 +200,22 @@ export class ModelStore {
 		});
 	}
 
+	/** Creates a parametric model from a mesh already rendered from `source` with `params` (kid mode). */
+	createRendered(
+		projectId: string,
+		name: string,
+		soup: Soup,
+		fields: { source: string; params: ParamValues; note: string; origin: string }
+	) {
+		const id = this.create(projectId, name, 'parametric');
+		try {
+			return { id, versionId: this.addVersion(id, soup, fields) };
+		} catch (error) {
+			this.db.delete(models).where(eq(models.id, id)).run();
+			throw error;
+		}
+	}
+
 	importFile(projectId: string, name: string, buf: Buffer, format: MeshFormat) {
 		const soup = importMesh(buf, format);
 		const id = this.create(projectId, name, 'mesh');

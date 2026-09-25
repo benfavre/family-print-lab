@@ -19,6 +19,7 @@
 	const openJobs = $derived(
 		lab.ws.jobs.filter((j) => j.status === 'Queued' || j.status === 'Printing').length
 	);
+	const kidRequests = $derived(lab.ws.printRequests.filter((r) => r.status === 'Waiting').length);
 	const printerDot = $derived(lab.printerActive ? 'p-live' : lab.printer.connected ? 'p-on' : '');
 	const saveLabel = $derived(lab.saving ? 'Saving…' : '');
 
@@ -87,6 +88,16 @@
 		<!-- eslint-enable svelte/no-navigation-without-resolve -->
 	</nav>
 	<div class="topbar-actions">
+		{#if kidRequests}
+			<a
+				class="kid-requests"
+				href="{resolve('/family')}#requests"
+				title="Kids asked to print something"
+				>🙋 <span class="kid-requests-label"
+					>{kidRequests} print request{kidRequests === 1 ? '' : 's'}</span
+				></a
+			>
+		{/if}
 		<span class="save-indicator" aria-live="polite">{lab.online ? saveLabel : 'Reconnecting…'}</span
 		>
 		<button
@@ -214,3 +225,28 @@
 		</div>
 	</div>
 </header>
+
+<style>
+	.kid-requests {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 5px 11px;
+		border-radius: 999px;
+		color: var(--text);
+		background: rgb(var(--c4) / 0.16);
+		box-shadow: inset 0 0 0 1px rgb(var(--c4) / 0.35);
+		font-size: 12.5px;
+		font-weight: 600;
+		white-space: nowrap;
+		text-decoration: none;
+	}
+	.kid-requests:hover {
+		background: rgb(var(--c4) / 0.24);
+	}
+	@media (max-width: 900px) {
+		.kid-requests-label {
+			display: none;
+		}
+	}
+</style>

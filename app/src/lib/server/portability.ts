@@ -4,6 +4,7 @@ import { activity, checklistItems, jobs, meta, profiles, projects, spools } from
 import {
 	CATEGORIES,
 	JOB_STATUSES,
+	KID_LEVELS,
 	PROFILE_COLORS,
 	PROJECT_STATUSES,
 	type Workspace
@@ -31,6 +32,7 @@ const profile = z.object({
 	age: z.number().int().min(0).max(120).nullable().catch(null),
 	color: z.enum(PROFILE_COLORS).catch('violet'),
 	interests: str(500),
+	kid: z.enum(KID_LEVELS).nullable().catch(null).optional(),
 	createdAt: iso.optional()
 });
 const project = z.object({

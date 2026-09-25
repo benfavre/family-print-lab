@@ -5,6 +5,7 @@
 	import PageHero from '$lib/components/PageHero.svelte';
 	import StatTiles from '$lib/components/StatTiles.svelte';
 	import Avatar from '$lib/components/Avatar.svelte';
+	import KidModeSection from '$lib/components/KidModeSection.svelte';
 	import { PROJECT_STATUSES, type Profile } from '$lib/shared/domain';
 	import { duration, weight } from '$lib/client/format';
 	import { projectHref } from '$lib/client/actions';
@@ -82,6 +83,7 @@
 				/>
 			{/snippet}
 		</PageHero>
+		<KidModeSection />
 		<div class="section-meta">
 			<span></span><span>Profiles organize projects; they are not separate logins</span>
 		</div>

@@ -4,6 +4,13 @@ export const PROJECT_STATUSES = ['Idea', 'Planned', 'Printing', 'Done'] as const
 export const JOB_STATUSES = ['Queued', 'Printing', 'Succeeded', 'Failed', 'Cancelled'] as const;
 export const CATEGORIES = ['Office', 'Home lab', 'Home', 'Creative'] as const;
 export const PROFILE_COLORS = ['violet', 'blue', 'orange', 'pink', 'green'] as const;
+/** Kid mode levels: 'little' (about 3–6, pictures first) and 'junior' (about 7–12). */
+export const KID_LEVELS = ['little', 'junior'] as const;
+export const KID_LEVEL_LABEL: Record<KidLevel, string> = {
+	little: 'Little maker (about 3–6)',
+	junior: 'Junior maker (about 7–12)'
+};
+export const PRINT_REQUEST_STATUSES = ['Waiting', 'Approved', 'Declined'] as const;
 export const MATERIALS = [
 	'PLA',
 	'PLA Matte',
@@ -41,6 +48,8 @@ export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 export type JobStatus = (typeof JOB_STATUSES)[number];
 export type Category = (typeof CATEGORIES)[number];
 export type ProfileColor = (typeof PROFILE_COLORS)[number];
+export type KidLevel = (typeof KID_LEVELS)[number];
+export type PrintRequestStatus = (typeof PRINT_REQUEST_STATUSES)[number];
 
 export const STATUS_META: Record<ProjectStatus, string> = {
 	Idea: 'Concept',
@@ -63,6 +72,25 @@ export interface Profile {
 	age: number | null;
 	color: ProfileColor;
 	interests: string;
+	/** Set when this profile uses kid mode. */
+	kid: KidLevel | null;
+	version: number;
+	createdAt: string;
+	updatedAt: string;
+}
+
+/** A child's request for a grown-up to print something they made. */
+export interface PrintRequest {
+	id: string;
+	projectId: string;
+	profileId: string;
+	modelVersionId: string | null;
+	spoolId: string | null;
+	status: PrintRequestStatus;
+	message: string;
+	reply: string;
+	jobId: string | null;
+	decidedAt: string | null;
 	version: number;
 	createdAt: string;
 	updatedAt: string;
@@ -227,6 +255,9 @@ export interface Workspace {
 	activity: Activity[];
 	models: ModelSummary[];
 	sketches: SketchSummary[];
+	printRequests: PrintRequest[];
+	/** Whether a parent PIN is set (kid mode needs one). */
+	parentPin: boolean;
 	/** Monotonic change counter; bumps on every committed write. */
 	changeId: number;
 }

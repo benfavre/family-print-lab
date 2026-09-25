@@ -13,6 +13,12 @@
 		if (opening) return;
 		opening = true;
 		try {
+			// Kid profiles open kid mode on this device; a grown-up's PIN brings it back.
+			if (lab.profile(id)?.kid) {
+				if (await lab.call('POST', '/api/kid/enter', { profileId: id }))
+					await goto(resolve('/kid'), { invalidateAll: true });
+				return;
+			}
 			// Initial entry keeps deep links. Switching makers returns to their project grid.
 			if (manage) await goto(resolve('/family'));
 			else if (ui.hasEntered && id !== ui.profile) await goto(resolve('/'));
@@ -49,12 +55,15 @@
 					class="profile-tile"
 					disabled={opening}
 					onclick={() => choose(profile.id)}
-					aria-label="Continue as {profile.name}"
+					aria-label={profile.kid
+						? `Start kid mode for ${profile.name}`
+						: `Continue as ${profile.name}`}
 				>
 					<span class="profile-art"
 						><Avatar {profile} /><span class="profile-spark" aria-hidden="true">✦</span></span
 					>
 					<span class="tile-name">{profile.name}</span>
+					{#if profile.kid}<span class="kid-badge">Kid mode</span>{/if}
 				</button>
 			{/each}
 			<button
@@ -218,6 +227,15 @@
 		width: 74px;
 		stroke: #aab9d1;
 		stroke-width: 2;
+	}
+	.kid-badge {
+		margin-top: -4px;
+		padding: 2px 10px;
+		border-radius: 999px;
+		background: rgb(255 185 56 / 0.18);
+		color: #ffd27a;
+		font-size: 12px;
+		font-weight: 650;
 	}
 	.tile-name {
 		font-size: 17px;

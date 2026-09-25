@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { PROFILE_COLORS } from '$lib/shared/domain';
+	import { resolve } from '$app/paths';
+	import { KID_LEVEL_LABEL, KID_LEVELS, PROFILE_COLORS, type KidLevel } from '$lib/shared/domain';
 	import { useApp } from '$lib/client/app.svelte';
 	import EditorShell from './EditorShell.svelte';
 	import ExpandableText from './ExpandableText.svelte';
@@ -13,6 +14,7 @@
 	let age = $state<number | null>(existing?.age ?? null);
 	let color = $state(existing?.color ?? 'violet');
 	let interests = $state(existing?.interests ?? '');
+	let kid = $state<KidLevel | ''>(existing?.kid ?? '');
 	let busy = $state(false);
 	let error = $state('');
 
@@ -23,7 +25,8 @@
 			name,
 			age: age === null || (age as unknown) === '' ? null : Number(age),
 			color,
-			interests
+			interests,
+			kid: kid || null
 		};
 		const ok = existing
 			? await lab.call(
@@ -71,6 +74,18 @@
 			></label
 		>
 	</div>
+	<label class="field"
+		>Kid mode<select bind:value={kid} disabled={!lab.ws.parentPin && !kid}>
+			<option value="">Off: the full app</option>
+			{#each KID_LEVELS as level (level)}<option value={level}>{KID_LEVEL_LABEL[level]}</option
+				>{/each}
+		</select><small
+			>{#if lab.ws.parentPin}A simpler, safer space with big buttons and templates. Printing needs a
+				grown-up’s yes, and leaving kid mode needs the parent PIN.{:else}Set a parent PIN on the <a
+					href={resolve('/family')}>Family page</a
+				> first.{/if}</small
+		></label
+	>
 	<ExpandableText
 		label="Interests & favorite colors"
 		bind:value={interests}

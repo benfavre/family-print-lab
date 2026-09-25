@@ -15,6 +15,7 @@
 	import Assistant from '$lib/components/Assistant.svelte';
 	import ShortcutsDialog from '$lib/components/ShortcutsDialog.svelte';
 	import BottomNav from '$lib/components/BottomNav.svelte';
+	import KidShell from '$lib/components/kid/KidShell.svelte';
 	import { goto } from '$app/navigation';
 	import { INTEGRATIONS_NAV, NAV } from '$lib/client/nav';
 
@@ -28,14 +29,16 @@
 	onMount(() => {
 		try {
 			const saved = sessionStorage.getItem('print-lab-profile');
-			if (saved === 'all' || lab.ws.profiles.some((p) => p.id === saved)) ui.selectProfile(saved!);
+			if (data.kid) sessionStorage.removeItem('print-lab-profile');
+			else if (saved === 'all' || lab.ws.profiles.some((p) => p.id === saved))
+				ui.selectProfile(saved!);
 		} catch {
 			/* Start with the chooser when session storage is unavailable. */
 		}
 		ui.theme = document.documentElement.dataset.themeChoice ?? 'auto';
 		syncThemeColor();
 		lab.connect();
-		void lab.loadIntegrations();
+		if (!data.kid) void lab.loadIntegrations();
 		document.documentElement.dataset.ready = '1'; // hydrated and interactive (used by end-to-end tests)
 		const clock = setInterval(() => (ui.now = Date.now()), 15_000);
 		const system = matchMedia('(prefers-color-scheme: light)');
@@ -260,8 +263,11 @@
 	onclickcapture={onClickCapture}
 />
 
-{#if ui.profileLocked}<ProfileSelector />{/if}
-{#if ui.hasEntered}
+{#if data.kid}
+	<KidShell kid={data.kid}>{@render children()}</KidShell>
+	<Toasts />
+{:else if ui.profileLocked}<ProfileSelector />{/if}
+{#if ui.hasEntered && !data.kid}
 	<div hidden={ui.profileLocked} inert={ui.profileLocked}>
 		<a class="skip-link" href="#main">Skip to content</a>
 		{#if navigating.to}<div class="route-progress" aria-hidden="true"></div>{/if}

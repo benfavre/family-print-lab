@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
 	CATEGORIES,
 	JOB_STATUSES,
+	KID_LEVELS,
 	PROFILE_COLORS,
 	PROJECT_STATUSES,
 	SUPPORTS
@@ -25,7 +26,8 @@ export const profileInput = z.strictObject({
 	name: required(80),
 	age: z.number().int().min(0).max(120).nullable().default(null),
 	color: z.enum(PROFILE_COLORS),
-	interests: text(500).default('')
+	interests: text(500).default(''),
+	kid: z.enum(KID_LEVELS).nullable().default(null)
 });
 export const profilePatch = profileInput.partial().extend({ version });
 
@@ -115,6 +117,17 @@ export const jobTransition = z.strictObject({
 	printerTask: text(200).optional(),
 	/** The status the caller saw; refused when the job has moved on since. */
 	from: z.enum(JOB_STATUSES).optional()
+});
+
+/** A grown-up's answer to a child's print request. */
+export const requestDecision = z.strictObject({
+	decision: z.enum(['approve', 'decline']),
+	reply: text(300).default(''),
+	version
+});
+export const printRequestInput = z.strictObject({
+	spoolId: z.string().max(80).nullable().default(null),
+	message: text(200).default('')
 });
 
 export const checklistPatch = z.strictObject({

@@ -7,6 +7,7 @@ import {
 	jobs,
 	meta,
 	modelVersions,
+	printRequests,
 	sketches,
 	models,
 	profiles,
@@ -26,6 +27,7 @@ import {
 	type ModelSummary,
 	type ModelVersionSummary,
 	type JobStatus,
+	type PrintRequest,
 	type Profile,
 	type Project,
 	type ProjectStatus,
@@ -41,8 +43,10 @@ import {
 	jobPatch,
 	jobTransition,
 	parse,
+	printRequestInput,
 	profileInput,
 	profilePatch,
+	requestDecision,
 	projectBulk,
 	projectInput,
 	projectPatch,
@@ -130,6 +134,12 @@ export class Lab {
 				.from(sketches)
 				.orderBy(desc(sketches.createdAt))
 				.all(),
+			printRequests: db
+				.select()
+				.from(printRequests)
+				.orderBy(desc(printRequests.createdAt))
+				.all() as PrintRequest[],
+			parentPin: this.hasParentPin(),
 			changeId: this.changeId()
 		};
 	}
@@ -201,7 +211,9 @@ export class Lab {
 	}
 
 	/** Updates a row only if its version matches; distinguishes "gone" from "changed elsewhere". */
-	private versioned<T extends typeof profiles | typeof projects | typeof spools | typeof jobs>(
+	private versioned<
+		T extends typeof profiles | typeof projects | typeof spools | typeof jobs | typeof printRequests
+	>(
 		tx: Tx,
 		table: T,
 		id: string,
@@ -239,8 +251,19 @@ export class Lab {
 
 	// ---------- Profiles ----------
 
+	/** Whether a parent PIN is set (see kid/pin.ts); kid mode needs one. */
+	hasParentPin() {
+		return !!this.db.select().from(meta).where(eq(meta.key, 'parent_pin')).get();
+	}
+
+	private needPinForKid(kid: unknown) {
+		if (kid && !this.hasParentPin())
+			throw new AppError(409, 'Set a parent PIN first, so only grown-ups can leave kid mode.');
+	}
+
 	createProfile(input: unknown) {
 		const data = parse(profileInput, input);
+		this.needPinForKid(data.kid);
 		const id = uuid();
 		return this.write('profile', (tx) => {
 			tx.insert(profiles)
@@ -253,6 +276,7 @@ export class Lab {
 
 	updateProfile(id: string, input: unknown) {
 		const { version, ...data } = parse(profilePatch, input);
+		this.needPinForKid(data.kid);
 		this.write('profile', (tx) => this.versioned(tx, profiles, id, version, data, 'profile'));
 	}
 
@@ -880,5 +904,112 @@ export class Lab {
 					.run();
 		});
 		return job.id;
+	}
+
+	// ---------- Kid mode: print requests ----------
+
+	/** A child asks a grown-up to print the current version of something they made. */
+	requestPrint(profileId: string, projectId: string, input: unknown) {
+		const data = parse(printRequestInput, input);
+		return this.write('request', (tx) => {
+			const project = this.project(tx, projectId);
+			if (project.profileId !== profileId)
+				throw new AppError(404, 'That project no longer exists.');
+			const model = tx
+				.select()
+				.from(models)
+				.where(eq(models.projectId, projectId))
+				.orderBy(desc(models.createdAt))
+				.get();
+			if (!model?.currentVersionId) throw new AppError(409, 'Make it first, then ask to print it.');
+			if (data.spoolId)
+				this.need(tx.select().from(spools).where(eq(spools.id, data.spoolId)).get(), 'spool');
+			const waiting = tx
+				.select({ id: printRequests.id })
+				.from(printRequests)
+				.where(and(eq(printRequests.projectId, projectId), eq(printRequests.status, 'Waiting')))
+				.get();
+			if (waiting) throw new AppError(409, 'You already asked! A grown-up will look soon.');
+			const id = uuid();
+			tx.insert(printRequests)
+				.values({ id, projectId, profileId, modelVersionId: model.currentVersionId, ...data })
+				.run();
+			const who = tx.select().from(profiles).where(eq(profiles.id, profileId)).get();
+			this.log(
+				tx,
+				'request',
+				`${who?.name ?? 'A kid'} asked to print “${project.title}”`,
+				projectId
+			);
+			return id;
+		});
+	}
+
+	/** A grown-up approves (queuing a print job for the exact version) or declines a request. */
+	decideRequest(id: string, input: unknown) {
+		const { decision, reply, version } = parse(requestDecision, input);
+		return this.write('request', (tx) => {
+			const request = this.need(
+				tx.select().from(printRequests).where(eq(printRequests.id, id)).get(),
+				'print request'
+			);
+			if (request.status !== 'Waiting')
+				throw new AppError(409, 'This request was already answered.');
+			const project = this.project(tx, request.projectId);
+			const who = tx.select().from(profiles).where(eq(profiles.id, request.profileId)).get();
+			let jobId: string | null = null;
+			if (decision === 'approve') {
+				const spool = request.spoolId
+					? tx.select().from(spools).where(eq(spools.id, request.spoolId)).get()
+					: undefined;
+				const count =
+					tx
+						.select({ n: sql<number>`count(*)` })
+						.from(jobs)
+						.where(eq(jobs.projectId, project.id))
+						.get()?.n ?? 0;
+				jobId = uuid();
+				tx.insert(jobs)
+					.values({
+						id: jobId,
+						projectId: project.id,
+						status: 'Queued',
+						revision: `v${String(count + 1).padStart(2, '0')}`,
+						spoolId: spool?.id ?? null,
+						material: spool?.material ?? '',
+						modelVersionId: request.modelVersionId,
+						notes: `Asked for by ${who?.name ?? 'a kid'}${request.message ? `: “${request.message}”` : ''}`
+					})
+					.run();
+				if (project.status === 'Idea')
+					tx.update(projects)
+						.set({ status: 'Planned', updatedAt: nowIso(), version: sql`${projects.version} + 1` })
+						.where(eq(projects.id, project.id))
+						.run();
+			}
+			this.versioned(
+				tx,
+				printRequests,
+				id,
+				version,
+				{
+					status: decision === 'approve' ? 'Approved' : 'Declined',
+					reply,
+					jobId,
+					decidedAt: nowIso()
+				},
+				'print request'
+			);
+			this.log(
+				tx,
+				'request',
+				decision === 'approve'
+					? `Said yes to printing ${who?.name ?? 'a kid'}’s “${project.title}”`
+					: `Said not this time to ${who?.name ?? 'a kid'}’s “${project.title}”`,
+				project.id,
+				jobId
+			);
+			return jobId;
+		});
 	}
 }

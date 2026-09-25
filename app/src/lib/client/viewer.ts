@@ -528,11 +528,18 @@ export class ModelViewer {
 		return { png, webp: webp?.type === 'image/webp' ? webp : null };
 	}
 
+	/** Shows the part in a filament colour (#rrggbb) instead of the theme's; null goes back to the theme. */
+	setPartColor(hex: string | null) {
+		this.partColor = hex;
+		this.refreshTheme();
+	}
+
 	refreshTheme() {
-		const accent = rgb('--c1', '#5ee7ff');
+		const theme = rgb('--c1', '#5ee7ff');
+		const accent = this.partColor ? new THREE.Color(this.partColor) : theme;
 		const ink = rgb('--ink', '#96c8ff');
 		this.hot = rgb('--c4', '#ffb454');
-		this.material.color.copy(accent).lerp(new THREE.Color(0xffffff), 0.18);
+		this.material.color.copy(accent).lerp(new THREE.Color(0xffffff), this.partColor ? 0.08 : 0.18);
 		this.capMaterial.color.copy(this.hot);
 		this.accent.copy(this.material.color);
 		this.warn = rgb('--c5', '#ff6b7a');
@@ -594,6 +601,7 @@ export class ModelViewer {
 	// ---------- Internals ----------
 
 	private hot = new THREE.Color('#ffb454');
+	private partColor: string | null = null;
 	private sectionOn = false;
 	private showcase = false;
 	private loop = 0;

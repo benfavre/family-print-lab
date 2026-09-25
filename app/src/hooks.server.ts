@@ -2,6 +2,7 @@ import { gzipSync } from 'node:zlib';
 import type { Handle, ServerInit } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { runtime } from '$lib/server/runtime';
+import { kidAccess, kidProfile } from '$lib/server/kid/session';
 
 export const init: ServerInit = () => {
 	runtime();
@@ -39,6 +40,18 @@ export const handle: Handle = async ({ event, resolve }) => {
 			status: 403,
 			headers: { 'content-type': 'application/json' }
 		});
+	}
+	// Kid mode: this browser stays in the kid pages until a grown-up enters the parent PIN.
+	event.locals.kid = kidProfile(runtime().db, event.cookies);
+	if (event.locals.kid) {
+		const access = kidAccess(request.method, url.pathname, event.route.id);
+		if (access === 'redirect')
+			return new Response(null, { status: 303, headers: { location: '/kid' } });
+		if (access === 'refuse')
+			return new Response(JSON.stringify({ error: 'Ask a grown-up for this one.' }), {
+				status: 403,
+				headers: { 'content-type': 'application/json' }
+			});
 	}
 	const response = await resolve(event);
 	response.headers.set('X-Content-Type-Options', 'nosniff');

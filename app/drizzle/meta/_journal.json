@@ -29,6 +29,13 @@
       "when": 1790360645774,
       "tag": "0003_sliced",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1790363534567,
+      "tag": "0004_kid_mode",
+      "breakpoints": true
     }
   ]
 }

@@ -22,6 +22,7 @@ import { ModelStore } from './models';
 import { TaskCenter } from './tasks';
 import { SketchStore } from './sketches';
 import { parseImport, replaceWorkspace } from './portability';
+import { ParentPin } from './kid/pin';
 import type { PrinterStatus } from '$lib/shared/domain';
 
 export interface Runtime {
@@ -35,6 +36,8 @@ export interface Runtime {
 	/** Sliced files on jobs, and sending them to the printer. */
 	printing: PrintFiles;
 	ai: Assistant;
+	/** The parent PIN that guards leaving kid mode. */
+	pin: ParentPin;
 	/** The provider configured for a task in Settings (resolved per request, so changes apply immediately). */
 	provider(task: AiTask): Provider;
 	providerById(id: ProviderId): Provider;
@@ -137,6 +140,7 @@ function boot(): Runtime {
 		printer,
 		printing,
 		ai,
+		pin: new ParentPin(db),
 		provider,
 		providerById,
 		aiSummary() {

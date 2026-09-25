@@ -3,6 +3,8 @@ import { blob, check, index, integer, real, sqliteTable, text } from 'drizzle-or
 import type {
 	Category,
 	JobStatus,
+	KidLevel,
+	PrintRequestStatus,
 	ProfileColor,
 	ProjectStatus,
 	SlicedInfo
@@ -23,6 +25,8 @@ export const profiles = sqliteTable(
 		age: integer('age'),
 		color: text('color').$type<ProfileColor>().notNull(),
 		interests: text('interests').notNull().default(''),
+		/** Kid mode for this profile: a simpler, safer space ('little' about 3–6, 'junior' about 7–12). */
+		kid: text('kid').$type<KidLevel>(),
 		...timestamps
 	},
 	(t) => [check('profiles_age', sql`${t.age} IS NULL OR (${t.age} BETWEEN 0 AND 120)`)]
@@ -203,4 +207,36 @@ export const sketches = sqliteTable(
 		...timestamps
 	},
 	(t) => [index('sketches_project').on(t.projectId)]
+);
+
+/** A child asks a grown-up to print something they made in kid mode. */
+export const printRequests = sqliteTable(
+	'print_requests',
+	{
+		id: text('id').primaryKey(),
+		projectId: text('project_id')
+			.notNull()
+			.references(() => projects.id, { onDelete: 'cascade' }),
+		profileId: text('profile_id')
+			.notNull()
+			.references(() => profiles.id, { onDelete: 'cascade' }),
+		modelVersionId: text('model_version_id').references(() => modelVersions.id, {
+			onDelete: 'set null'
+		}),
+		/** The spool (colour) the child picked, if any. */
+		spoolId: text('spool_id').references(() => spools.id, { onDelete: 'set null' }),
+		status: text('status').$type<PrintRequestStatus>().notNull().default('Waiting'),
+		/** What the child said when asking. */
+		message: text('message').notNull().default(''),
+		/** The grown-up's answer, shown to the child. */
+		reply: text('reply').notNull().default(''),
+		/** The print job created when the request was approved. */
+		jobId: text('job_id').references(() => jobs.id, { onDelete: 'set null' }),
+		decidedAt: text('decided_at'),
+		...timestamps
+	},
+	(t) => [
+		index('print_requests_status').on(t.status),
+		index('print_requests_project').on(t.projectId)
+	]
 );
