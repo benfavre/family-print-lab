@@ -190,6 +190,10 @@
 					<button role="menuitem" onclick={run(() => act.snapshotNow())}
 						><span aria-hidden="true">⛁</span>Save database snapshot</button
 					>
+					<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve() plus a hash -->
+					<button role="menuitem" onclick={run(() => goto(`${resolve('/integrations')}#backups`))}
+						><span aria-hidden="true">↺</span>Backups and restore…</button
+					>
 				</div>
 			{/if}
 			<input

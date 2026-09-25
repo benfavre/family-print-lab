@@ -55,7 +55,12 @@ function boot(): Runtime {
 		file === ':memory:'
 			? fs.mkdtempSync(path.join(os.tmpdir(), 'print-lab-models-'))
 			: path.join(dataDir, dbName === 'printlab' ? 'models' : `${dbName}-models`);
-	const tasks = new TaskCenter();
+	// Kept beside the database (dev and test databases get their own file).
+	const tasks = new TaskCenter(
+		file === ':memory:'
+			? null
+			: path.join(dataDir, dbName === 'printlab' ? 'tasks.json' : `${dbName}-tasks.json`)
+	);
 	const models = new ModelStore(db, lab, env.MODELS_DIR || modelsDir, tasks);
 
 	// First run: bring over the previous app's data if it is present.
@@ -67,7 +72,13 @@ function boot(): Runtime {
 
 	models.sweep();
 
-	const backups = new Backups(db, env.BACKUP_DIR || path.join(dataDir, 'backups'), models.dir);
+	const backups = new Backups(
+		db,
+		env.BACKUP_DIR || path.join(dataDir, 'backups'),
+		models.dir,
+		14,
+		env.BACKUP_MIRROR || null
+	);
 	if (file !== ':memory:') backups.schedule(log);
 
 	const printer = printerFromEnv(env);
@@ -126,6 +137,7 @@ function boot(): Runtime {
 		},
 		printerStatus: () => printer?.status() ?? { configured: false },
 		shutdown() {
+			tasks.flush();
 			printer?.stop();
 			backups.stop();
 			db.$client.close();

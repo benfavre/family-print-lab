@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { TaskCenter } from './tasks';
 import type { TaskInfo } from '$lib/shared/tasks';
 
@@ -77,5 +80,30 @@ describe('background tasks', () => {
 		const other = center.open({ kind: 'blender-session', title: 'Other' }, () => (closed = true));
 		center.cancel(other.info.id);
 		expect(closed).toBe(true);
+	});
+
+	it('keeps recent tasks across a restart, and marks unfinished work as interrupted', async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'print-lab-tasks-'));
+		const file = path.join(dir, 'tasks.json');
+		try {
+			const before = new TaskCenter(file);
+			const done = before.start({ kind: 'ai-design', title: 'Finished design' }, async () => 1);
+			const running = before.start(
+				{ kind: 'ai-edit', title: 'Still thinking' },
+				() => new Promise(() => {})
+			);
+			await settle();
+			before.flush();
+
+			const after = new TaskCenter(file);
+			expect(after.get(done.id)).toMatchObject({ status: 'done', title: 'Finished design' });
+			expect(after.get(running.id)).toMatchObject({ status: 'failed', stage: 'Interrupted' });
+			expect(after.get(running.id).error).toMatch(/restarted/);
+
+			fs.writeFileSync(file, '{broken');
+			expect(new TaskCenter(file).list()).toEqual([]);
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });

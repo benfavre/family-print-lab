@@ -1,8 +1,10 @@
 // Background tasks: long work runs here instead of inside a web request, so closing a dialog or a tab
 // does not lose it. Every change is broadcast (the live event stream forwards it to all open tabs).
-// Tasks live in memory: recent history survives until the app restarts, which is enough for work
-// that takes seconds to minutes.
+// Recent tasks are also saved to a small JSON file, so finished AI designs survive a restart; work that
+// was still running when the app stopped is shown as interrupted.
 import { EventEmitter } from 'node:events';
+import fs from 'node:fs';
+import path from 'node:path';
 import type { AiProviderId } from '$lib/shared/integrations';
 import type { TaskInfo, TaskKind } from '$lib/shared/tasks';
 import { AppError } from './validation';
@@ -26,8 +28,58 @@ export class TaskCenter {
 	readonly events = new EventEmitter();
 	private tasks = new Map<string, Entry>();
 
-	constructor() {
+	private saveTimer?: NodeJS.Timeout;
+
+	/** `file`: where recent tasks are kept between restarts (none: memory only). */
+	constructor(private file: string | null = null) {
 		this.events.setMaxListeners(100);
+		if (file) this.restore(file);
+	}
+
+	private restore(file: string) {
+		try {
+			if (!fs.existsSync(file)) return;
+			const saved = JSON.parse(fs.readFileSync(file, 'utf8')) as TaskInfo[];
+			const now = new Date().toISOString();
+			for (const info of saved.slice(0, KEEP)) {
+				if (!info?.id || !info.startedAt) continue;
+				if (info.status === 'running')
+					Object.assign(info, {
+						status: 'failed',
+						stage: 'Interrupted',
+						error: 'The app restarted while this was running. Start it again.',
+						finishedAt: now
+					});
+				this.tasks.set(info.id, { info, abort: new AbortController() });
+			}
+		} catch {
+			// A damaged file only loses the task history.
+		}
+	}
+
+	/** Writes the task list soon (batched), atomically. */
+	private save() {
+		if (!this.file || this.saveTimer) return;
+		this.saveTimer = setTimeout(() => {
+			this.saveTimer = undefined;
+			this.flush();
+		}, 400);
+		this.saveTimer.unref?.();
+	}
+
+	/** Writes the task list now (also called on shutdown). */
+	flush() {
+		if (!this.file) return;
+		clearTimeout(this.saveTimer);
+		this.saveTimer = undefined;
+		try {
+			fs.mkdirSync(path.dirname(this.file), { recursive: true });
+			const tmp = `${this.file}.tmp`;
+			fs.writeFileSync(tmp, JSON.stringify(this.list()));
+			fs.renameSync(tmp, this.file);
+		} catch {
+			// History is a convenience; never fail the task over it.
+		}
 	}
 
 	list(): TaskInfo[] {
@@ -185,11 +237,13 @@ export class TaskCenter {
 		if (entry && entry.info.status !== 'running') {
 			this.tasks.delete(id);
 			this.events.emit('removed', id);
+			this.save();
 		}
 	}
 
 	private emit(info: TaskInfo) {
 		this.events.emit('task', { ...info });
+		this.save();
 	}
 
 	/** Keeps every running task and the most recent finished ones. */

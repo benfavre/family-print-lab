@@ -10,6 +10,7 @@
 		type IntegrationTest
 	} from '$lib/shared/integrations';
 	import { stamp } from '$lib/client/format';
+	import BackupsSection from '$lib/components/BackupsSection.svelte';
 
 	const { lab, ui } = useApp();
 	const report = $derived(lab.integrations);
@@ -265,6 +266,8 @@
 		</div>
 	</section>
 {/if}
+
+<BackupsSection />
 
 <style>
 	.int-head {

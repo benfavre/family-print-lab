@@ -1,12 +1,43 @@
 // Blender bridge: headless jobs (repair, decimate) and interactive "Open in Blender" sessions whose
 // saves flow back into the app as new model versions.
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { AppError } from '../validation';
 
 const SCRIPTS = path.resolve('resources/blender');
+
+const DESKTOP_VARS = [
+	'DISPLAY',
+	'WAYLAND_DISPLAY',
+	'XAUTHORITY',
+	'XDG_SESSION_TYPE',
+	'DBUS_SESSION_BUS_ADDRESS'
+];
+
+/**
+ * The environment for a Blender window. When the app runs as a background service it may have started
+ * before anyone logged in, so it borrows the desktop's display settings from the user's service manager.
+ */
+export function desktopEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+	if (env.DISPLAY || env.WAYLAND_DISPLAY) return env;
+	try {
+		const out = execFileSync('systemctl', ['--user', 'show-environment'], {
+			encoding: 'utf8',
+			timeout: 2000
+		});
+		const merged = { ...env };
+		for (const line of out.split('\n')) {
+			const i = line.indexOf('=');
+			const key = line.slice(0, i);
+			if (i > 0 && DESKTOP_VARS.includes(key) && !merged[key]) merged[key] = line.slice(i + 1);
+		}
+		return merged;
+	} catch {
+		return env;
+	}
+}
 
 /** Finds Blender: BLENDER_PATH, then the newest portable install in ~/.local/opt, then PATH. */
 export function findBlender(env: Record<string, string | undefined> = process.env): string | null {
@@ -152,7 +183,7 @@ export function openSession(opts: {
 			opts.name,
 			blendPath
 		],
-		{ stdio: ['ignore', 'pipe', 'pipe'], detached: false }
+		{ stdio: ['ignore', 'pipe', 'pipe'], detached: false, env: desktopEnv() }
 	);
 	// Keep Blender's own output next to the session, for when something goes wrong.
 	const log = fs.createWriteStream(path.join(opts.workDir, 'blender.log'), { flags: 'w' });
