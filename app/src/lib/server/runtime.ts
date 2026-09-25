@@ -23,6 +23,8 @@ import { TaskCenter } from './tasks';
 import { SketchStore } from './sketches';
 import { parseImport, replaceWorkspace } from './portability';
 import { ParentPin } from './kid/pin';
+import { CloudLink } from './cloud/link';
+import { version as appVersion } from '../../../package.json';
 import type { PrinterStatus } from '$lib/shared/domain';
 
 export interface Runtime {
@@ -38,6 +40,8 @@ export interface Runtime {
 	ai: Assistant;
 	/** The parent PIN that guards leaving kid mode. */
 	pin: ParentPin;
+	/** The optional Print Lab Cloud link (null unless CLOUD_URL is set). */
+	cloud: CloudLink | null;
 	/** The provider configured for a task in Settings (resolved per request, so changes apply immediately). */
 	provider(task: AiTask): Provider;
 	providerById(id: ProviderId): Provider;
@@ -130,6 +134,10 @@ function boot(): Runtime {
 		`Database ${file} · printer ${printer ? `${printer.name}${printer.config.simulated ? ' (SIMULATOR)' : ''} at ${printer.config.host}:${printer.config.port}` : 'not configured'} · AI via ${getSettings(db).ai.routing.chat}`
 	);
 
+	// Print Lab Cloud is optional and does nothing until someone links this computer.
+	const cloud = env.CLOUD_URL ? new CloudLink(db, lab, models, env.CLOUD_URL, appVersion) : null;
+	cloud?.start();
+
 	return {
 		db,
 		lab,
@@ -141,6 +149,7 @@ function boot(): Runtime {
 		printing,
 		ai,
 		pin: new ParentPin(db),
+		cloud,
 		provider,
 		providerById,
 		aiSummary() {
@@ -157,6 +166,7 @@ function boot(): Runtime {
 		},
 		printerStatus: () => printer?.status() ?? { configured: false },
 		shutdown() {
+			cloud?.stop();
 			tasks.flush();
 			printer?.stop();
 			backups.stop();

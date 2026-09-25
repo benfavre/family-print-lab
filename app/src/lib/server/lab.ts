@@ -945,8 +945,11 @@ export class Lab {
 		});
 	}
 
-	/** A grown-up approves (queuing a print job for the exact version) or declines a request. */
-	decideRequest(id: string, input: unknown) {
+	/**
+	 * A grown-up approves (queuing a print job for the exact version) or declines a request.
+	 * `via` names where the answer came from when it was not this app (e.g. the phone).
+	 */
+	decideRequest(id: string, input: unknown, via?: string) {
 		const { decision, reply, version } = parse(requestDecision, input);
 		return this.write('request', (tx) => {
 			const request = this.need(
@@ -1003,9 +1006,10 @@ export class Lab {
 			this.log(
 				tx,
 				'request',
-				decision === 'approve'
+				(decision === 'approve'
 					? `Said yes to printing ${who?.name ?? 'a kid'}’s “${project.title}”`
-					: `Said not this time to ${who?.name ?? 'a kid'}’s “${project.title}”`,
+					: `Said not this time to ${who?.name ?? 'a kid'}’s “${project.title}”`) +
+					(via ? ` (from ${via})` : ''),
 				project.id,
 				jobId
 			);

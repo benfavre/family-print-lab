@@ -15,6 +15,7 @@ import {
 	type Workspace
 } from '$lib/shared/domain';
 import type { IntegrationsReport } from '$lib/shared/integrations';
+import { CLOUD_OFF, type CloudStatus } from '$lib/shared/cloud';
 import type { TaskInfo } from '$lib/shared/tasks';
 
 export class ApiError extends Error {
@@ -259,6 +260,8 @@ export class UiState {
 export class LabStore {
 	ws = $state<Workspace>() as Workspace;
 	printer = $state<PrinterStatus>({ configured: false });
+	/** The optional Print Lab Cloud link, kept live by the event stream. */
+	cloud = $state<CloudStatus>(CLOUD_OFF);
 	ai = $state({ configured: false, provider: 'claude-code', label: '' });
 	/** Status of AI providers, Blender, OpenSCAD and the printer (loaded after start; the checks take a moment). */
 	integrations = $state<IntegrationsReport | null>(null);
@@ -305,9 +308,11 @@ export class LabStore {
 			workspace: Workspace;
 			printer: PrinterStatus;
 			ai: { configured: boolean; provider: string; label: string };
+			cloud?: CloudStatus;
 		},
 		private ui: UiState
 	) {
+		if (initial.cloud) this.cloud = initial.cloud;
 		this.ws = initial.workspace;
 		this.printer = initial.printer;
 		this.ai = initial.ai;
@@ -324,6 +329,7 @@ export class LabStore {
 			this.retryMs = 1000;
 			const data = JSON.parse((e as MessageEvent).data);
 			this.printer = data.printer;
+			if (data.cloud) this.cloud = data.cloud;
 			this.sampleTemps();
 			if (data.tasks) {
 				this.tasks = data.tasks;
@@ -338,6 +344,9 @@ export class LabStore {
 		source.addEventListener('task-removed', (e) => {
 			const { id } = JSON.parse((e as MessageEvent).data);
 			this.tasks = this.tasks.filter((t) => t.id !== id);
+		});
+		source.addEventListener('cloud', (e) => {
+			this.cloud = JSON.parse((e as MessageEvent).data);
 		});
 		source.addEventListener('printer', (e) => {
 			this.printer = JSON.parse((e as MessageEvent).data);

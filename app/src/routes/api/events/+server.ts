@@ -31,6 +31,8 @@ export const GET: RequestHandler = ({ request }) => {
 			};
 			const onTask = (t: TaskInfo) => send('task', t);
 			const onTaskRemoved = (id: string) => send('task-removed', { id });
+			const onCloud = (status: unknown) => send('cloud', status);
+			rt.cloud?.on('status', onCloud);
 			rt.lab.events.on('change', onChange);
 			rt.tasks.events.on('task', onTask);
 			rt.tasks.events.on('removed', onTaskRemoved);
@@ -45,6 +47,7 @@ export const GET: RequestHandler = ({ request }) => {
 			send('hello', {
 				changeId: rt.lab.changeId(),
 				printer: rt.printerStatus(),
+				cloud: rt.cloud?.status() ?? null,
 				tasks: rt.tasks.list()
 			});
 			cleanup = () => {
@@ -54,6 +57,7 @@ export const GET: RequestHandler = ({ request }) => {
 				rt.tasks.events.off('task', onTask);
 				rt.tasks.events.off('removed', onTaskRemoved);
 				rt.printer?.off('update', onPrinter);
+				rt.cloud?.off('status', onCloud);
 			};
 			request.signal.addEventListener('abort', () => {
 				cleanup();

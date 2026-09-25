@@ -1,0 +1,405 @@
+// Print Lab Cloud link (optional): lets a grown-up answer kids' print requests from a phone.
+// Everything this sends and accepts is described in docs/cloud-protocol.md. In short: it opens one
+// outbound WebSocket, reports print requests (nothing else), and accepts exactly one command,
+// approving or declining a waiting request, which goes through the same checks as the Family page.
+import { eq } from 'drizzle-orm';
+import { EventEmitter } from 'node:events';
+import fs from 'node:fs';
+import type { DB } from '../db';
+import { meta } from '../db/schema';
+import type { Lab } from '../lab';
+import type { ModelStore } from '../models';
+import { AppError } from '../validation';
+import { plaGrams } from '$lib/shared/kid';
+import type { CloudStatus } from '$lib/shared/cloud';
+
+const KEY = 'cloud';
+const PROTOCOL = 1;
+const RECENT_DAYS = 7;
+const MAX_THUMBNAIL = 40_000;
+
+interface Stored {
+	shareNames: boolean;
+	link: { deviceToken: string; deviceId: string; account: string; linkedAt: string } | null;
+}
+
+export interface RequestSummary {
+	id: string;
+	version: number;
+	status: string;
+	kid: string;
+	title: string;
+	message: string;
+	reply: string;
+	size: [number, number, number] | null;
+	grams: number | null;
+	colour: { name: string; hex: string } | null;
+	createdAt: string;
+	decidedAt: string | null;
+	thumbnail?: string | null;
+}
+
+export class CloudLink extends EventEmitter {
+	private stored: Stored;
+	private state: CloudStatus['state'] = 'unlinked';
+	private plan = false;
+	private error: string | null = null;
+	private pairing: { userCode: string; verifyUrl: string; expiresAt: string } | null = null;
+	private pairingRun = 0;
+	private ws: WebSocket | null = null;
+	private retry: ReturnType<typeof setTimeout> | null = null;
+	private backoff = 1000;
+	private ping: ReturnType<typeof setInterval> | null = null;
+	private lastSent = '';
+	private sendSoon: ReturnType<typeof setTimeout> | null = null;
+	private stopped = false;
+	private onChange = () => this.scheduleReport();
+
+	constructor(
+		private db: DB,
+		private lab: Lab,
+		private models: ModelStore,
+		readonly url: string,
+		private appVersion: string,
+		private deviceName = 'Family Print Lab'
+	) {
+		super();
+		this.url = url.replace(/\/+$/, '');
+		const row = db.select().from(meta).where(eq(meta.key, KEY)).get();
+		this.stored = row ? (JSON.parse(row.value) as Stored) : { shareNames: true, link: null };
+		lab.events.on('change', this.onChange);
+	}
+
+	start() {
+		if (this.stored.link) void this.connect();
+	}
+
+	stop() {
+		this.stopped = true;
+		this.pairingRun++;
+		this.lab.events.off('change', this.onChange);
+		this.clearTimers();
+		this.ws?.close(1000, 'Shutting down.');
+	}
+
+	status(): CloudStatus {
+		return {
+			configured: true,
+			url: this.url,
+			state: this.state,
+			account: this.stored.link?.account ?? null,
+			plan: this.plan,
+			shareNames: this.stored.shareNames,
+			pairing: this.pairing,
+			error: this.error,
+			linkedAt: this.stored.link?.linkedAt ?? null
+		};
+	}
+
+	// ---------- Linking ----------
+
+	/** Asks the cloud for a code for a grown-up to enter, then waits for them to confirm it. */
+	async link() {
+		if (this.stored.link) throw new AppError(409, 'Already linked. Unlink first.');
+		const run = ++this.pairingRun;
+		this.error = null;
+		const started = await this.post<{
+			pairingId: string;
+			userCode: string;
+			verifyUrl: string;
+			expiresIn: number;
+			interval: number;
+		}>('/device/pair', { name: this.deviceName, app: this.appVersion });
+		this.pairing = {
+			userCode: started.userCode,
+			verifyUrl: started.verifyUrl,
+			expiresAt: new Date(Date.now() + started.expiresIn * 1000).toISOString()
+		};
+		this.set('pairing');
+		void this.waitForConfirmation(run, started.pairingId, Math.max(0.05, started.interval) * 1000);
+		return this.status();
+	}
+
+	cancelLink() {
+		this.pairingRun++;
+		this.pairing = null;
+		if (this.state === 'pairing') this.set('unlinked');
+	}
+
+	private async waitForConfirmation(run: number, pairingId: string, interval: number) {
+		while (run === this.pairingRun && this.pairing) {
+			await new Promise((r) => setTimeout(r, interval));
+			if (run !== this.pairingRun) return;
+			try {
+				const r = await this.post<{
+					status: string;
+					deviceToken?: string;
+					deviceId?: string;
+					account?: string;
+				}>('/device/pair/poll', { pairingId });
+				if (run !== this.pairingRun) return;
+				if (r.status === 'expired') {
+					this.pairing = null;
+					this.error = 'The code expired. Start again to get a new one.';
+					return this.set('unlinked');
+				}
+				if (r.status === 'linked' && r.deviceToken && r.deviceId) {
+					this.pairing = null;
+					this.save({
+						...this.stored,
+						link: {
+							deviceToken: r.deviceToken,
+							deviceId: r.deviceId,
+							account: r.account ?? '',
+							linkedAt: new Date().toISOString()
+						}
+					});
+					this.lab.touch('cloud', `Linked to Print Lab Cloud (${r.account ?? 'account'})`);
+					return void this.connect();
+				}
+			} catch {
+				// Network hiccup while waiting: keep polling until the code expires.
+			}
+		}
+	}
+
+	/** Unlinks: tells the cloud when it can, and forgets the token either way. */
+	async unlink() {
+		const link = this.stored.link;
+		this.cancelLink();
+		if (link)
+			await fetch(`${this.url}/device/unlink`, {
+				method: 'POST',
+				headers: { authorization: `Bearer ${link.deviceToken}` },
+				signal: AbortSignal.timeout(5000)
+			}).catch(() => {});
+		this.forget(null);
+		this.lab.touch('cloud', 'Unlinked from Print Lab Cloud');
+	}
+
+	setShareNames(share: boolean) {
+		this.save({ ...this.stored, shareNames: share });
+		this.lastSent = '';
+		this.scheduleReport(0);
+		this.emit('status', this.status());
+	}
+
+	// ---------- Connection ----------
+
+	private async connect() {
+		this.clearTimers();
+		const link = this.stored.link;
+		if (!link || this.stopped) return;
+		this.set('connecting');
+		let ticket: string;
+		try {
+			const response = await fetch(`${this.url}/device/session`, {
+				method: 'POST',
+				headers: { authorization: `Bearer ${link.deviceToken}` },
+				signal: AbortSignal.timeout(10_000)
+			});
+			if (response.status === 401)
+				return this.forget('This computer was unlinked in Print Lab Cloud.');
+			if (!response.ok) throw new Error(`HTTP ${response.status}`);
+			ticket = ((await response.json()) as { ticket: string }).ticket;
+		} catch {
+			return this.reconnectLater('Cannot reach Print Lab Cloud.');
+		}
+		const ws = new WebSocket(
+			`${this.url.replace(/^http/, 'ws')}/device/connect?ticket=${encodeURIComponent(ticket)}`
+		);
+		this.ws = ws;
+		ws.onopen = () =>
+			ws.send(JSON.stringify({ type: 'hello', app: this.appVersion, protocol: PROTOCOL }));
+		ws.onmessage = (e) => void this.onMessage(ws, String(e.data));
+		ws.onclose = (e) => {
+			if (this.ws !== ws) return;
+			this.ws = null;
+			if (this.ping) clearInterval(this.ping);
+			if (e.code === 4401) return this.forget('This computer was unlinked in Print Lab Cloud.');
+			this.reconnectLater(e.code === 4400 ? e.reason || 'Update Family Print Lab.' : null);
+		};
+		ws.onerror = () => {};
+	}
+
+	private async onMessage(ws: WebSocket, text: string) {
+		if (text === 'pong') return;
+		let m: Record<string, unknown>;
+		try {
+			m = JSON.parse(text);
+		} catch {
+			return;
+		}
+		if (m.type === 'welcome') {
+			this.backoff = 1000;
+			this.error = null;
+			this.plan = m.plan === true;
+			if (
+				typeof m.account === 'string' &&
+				this.stored.link &&
+				m.account !== this.stored.link.account
+			)
+				this.save({ ...this.stored, link: { ...this.stored.link, account: m.account } });
+			this.set('online');
+			this.ping = setInterval(() => ws.readyState === WebSocket.OPEN && ws.send('ping'), 30_000);
+			this.lastSent = '';
+			this.report();
+		} else if (m.type === 'decide') {
+			ws.send(JSON.stringify({ type: 'result', commandId: m.commandId, ...this.decide(m) }));
+		} else if (m.type === 'unlinked') {
+			this.forget('This computer was unlinked in Print Lab Cloud.');
+		}
+	}
+
+	/** The only thing the cloud can ask for, applied exactly like an answer on the Family page. */
+	private decide(m: Record<string, unknown>): { ok: boolean; error?: string } {
+		if (
+			typeof m.requestId !== 'string' ||
+			!Number.isInteger(m.version) ||
+			(m.decision !== 'approve' && m.decision !== 'decline')
+		)
+			return { ok: false, error: 'Malformed command.' };
+		const by = typeof m.by === 'string' && m.by ? m.by.slice(0, 120) : 'Print Lab Cloud';
+		try {
+			this.lab.decideRequest(
+				m.requestId,
+				{
+					decision: m.decision,
+					reply: typeof m.reply === 'string' ? m.reply.slice(0, 300) : '',
+					version: m.version
+				},
+				`the phone, ${by}`
+			);
+			return { ok: true };
+		} catch (error) {
+			return {
+				ok: false,
+				error: error instanceof AppError ? error.message : 'Could not apply it.'
+			};
+		}
+	}
+
+	private reconnectLater(error: string | null) {
+		if (this.stopped || !this.stored.link) return;
+		this.error = error;
+		this.set('offline');
+		this.retry = setTimeout(() => void this.connect(), this.backoff);
+		this.backoff = Math.min(this.backoff * 2, 60_000);
+	}
+
+	private forget(error: string | null) {
+		this.clearTimers();
+		const ws = this.ws;
+		this.ws = null;
+		ws?.close(1000, 'Unlinked.');
+		this.save({ ...this.stored, link: null });
+		this.plan = false;
+		this.error = error;
+		this.set('unlinked');
+	}
+
+	// ---------- Reporting requests ----------
+
+	private scheduleReport(delay = 800) {
+		if (this.state !== 'online') return;
+		if (this.sendSoon) clearTimeout(this.sendSoon);
+		this.sendSoon = setTimeout(() => this.report(), delay);
+	}
+
+	private report() {
+		if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+		const message = JSON.stringify({ type: 'requests', requests: this.summaries() });
+		if (message === this.lastSent) return;
+		this.lastSent = message;
+		this.ws.send(message);
+	}
+
+	/** Waiting requests and those answered in the last week, with only what the phone shows. */
+	summaries(): RequestSummary[] {
+		const ws = this.lab.snapshot();
+		const since = Date.now() - RECENT_DAYS * 86_400_000;
+		return ws.printRequests
+			.filter((r) => r.status === 'Waiting' || Date.parse(r.decidedAt ?? r.createdAt) > since)
+			.map((r) => {
+				const project = ws.projects.find((p) => p.id === r.projectId);
+				const kid = ws.profiles.find((p) => p.id === r.profileId);
+				const model = ws.models.find((m) => m.versions.some((v) => v.id === r.modelVersionId));
+				const version = model?.versions.find((v) => v.id === r.modelVersionId);
+				const spool = ws.spools.find((s) => s.id === r.spoolId);
+				return {
+					id: r.id,
+					version: r.version,
+					status: r.status,
+					kid: this.stored.shareNames ? (kid?.name ?? 'Your child') : 'Your child',
+					title: project?.title ?? 'Something they made',
+					message: r.message,
+					reply: r.reply,
+					size: version
+						? ([version.sizeX, version.sizeY, version.sizeZ].map((n) => Math.round(n)) as [
+								number,
+								number,
+								number
+							])
+						: null,
+					grams: version ? plaGrams(version.volume) : null,
+					colour: spool ? { name: spool.colorName || spool.material, hex: spool.colorHex } : null,
+					createdAt: r.createdAt,
+					decidedAt: r.decidedAt,
+					thumbnail:
+						r.status === 'Waiting' && model && version ? this.thumbnail(model.id, version.id) : null
+				};
+			});
+	}
+
+	private thumbnail(modelId: string, versionId: string) {
+		try {
+			const file = this.models.path(modelId, versionId, 'webp');
+			if (!fs.existsSync(file) || fs.statSync(file).size > MAX_THUMBNAIL) return null;
+			return `data:image/webp;base64,${fs.readFileSync(file).toString('base64')}`;
+		} catch {
+			return null;
+		}
+	}
+
+	// ---------- Plumbing ----------
+
+	private async post<T>(path: string, body: unknown): Promise<T> {
+		let response: Response;
+		try {
+			response = await fetch(`${this.url}${path}`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify(body),
+				signal: AbortSignal.timeout(10_000)
+			});
+		} catch {
+			throw new AppError(502, 'Cannot reach Print Lab Cloud. Check the internet connection.');
+		}
+		const data = (await response.json().catch(() => ({}))) as T & { error?: string };
+		if (!response.ok)
+			throw new AppError(502, data.error ?? `Print Lab Cloud answered ${response.status}.`);
+		return data;
+	}
+
+	private save(next: Stored) {
+		this.stored = next;
+		const value = JSON.stringify(next);
+		this.db
+			.insert(meta)
+			.values({ key: KEY, value })
+			.onConflictDoUpdate({ target: meta.key, set: { value } })
+			.run();
+	}
+
+	private set(state: CloudStatus['state']) {
+		this.state = state;
+		this.emit('status', this.status());
+	}
+
+	private clearTimers() {
+		if (this.retry) clearTimeout(this.retry);
+		if (this.ping) clearInterval(this.ping);
+		if (this.sendSoon) clearTimeout(this.sendSoon);
+		this.retry = this.ping = this.sendSoon = null;
+	}
+}

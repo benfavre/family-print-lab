@@ -42,7 +42,8 @@ These are detected automatically and shown on the **Integrations** page:
 ## Privacy and security
 
 - The server listens on `127.0.0.1` only, and it has **no login**. Profiles are for convenience, not access control. Don't expose it to the internet. To use it on your LAN, list the host names in `ALLOWED_HOSTS` and trust everyone on that network.
-- Nothing leaves your machine unless you turn on an AI provider. AI requests send what the task needs (for example profile names and ages, project details, photos you attach, or a model's code) to the provider you chose.
+- Nothing leaves your machine unless you turn on an AI provider or link Print Lab Cloud.
+- **Print Lab Cloud (optional)** lets a grown-up answer kids’ print requests from a phone. Linking is off until you do it on the Family page; the app then opens one outbound connection, shares only print requests (child’s first name or “Your child”, the title, message, size, colour and a small picture), and the cloud can only approve or decline a waiting request. The full protocol is in [docs/cloud-protocol.md](docs/cloud-protocol.md). AI requests send what the task needs (for example profile names and ages, project details, photos you attach, or a model's code) to the provider you chose.
 - Subscription-based AI runs the official CLIs with tools, file access and MCP servers disabled. It is meant for one person using their own subscription. Don't share an instance that is signed in to your account.
 
 To report a vulnerability, see [SECURITY.md](SECURITY.md).

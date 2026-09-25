@@ -40,6 +40,9 @@ describe('kid mode access', () => {
 			['POST', '/api/ai'],
 			['POST', '/api/requests/r'],
 			['POST', '/api/parent/pin'],
+			['POST', '/api/cloud/link'],
+			['POST', '/api/cloud/unlink'],
+			['PATCH', '/api/cloud'],
 			['GET', '/api/kidnapped']
 		])
 			expect(kidAccess(method, path, null), `${method} ${path}`).toBe('refuse');

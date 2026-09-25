@@ -26,6 +26,13 @@ export default defineConfig({
 			stdout: 'ignore'
 		},
 		{
+			// A stand-in for Print Lab Cloud (docs/cloud-protocol.md).
+			command: 'npx tsx tools/cloud-sim.ts --port 18881',
+			url: 'http://127.0.0.1:18881/sim/state',
+			reuseExistingServer: false,
+			stdout: 'ignore'
+		},
+		{
 			command: `rm -rf .e2e && mkdir -p .e2e && BUILD_DIR=.e2e/build npm run build && node .e2e/build`,
 			url: `http://127.0.0.1:${PORT}`,
 			reuseExistingServer: false,
@@ -37,6 +44,7 @@ export default defineConfig({
 				BACKUP_DIR: '.e2e/backups',
 				LEGACY_IMPORT: 'src/lib/server/__fixtures__/legacy-v1.json',
 				LAB_AI: 'off',
+				CLOUD_URL: 'http://127.0.0.1:18881',
 				BODY_SIZE_LIMIT: '110M',
 				// Never touch the real AI sign-ins from tests.
 				CLAUDE_BIN: '/nonexistent/claude',

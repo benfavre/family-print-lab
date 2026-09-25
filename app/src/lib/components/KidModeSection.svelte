@@ -7,7 +7,8 @@
 	import type { PrintRequest } from '$lib/shared/domain';
 	import Avatar from './Avatar.svelte';
 
-	const { lab } = useApp();
+	const { lab, ui } = useApp();
+	const cloud = $derived(lab.cloud);
 	const kids = $derived(lab.ws.profiles.filter((p) => p.kid));
 	const waiting = $derived(lab.ws.printRequests.filter((r) => r.status === 'Waiting'));
 	const answered = $derived(lab.ws.printRequests.filter((r) => r.status !== 'Waiting').slice(0, 5));
@@ -48,6 +49,17 @@
 			spool: r.spoolId ? lab.spools.get(r.spoolId) : undefined,
 			small: version ? smallPartsHazard([version.sizeX, version.sizeY, version.sizeZ]) : false
 		};
+	}
+
+	async function unlinkCloud() {
+		if (
+			await ui.ask(
+				'Unlink from Print Lab Cloud?',
+				'Requests will no longer reach your phone. You can link again at any time.',
+				'Unlink'
+			)
+		)
+			await lab.call('POST', '/api/cloud/unlink', {}, 'Unlinked from Print Lab Cloud.');
 	}
 
 	async function decide(r: PrintRequest, decision: 'approve' | 'decline') {
@@ -131,6 +143,62 @@
 		<p class="hint">
 			Parent PIN is set. Edit a child’s profile (✎ on their card) and choose a kid mode level.
 		</p>
+	{/if}
+
+	{#if cloud.configured && lab.ws.parentPin}
+		<div class="phone" aria-live="polite">
+			<h3>Answer from your phone</h3>
+			{#if cloud.state === 'unlinked'}
+				<p class="hint">
+					Link this computer to Print Lab Cloud to get kids’ requests on your phone and answer from
+					anywhere (Family plan). Only the requests are shared; see what exactly before you confirm.
+				</p>
+				<button class="ghost-button" onclick={() => lab.call('POST', '/api/cloud/link', {})}
+					>Link to Print Lab Cloud</button
+				>
+			{:else if cloud.state === 'pairing' && cloud.pairing}
+				<p class="hint">
+					On your phone, open
+					<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- the cloud's own site, not an app route -->
+					<a href={cloud.pairing.verifyUrl} target="_blank" rel="noopener"
+						>{cloud.pairing.verifyUrl.replace(/^https?:\/\//, '')}</a
+					>, sign in, and enter this code:
+				</p>
+				<p class="code" data-testid="cloud-code">{cloud.pairing.userCode}</p>
+				<p class="hint">
+					Waiting for it… The code works until {new Date(
+						cloud.pairing.expiresAt
+					).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.
+					<button class="link-button" onclick={() => lab.call('POST', '/api/cloud/cancel', {})}
+						>Cancel</button
+					>
+				</p>
+			{:else}
+				<p class="linked">
+					<span class="dot {cloud.state}" aria-hidden="true"></span>
+					{cloud.state === 'online'
+						? 'Online'
+						: cloud.state === 'connecting'
+							? 'Connecting…'
+							: 'Offline, retrying'} · linked to <strong>{cloud.account}</strong>
+				</p>
+				{#if cloud.state === 'online' && !cloud.plan}
+					<p class="warn">
+						Answering from the phone needs the Family plan. Requests still show up there.
+					</p>
+				{/if}
+				<label class="share"
+					><input
+						type="checkbox"
+						checked={cloud.shareNames}
+						onchange={(e) =>
+							lab.call('PATCH', '/api/cloud', { shareNames: e.currentTarget.checked })}
+					/> Send kids’ first names with their requests (otherwise “Your child”)</label
+				>
+				<button class="link-button" onclick={unlinkCloud}>Unlink</button>
+			{/if}
+			{#if cloud.error}<p class="pin-error" role="alert">{cloud.error}</p>{/if}
+		</div>
 	{/if}
 
 	<div id="requests">
@@ -370,5 +438,54 @@
 		.request {
 			grid-template-columns: 1fr;
 		}
+	}
+	.phone {
+		display: grid;
+		gap: 8px;
+		justify-items: start;
+		padding: 14px 16px;
+		border: 1px solid var(--line);
+		border-radius: 14px;
+		background: var(--panel-strong);
+	}
+	.phone h3,
+	.phone p {
+		margin: 0;
+	}
+	.code {
+		font: 700 28px var(--mono);
+		letter-spacing: 0.12em;
+	}
+	.linked {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.phone .dot {
+		width: 9px;
+		height: 9px;
+		border-radius: 50%;
+		background: var(--muted);
+	}
+	.phone .dot.online {
+		background: var(--lime);
+	}
+	.phone .dot.offline {
+		background: var(--red);
+	}
+	.share {
+		display: flex;
+		gap: 8px;
+		align-items: center;
+		color: var(--text-2);
+	}
+	.link-button {
+		padding: 0;
+		border: 0;
+		background: none;
+		color: var(--muted);
+		font: inherit;
+		text-decoration: underline;
+		cursor: pointer;
 	}
 </style>
