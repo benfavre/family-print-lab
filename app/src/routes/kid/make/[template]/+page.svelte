@@ -86,7 +86,12 @@
 			{ template: template.id, params: values }
 		);
 		if (!made) return (saving = false);
-		await makeThumbnail(made.modelId, made.versionId);
+		// The picture shows the colour the child chose, here and on the grown-up's phone.
+		await makeThumbnail(
+			made.modelId,
+			made.versionId,
+			lab.spools.get(spoolId ?? '')?.colorHex ?? null
+		);
 		ui.toast('Saved! 🎉');
 		const thing = resolve('/kid/things/[id]', { id: made.projectId });
 		// eslint-disable-next-line svelte/no-navigation-without-resolve -- a resolve() path plus the chosen colour

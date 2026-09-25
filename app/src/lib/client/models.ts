@@ -138,7 +138,12 @@ export function meshFormat(name: string) {
  * Renders and stores a thumbnail for a version that has none (e.g. made by the AI or imported and not
  * opened yet), using an off-screen viewer. Resolves false when WebGL is unavailable.
  */
-export async function makeThumbnail(modelId: string, versionId: string): Promise<boolean> {
+export async function makeThumbnail(
+	modelId: string,
+	versionId: string,
+	/** Show the part in this filament colour (#rrggbb) rather than the theme's. */
+	color: string | null = null
+): Promise<boolean> {
 	const { ModelViewer } = await import('./viewer');
 	const host = document.createElement('div');
 	host.style.cssText =
@@ -147,6 +152,7 @@ export async function makeThumbnail(modelId: string, versionId: string): Promise
 	let viewer: InstanceType<typeof ModelViewer> | null = null;
 	try {
 		viewer = new ModelViewer(host);
+		if (color) viewer.setPartColor(color);
 		viewer.load(await loadMesh(modelId, versionId));
 		await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 		const pics = await viewer.thumbnail();
