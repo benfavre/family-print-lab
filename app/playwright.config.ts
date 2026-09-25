@@ -20,7 +20,7 @@ export default defineConfig({
 		{
 			// No random failures in tests: the simulator otherwise fails ~15% of prints on purpose.
 			command:
-				'npx tsx tools/printer-sim.ts --port 18831 --control 18661 --speed 120 --fail-rate 0',
+				'npx tsx tools/printer-sim.ts --port 18831 --ftp-port 18991 --control 18661 --speed 120 --fail-rate 0',
 			url: 'http://127.0.0.1:18661',
 			reuseExistingServer: false,
 			stdout: 'ignore'
@@ -43,6 +43,7 @@ export default defineConfig({
 				CODEX_BIN: '/nonexistent/codex',
 				BAMBU_HOST: '127.0.0.1',
 				BAMBU_PORT: '18831',
+				BAMBU_FTP_PORT: '18991',
 				BAMBU_TLS: 'off',
 				BAMBU_SERIAL: 'SIM-X2D-0001',
 				BAMBU_ACCESS_CODE: '12345678',

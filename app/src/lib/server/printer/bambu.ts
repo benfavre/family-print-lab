@@ -1,8 +1,10 @@
-// Read-only link to a Bambu Lab printer in LAN-only + Developer Mode, via its local MQTT broker.
+// Link to a Bambu Lab printer in LAN-only + Developer Mode, via its local MQTT broker (status, and the
+// print commands: start an uploaded sliced file, pause, resume, stop) and its FTPS file service.
 // Field names follow the community-documented report format (X1/P1/A1); newer models may add or rename
 // fields, so every value is optional and unknown data is ignored rather than trusted.
 import { EventEmitter } from 'node:events';
 import { MqttClient } from './mqtt';
+import { uploadFile } from './ftp';
 import {
 	ACTIVE_PRINTER_STATES,
 	type PrinterSnapshot,
@@ -80,8 +82,36 @@ export interface PrinterConfig {
 	accessCode: string;
 	name?: string;
 	port?: number;
+	/** File service port: 990 (implicit FTPS) on the printer. */
+	ftpPort?: number;
 	useTls?: boolean;
 	simulated?: boolean;
+}
+
+export type PrintControl = 'pause' | 'resume' | 'stop';
+
+export interface StartOptions {
+	/** The name the file was stored under on the printer. */
+	file: string;
+	/** 1-based plate number inside the file. */
+	plate: number;
+	/** Shown on the printer's screen and reported back while it prints. */
+	title: string;
+	md5?: string;
+	useAms: boolean;
+	/** One entry per filament in the file: the AMS slot (0-3 for AMS 1, 4-7 for AMS 2…), -1 unused. */
+	amsMapping: number[];
+	bedType?: string;
+	timelapse?: boolean;
+	bedLeveling?: boolean;
+	flowCalibration?: boolean;
+}
+
+/** What the printer said about a command, when it answers. */
+interface CommandReply {
+	command: string;
+	result: string;
+	reason: string;
 }
 
 /** Emits 'update', 'started' {task}, 'finished' {task, ok}. */
@@ -164,6 +194,17 @@ export class BambuPrinter extends EventEmitter {
 			return;
 		}
 		if (!message || typeof message.print !== 'object') return;
+		// Answers to commands we sent carry their command name; they are not status.
+		const command = text(message.print.command, 40);
+		if (command && command !== 'push_status') {
+			this.emit('reply', {
+				command,
+				result: text(message.print.result, 40).toLowerCase(),
+				reason: text(message.print.reason, 300) || text(message.print.err_msg, 300),
+				sequence: text(message.print.sequence_id, 40)
+			});
+			return;
+		}
 		merge(this.raw, message.print);
 		this.snapshot = summarize(this.raw);
 		this.lastSeen = new Date().toISOString();
@@ -194,6 +235,111 @@ export class BambuPrinter extends EventEmitter {
 		};
 	}
 
+	private sequence = 1000;
+
+	/**
+	 * Sends a print command and waits briefly for the printer's answer or for the state to move.
+	 * Resolves with what happened; rejects when the printer refuses or is not connected.
+	 */
+	private async command(
+		print: Raw,
+		settled: (state: string) => boolean,
+		timeoutMs = 10_000
+	): Promise<'confirmed' | 'sent'> {
+		if (!this.client || !this.connected) throw new Error('The printer is not connected.');
+		const sequence = String(++this.sequence);
+		const command = String(print.command);
+		return new Promise((resolve, reject) => {
+			const finish = (fn: () => void) => {
+				clearTimeout(timer);
+				this.off('reply', onReply);
+				this.off('update', onUpdate);
+				fn();
+			};
+			const onReply = (r: CommandReply & { sequence: string }) => {
+				if (r.command !== command || (r.sequence && r.sequence !== sequence)) return;
+				if (r.result && r.result !== 'success' && r.result !== 'ok')
+					finish(() => reject(new Error(r.reason || `The printer refused to ${command}.`)));
+				else finish(() => resolve('confirmed'));
+			};
+			const onUpdate = () => {
+				if (this.snapshot && settled(this.snapshot.gcodeState)) finish(() => resolve('confirmed'));
+			};
+			// Some firmware never answers; the command was delivered, and live status will tell.
+			const timer = setTimeout(() => finish(() => resolve('sent')), timeoutMs);
+			this.on('reply', onReply);
+			this.on('update', onUpdate);
+			this.client!.publish(`device/${this.config.serial}/request`, {
+				print: { sequence_id: sequence, ...print }
+			});
+		});
+	}
+
+	/** Uploads a sliced file to the printer's storage, reporting progress from 0 to 1. */
+	async upload(name: string, data: Buffer, onProgress?: (fraction: number) => void) {
+		const { host, accessCode, useTls = true } = this.config;
+		return uploadFile(
+			{ host, password: accessCode, useTls, port: this.config.ftpPort ?? (useTls ? 990 : 21) },
+			name,
+			data,
+			onProgress
+		);
+	}
+
+	/** Starts printing a plate of a file already uploaded with `upload`. */
+	async startPrint(o: StartOptions) {
+		if (this.snapshot && ACTIVE_PRINTER_STATES.has(this.snapshot.gcodeState))
+			throw new Error('The printer is busy with another print.');
+		return this.command(
+			{
+				command: 'project_file',
+				param: `Metadata/plate_${o.plate}.gcode`,
+				url: `ftp:///${o.file}`,
+				file: '',
+				md5: o.md5 ?? '',
+				project_id: '0',
+				profile_id: '0',
+				task_id: '0',
+				subtask_id: '0',
+				subtask_name: o.title.slice(0, 60),
+				bed_type: o.bedType ?? 'auto',
+				timelapse: o.timelapse ?? false,
+				bed_levelling: o.bedLeveling ?? true,
+				flow_cali: o.flowCalibration ?? true,
+				vibration_cali: true,
+				layer_inspect: false,
+				use_ams: o.useAms,
+				ams_mapping: o.amsMapping,
+				// Dual-nozzle printers (H2D, X2D) read this form: AMS unit and slot per filament.
+				ams_mapping2: o.amsMapping.map((slot) =>
+					slot < 0
+						? { ams_id: 255, slot_id: 255 }
+						: slot >= 254
+							? { ams_id: slot, slot_id: 0 }
+							: { ams_id: Math.floor(slot / 4), slot_id: slot % 4 }
+				)
+			},
+			(state) => ACTIVE_PRINTER_STATES.has(state),
+			15_000
+		);
+	}
+
+	/** Pauses, resumes or stops the current print. */
+	async control(action: PrintControl) {
+		const state = this.snapshot?.gcodeState ?? '';
+		if (action === 'pause' && state !== 'RUNNING' && state !== 'PREPARE')
+			throw new Error('Only a running print can pause.');
+		if (action === 'resume' && state !== 'PAUSE') throw new Error('Nothing is paused.');
+		if (action === 'stop' && !ACTIVE_PRINTER_STATES.has(state))
+			throw new Error('Nothing is printing.');
+		const settledFor: Record<PrintControl, (s: string) => boolean> = {
+			pause: (s) => s === 'PAUSE',
+			resume: (s) => s === 'RUNNING',
+			stop: (s) => !ACTIVE_PRINTER_STATES.has(s)
+		};
+		return this.command({ command: action, param: '' }, settledFor[action]);
+	}
+
 	stop() {
 		this.stopped = true;
 		clearTimeout(this.timer);
@@ -218,6 +364,7 @@ export function printerFromEnv(env: Record<string, string | undefined>): BambuPr
 		accessCode,
 		name: env.BAMBU_NAME || 'Bambu Lab X2D',
 		port: Number(env.BAMBU_PORT || 8883),
+		ftpPort: env.BAMBU_FTP_PORT ? Number(env.BAMBU_FTP_PORT) : undefined,
 		useTls: env.BAMBU_TLS !== 'off',
 		simulated: env.BAMBU_SIMULATED === '1'
 	});

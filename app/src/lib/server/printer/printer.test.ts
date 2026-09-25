@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { decode, encode, TYPE } from './mqtt';
 import { BambuPrinter, summarize } from './bambu';
 import { createSimulator, type Simulator } from './simulator';
+import { fakeSliced } from './sliced';
 import { openDatabase } from '../db';
 import { Lab } from '../lab';
 
@@ -29,6 +30,7 @@ async function connect(options: { speed?: number; code?: string } = {}) {
 	const printer = new BambuPrinter({
 		host: '127.0.0.1',
 		port,
+		ftpPort: sim.ftpPort,
 		serial: sim.serial,
 		accessCode: options.code ?? sim.accessCode,
 		useTls: false,
@@ -132,5 +134,76 @@ describe('printer link against the simulator', () => {
 		expect(ws.jobs[0]).toMatchObject({ printerTask: 'dock_v01', chargeGrams: 60 });
 		expect(ws.spools[0].remainingGrams).toBe(440);
 		expect(ws.projects[0].status).toBe('Done');
+	});
+});
+
+describe('sending prints', () => {
+	it('uploads a sliced file, starts it with the AMS mapping, then pauses, resumes and stops it', async () => {
+		const { sim, printer } = await connect({ speed: 1 });
+		await until(() => printer.status().connected && printer.status().state);
+		const file = fakeSliced({ minutes: 30, grams: 12, layers: 90 });
+		const seen: number[] = [];
+		await printer.upload('dock.gcode.3mf', file, (f) => seen.push(f));
+		expect(sim.files.get('dock.gcode.3mf')?.data.length).toBe(file.length);
+		expect(seen.at(-1)).toBe(1);
+
+		await expect(
+			printer.startPrint({
+				file: 'dock.gcode.3mf',
+				plate: 1,
+				title: 'Desk cable dock',
+				useAms: true,
+				amsMapping: [2]
+			})
+		).resolves.toBe('confirmed');
+		await until(() => printer.status().state?.task === 'Desk cable dock');
+		expect(sim.sim.state.total_layer_num).toBe(90);
+		expect(sim.sim.state.ams.tray_now).toBe('2');
+		await expect(
+			printer.startPrint({
+				file: 'dock.gcode.3mf',
+				plate: 1,
+				title: 'x',
+				useAms: false,
+				amsMapping: []
+			})
+		).rejects.toThrow(/busy/);
+
+		sim.sim.state.gcode_state = 'RUNNING';
+		sim.report();
+		await until(() => printer.status().state?.gcodeState === 'RUNNING');
+		await printer.control('pause');
+		await until(() => printer.status().state?.gcodeState === 'PAUSE');
+		await printer.control('resume');
+		await until(() => printer.status().state?.gcodeState === 'RUNNING');
+		await printer.control('stop');
+		await until(() => !printer.status().printing);
+	});
+
+	it('passes on the printer refusing a file sliced for another model or a missing file', async () => {
+		const { printer } = await connect();
+		await until(() => printer.status().connected && printer.status().state);
+		await printer.upload(
+			'p1s.gcode.3mf',
+			fakeSliced({ minutes: 5, grams: 2, printerModelId: 'C12' })
+		);
+		await expect(
+			printer.startPrint({
+				file: 'p1s.gcode.3mf',
+				plate: 1,
+				title: 'x',
+				useAms: false,
+				amsMapping: []
+			})
+		).rejects.toThrow(/another printer/);
+		await expect(
+			printer.startPrint({
+				file: 'nope.gcode.3mf',
+				plate: 1,
+				title: 'x',
+				useAms: false,
+				amsMapping: []
+			})
+		).rejects.toThrow(/not found/);
 	});
 });

@@ -4,7 +4,13 @@ import type { AiProviderId } from './integrations';
 import type { CadSuggestion } from './cad';
 
 export type TaskKind =
-	'ai-design' | 'ai-edit' | 'blender-repair' | 'blender-decimate' | 'blender-session';
+	| 'ai-design'
+	| 'ai-edit'
+	| 'blender-repair'
+	| 'blender-decimate'
+	| 'blender-session'
+	| 'print-send'
+	| 'slice';
 export type TaskStatus = 'running' | 'done' | 'failed' | 'cancelled';
 
 export interface TaskInfo {

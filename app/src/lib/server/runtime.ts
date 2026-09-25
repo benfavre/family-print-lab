@@ -5,6 +5,7 @@ import { env } from '$env/dynamic/private';
 import { openDatabase, type DB } from './db';
 import { Lab } from './lab';
 import { Backups } from './backup';
+import { PrintFiles } from './printing';
 import { printerFromEnv, type BambuPrinter } from './printer/bambu';
 import { createAi, type Assistant } from './ai/assistant';
 import {
@@ -31,6 +32,8 @@ export interface Runtime {
 	sketches: SketchStore;
 	backups: Backups;
 	printer: BambuPrinter | null;
+	/** Sliced files on jobs, and sending them to the printer. */
+	printing: PrintFiles;
 	ai: Assistant;
 	/** The provider configured for a task in Settings (resolved per request, so changes apply immediately). */
 	provider(task: AiTask): Provider;
@@ -100,6 +103,17 @@ function boot(): Runtime {
 		printer.start();
 	}
 
+	const printing = new PrintFiles(
+		lab,
+		env.SLICED_DIR ||
+			(file === ':memory:'
+				? fs.mkdtempSync(path.join(os.tmpdir(), 'print-lab-sliced-'))
+				: path.join(dataDir, dbName === 'printlab' ? 'sliced' : `${dbName}-sliced`)),
+		tasks,
+		printer
+	);
+	printing.sweep();
+
 	const providerById = (id: ProviderId): Provider => {
 		const model = getSettings(db).ai.models[id] || undefined;
 		if (id === 'claude-code') return claudeCode({ bin: env.CLAUDE_BIN, model });
@@ -120,6 +134,7 @@ function boot(): Runtime {
 		sketches: new SketchStore(db, lab),
 		backups,
 		printer,
+		printing,
 		ai,
 		provider,
 		providerById,

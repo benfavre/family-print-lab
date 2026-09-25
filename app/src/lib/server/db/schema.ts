@@ -1,6 +1,12 @@
 import { sql } from 'drizzle-orm';
 import { blob, check, index, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
-import type { Category, JobStatus, ProfileColor, ProjectStatus } from '../../shared/domain';
+import type {
+	Category,
+	JobStatus,
+	ProfileColor,
+	ProjectStatus,
+	SlicedInfo
+} from '../../shared/domain';
 
 const now = sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`;
 const timestamps = {
@@ -104,6 +110,8 @@ export const jobs = sqliteTable(
 		modelVersionId: text('model_version_id').references(() => modelVersions.id, {
 			onDelete: 'set null'
 		}),
+		/** The attached sliced print file (.gcode.3mf) and what it contains. */
+		sliced: text('sliced', { mode: 'json' }).$type<SlicedInfo>(),
 		/** Filament already deducted from a spool for this job, so edits and deletes can refund it exactly. */
 		chargeSpoolId: text('charge_spool_id').references(() => spools.id, { onDelete: 'set null' }),
 		chargeGrams: real('charge_grams').notNull().default(0),

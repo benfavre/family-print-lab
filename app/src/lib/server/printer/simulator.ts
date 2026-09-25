@@ -1,8 +1,12 @@
 // Bambu Lab printer simulator for development: a local MQTT endpoint that behaves like a printer in
 // LAN-only + Developer Mode (login "bblp" + access code, device/<serial>/report, "pushall" requests),
 // playing out prints with heating, layers, AMS usage, finish/failure and alerts. Plain TCP only.
+// It also has the printer's file service (FTP) and obeys the print commands the app sends: start an
+// uploaded sliced file (project_file), pause, resume, stop, answering like the firmware does.
 import net from 'node:net';
 import { encode, decode, TYPE } from './mqtt';
+import { createFtpServer } from './ftp-server';
+import { readSliced } from './sliced';
 
 const AMS_DEFAULT = [
 	{ type: 'PLA', color: '2B2F36FF', name: 'PLA Matte Charcoal', remain: 58 },
@@ -96,6 +100,57 @@ export function createSimulator({
 	};
 	const s = sim.state,
 		tray = () => s.ams.ams[0].tray[Number(s.ams.tray_now)];
+	const files = createFtpServer({ accessCode, log });
+
+	/** Answers a command the way the firmware does: on the report topic, with its name and result. */
+	function answer(command: string, sequence: unknown, result: 'success' | 'failed', reason = '') {
+		const packet = encode.publish(
+			`device/${serial}/report`,
+			JSON.stringify({
+				print: { command, sequence_id: String(sequence ?? '0'), result, ...(reason && { reason }) }
+			})
+		);
+		for (const socket of sockets) socket.write(packet);
+	}
+
+	/** Handles a `print` command from the app. */
+	function command(msg: Json) {
+		const c = msg.command;
+		try {
+			if (c === 'project_file') {
+				const name = String(msg.url ?? '').replace(
+					/^(ftp|file):\/\/\/?(sdcard\/|mnt\/sdcard\/)?/,
+					''
+				);
+				const stored = files.files.get(name);
+				if (!stored) throw new Error(`File ${name} not found on the printer`);
+				const sliced = readSliced(stored.data);
+				if (sliced.printerModelId && sliced.printerModelId !== 'N6')
+					throw new Error(
+						`This file was sliced for another printer (${sliced.printerModelId}), not the X2D`
+					);
+				const plateNo = Number(String(msg.param ?? '').match(/plate_(\d+)/)?.[1] ?? 1);
+				const plate = sliced.plates.find((p) => p.index === plateNo);
+				if (!plate) throw new Error(`Plate ${plateNo} is not in the file`);
+				const mapping = Array.isArray(msg.ams_mapping) ? msg.ams_mapping : [];
+				const slot = msg.use_ams && mapping.length && mapping[0] >= 0 ? mapping[0] % 4 : null;
+				start({
+					name: String(msg.subtask_name || name.replace(/\.gcode\.3mf$/, '')),
+					minutes: plate.minutes,
+					layers: plate.layers || null,
+					grams: plate.grams || null,
+					slot
+				});
+			} else if (c === 'pause') pause();
+			else if (c === 'resume') resume();
+			else if (c === 'stop') stop();
+			else return log(`(ignored command: ${c})`);
+			answer(c, msg.sequence_id, 'success');
+		} catch (error) {
+			log(`✕ ${c}: ${(error as Error).message}`);
+			answer(c, msg.sequence_id, 'failed', (error as Error).message);
+		}
+	}
 
 	function publish(print: Json, full = false) {
 		const patch = full
@@ -306,7 +361,8 @@ export function createSimulator({
 					if (msg.pushing?.command === 'pushall') {
 						sim.sent = {};
 						report(true);
-					} else log(`(ignored command: ${JSON.stringify(msg).slice(0, 80)})`);
+					} else if (msg.print?.command) command(msg.print);
+					else log(`(ignored command: ${JSON.stringify(msg).slice(0, 80)})`);
 				}
 				if (p.type === TYPE.DISCONNECT) socket.end();
 			}
@@ -340,7 +396,12 @@ export function createSimulator({
 			sim.speed = Math.max(1, Math.min(600, Number(n) || 1));
 			log(`speed ×${sim.speed}`);
 		},
-		listen(port = 1883, host = '127.0.0.1'): Promise<number> {
+		/** Files the app uploaded, by name. */
+		files: files.files,
+		/** Port of the file service once listening. */
+		ftpPort: 0,
+		async listen(port = 1883, host = '127.0.0.1', ftpPort = 0): Promise<number> {
+			this.ftpPort = await files.listen(ftpPort);
 			return new Promise((resolve) =>
 				broker.listen(port, host, () => {
 					sim.clock = setInterval(tick, 1000);
@@ -348,9 +409,10 @@ export function createSimulator({
 				})
 			);
 		},
-		close(): Promise<void> {
+		async close(): Promise<void> {
 			clearInterval(sim.clock);
 			for (const socket of sockets) socket.destroy();
+			await files.close();
 			return new Promise((r) => broker.close(() => r()));
 		}
 	};

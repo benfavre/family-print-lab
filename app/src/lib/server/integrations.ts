@@ -99,7 +99,7 @@ export async function integrations(rt: Runtime, refresh = false): Promise<Integr
 			name: printer.name ?? 'Bambu Lab printer',
 			via: printer.simulated
 				? 'Simulator (until the X2D arrives)'
-				: 'Local network (LAN-only mode), read-only',
+				: 'Local network (LAN-only mode + Developer Mode)',
 			available: !!printer.configured && !!printer.connected,
 			detail: !printer.configured
 				? 'Not set up.'
@@ -107,7 +107,12 @@ export async function integrations(rt: Runtime, refresh = false): Promise<Integr
 					? `Connected${printer.state?.gcodeState ? ` · ${printer.state.gcodeState.toLowerCase()}` : ''}`
 					: printer.error || 'Waiting for the printer…',
 			version: null,
-			powers: ['Live status', 'Links running prints to jobs', 'Closes jobs when prints finish'],
+			powers: [
+				'Live status',
+				'Sends sliced plates and starts them',
+				'Pause, resume, stop',
+				'Closes jobs when prints finish'
+			],
 			setup: printer.configured
 				? []
 				: [

@@ -1,0 +1,199 @@
+// Sliced print files attached to jobs, and sending them to the printer as a background task:
+// upload over the printer's file service, mark the job as printing (linked to the printer's task
+// name), then start it. If the printer refuses, the job goes back to the queue.
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import type { Lab } from './lab';
+import type { TaskCenter } from './tasks';
+import type { BambuPrinter } from './printer/bambu';
+import { readSliced } from './printer/sliced';
+import { AppError } from './validation';
+import { loadedSlots, mappingProblems } from '$lib/shared/printing';
+import { ACTIVE_PRINTER_STATES, type Job, type SlicedInfo } from '$lib/shared/domain';
+
+// Matches BODY_SIZE_LIMIT (110M); sliced plates are usually 2-40 MB.
+export const MAX_SLICED_BYTES = 110 * 1000 * 1000;
+
+export interface SendOptions {
+	plate?: number;
+	useAms: boolean;
+	amsMapping: number[];
+	bedLeveling?: boolean;
+	timelapse?: boolean;
+	/** Send even though the check found problems (the person confirmed). */
+	force?: boolean;
+}
+
+export class PrintFiles {
+	constructor(
+		private lab: Lab,
+		readonly dir: string,
+		private tasks: TaskCenter,
+		private printer: BambuPrinter | null
+	) {}
+
+	private job(id: string): Job {
+		const job = this.lab.snapshot().jobs.find((j) => j.id === id);
+		if (!job) throw new AppError(404, 'That print job no longer exists.');
+		return job;
+	}
+
+	file(name: string): string {
+		if (!/^[\w-]+\.gcode\.3mf$/.test(name)) throw new AppError(400, 'Unknown file.');
+		return path.join(this.dir, name);
+	}
+
+	thumbnail(name: string, plate: number): Buffer | null {
+		const p = `${this.file(name)}.plate${Math.max(1, Math.floor(plate))}.png`;
+		return fs.existsSync(p) ? fs.readFileSync(p) : null;
+	}
+
+	/** Stores a sliced file for a queued job; returns what it holds. */
+	attach(
+		jobId: string,
+		data: Buffer,
+		originalName: string,
+		source: SlicedInfo['source'] = 'upload'
+	) {
+		const job = this.job(jobId);
+		if (job.status !== 'Queued')
+			throw new AppError(409, 'Only a queued job can take a sliced file.');
+		if (data.length > MAX_SLICED_BYTES) throw new AppError(413, 'That file is too large.');
+		const parsed = readSliced(data);
+		const name = `${jobId.slice(0, 8)}-${crypto.randomBytes(4).toString('hex')}.gcode.3mf`;
+		fs.mkdirSync(this.dir, { recursive: true });
+		const target = this.file(name);
+		fs.writeFileSync(`${target}.tmp`, data);
+		fs.renameSync(`${target}.tmp`, target);
+		for (const [plate, png] of parsed.thumbnails)
+			fs.writeFileSync(`${target}.plate${plate}.png`, png);
+		const info: SlicedInfo = {
+			file: name,
+			name: originalName.replace(/[^\w .()+-]/g, '').slice(0, 120) || 'print.gcode.3mf',
+			size: data.length,
+			plates: parsed.plates,
+			plate: parsed.plates[0].index,
+			printerModelId: parsed.printerModelId,
+			slicer: parsed.slicer,
+			source,
+			at: new Date().toISOString()
+		};
+		this.lab.setJobSliced(jobId, info);
+		this.sweep();
+		return info;
+	}
+
+	choosePlate(jobId: string, plate: number) {
+		const job = this.job(jobId);
+		if (!job.sliced?.plates.some((p) => p.index === plate))
+			throw new AppError(400, 'That plate is not in the file.');
+		this.lab.setJobSliced(jobId, { ...job.sliced, plate });
+	}
+
+	detach(jobId: string) {
+		this.job(jobId);
+		this.lab.setJobSliced(jobId, null);
+		this.sweep();
+	}
+
+	/** Deletes stored files no job refers to any more. */
+	sweep() {
+		if (!fs.existsSync(this.dir)) return;
+		const used = this.lab.slicedFilesInUse();
+		for (const f of fs.readdirSync(this.dir)) {
+			const base = f.match(/^([\w-]+\.gcode\.3mf)/)?.[1];
+			if (base && !used.has(base)) fs.rmSync(path.join(this.dir, f), { force: true });
+		}
+	}
+
+	/** Checks everything that can be checked before sending; returns problems in plain words. */
+	check(jobId: string, opts: SendOptions): { blocking: string[]; warnings: string[] } {
+		const job = this.job(jobId);
+		const blocking: string[] = [],
+			warnings: string[] = [];
+		const status = this.printer?.status();
+		if (!this.printer) blocking.push('No printer is set up yet.');
+		else if (!status?.connected) blocking.push('The printer is not connected.');
+		else if (status.state && ACTIVE_PRINTER_STATES.has(status.state.gcodeState))
+			blocking.push('The printer is busy with another print.');
+		if (job.status !== 'Queued') blocking.push('Only a queued job can be sent.');
+		const sliced = job.sliced;
+		if (!sliced) blocking.push('Attach a sliced file first.');
+		else {
+			if (!fs.existsSync(this.file(sliced.file)))
+				blocking.push('The sliced file is missing (restored from a backup?). Attach it again.');
+			if (sliced.printerModelId && sliced.printerModelId !== 'N6')
+				blocking.push(
+					'This file was sliced for another printer model. Slice it for the Bambu Lab X2D.'
+				);
+			const plate = sliced.plates.find((p) => p.index === (opts.plate ?? sliced.plate));
+			if (!plate) blocking.push('That plate is not in the file.');
+			else if (opts.useAms) {
+				if (opts.amsMapping.length !== plate.filaments.length)
+					blocking.push('Choose an AMS slot for every filament.');
+				else
+					warnings.push(
+						...mappingProblems(plate.filaments, opts.amsMapping, loadedSlots(status?.state))
+					);
+			}
+		}
+		return { blocking, warnings };
+	}
+
+	/** Sends a queued job's sliced file to the printer and starts it, as a background task. */
+	send(jobId: string, opts: SendOptions) {
+		const { blocking, warnings } = this.check(jobId, opts);
+		if (blocking.length) throw new AppError(409, blocking[0]);
+		if (warnings.length && !opts.force) throw new AppError(409, warnings.join(' '));
+		const job = this.job(jobId);
+		const sliced = job.sliced!;
+		const plate = sliced.plates.find((p) => p.index === (opts.plate ?? sliced.plate))!;
+		const project = this.lab.snapshot().projects.find((p) => p.id === job.projectId);
+		// The printer shows and reports this name; it links the running print back to this job.
+		const title = `${project?.title ?? 'Print'} ${job.revision}`
+			.replace(/[^\w .()+-]/g, '')
+			.trim()
+			.slice(0, 60);
+		const remoteName = `${title.replace(/\s+/g, '_').slice(0, 50) || 'print'}.gcode.3mf`;
+		const printer = this.printer!;
+		return this.tasks.start(
+			{
+				kind: 'print-send',
+				title: `Print ${title}`,
+				projectId: job.projectId,
+				stage: 'Uploading to the printer…'
+			},
+			async (ctx) => {
+				const data = fs.readFileSync(this.file(sliced.file));
+				let last = -1;
+				await printer.upload(remoteName, data, (f) => {
+					const pct = Math.floor(f * 100);
+					if (pct >= last + 5) {
+						last = pct;
+						ctx.stage(`Uploading to the printer… ${pct} %`);
+					}
+				});
+				if (ctx.signal.aborted) throw new Error('Stopped');
+				ctx.stage('Starting the print…');
+				this.lab.transitionJob(jobId, { to: 'Printing', printerTask: title });
+				try {
+					const outcome = await printer.startPrint({
+						file: remoteName,
+						plate: plate.index,
+						title,
+						md5: plate.md5,
+						useAms: opts.useAms,
+						amsMapping: opts.useAms ? opts.amsMapping : [],
+						bedLeveling: opts.bedLeveling ?? true,
+						timelapse: opts.timelapse ?? false
+					});
+					return outcome;
+				} catch (error) {
+					this.lab.transitionJob(jobId, { to: 'Queued', printerTask: '' });
+					throw error;
+				}
+			}
+		);
+	}
+}

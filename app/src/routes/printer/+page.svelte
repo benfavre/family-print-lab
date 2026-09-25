@@ -34,6 +34,8 @@
 		lab.ws.jobs.filter((j) => j.status === 'Queued' || (j.status === 'Printing' && !j.printerTask))
 	);
 	let chosen = $state('');
+	/** Queued jobs with a sliced file, ready to send. */
+	const ready = $derived(lab.ws.jobs.filter((j) => j.status === 'Queued' && j.sliced));
 	/** Clock time the current print should finish, from the printer's remaining time. */
 	const doneAt = $derived(
 		lab.printerActive && s?.remainingMinutes
@@ -82,7 +84,7 @@
 				context={{ kind: 'printer' }}
 				eyebrow="PRINTER LINK"
 				title="Connect the printer"
-				text="See live progress, temperatures and AMS filament here, and let print jobs close themselves when the printer finishes. The link is read-only and stays on your network."
+				text="See live progress, temperatures and AMS filament here, send sliced plates straight to the printer, and let print jobs close themselves when it finishes. Everything stays on your network."
 				note="Preview animation — no printer is connected"
 			/>
 			<div class="detail">
@@ -131,7 +133,7 @@
 		{:else}
 			<PageHero
 				context={{ kind: 'printer' }}
-				eyebrow={p.simulated ? 'SIMULATED PRINTER · FOR DEVELOPMENT' : 'LIVE PRINTER · READ-ONLY'}
+				eyebrow={p.simulated ? 'SIMULATED PRINTER · FOR DEVELOPMENT' : 'LIVE PRINTER'}
 				title={p.name ?? 'Printer'}
 				text={!p.connected
 					? p.error || 'Waiting for the printer…'
@@ -186,7 +188,7 @@
 					>{p.simulated
 						? 'Connected to the printer simulator — control it at http://127.0.0.1:8766'
 						: ''}</span
-				><span>Read-only · the app never sends commands to the printer</span>
+				><span>Commands are sent only when you press a button here or send a job</span>
 			</div>
 			<div class="detail">
 				<div class="detail-main">
@@ -197,11 +199,45 @@
 									>LIVE{#if doneAt}&nbsp;· done around {doneAt}{/if}</span
 								>{/if}
 						</header>
+						{#if lab.printerActive && p.connected}
+							<div class="print-controls" role="group" aria-label="Print controls">
+								{#if s?.gcodeState === 'PAUSE'}
+									<button class="secondary" onclick={() => act.printerControl('resume')}
+										>▶ Resume</button
+									>
+								{:else}
+									<button class="secondary" onclick={() => act.printerControl('pause')}
+										>❚❚ Pause</button
+									>
+								{/if}
+								<button class="secondary danger" onclick={() => act.printerControl('stop')}
+									>■ Stop</button
+								>
+							</div>
+						{/if}
 						{#if !lab.printerActive}
 							<p class="panel-empty">
-								Nothing printing right now. Start a print from Bambu Studio or the printer; it
-								appears here.
+								Nothing printing right now. Send a queued job below, or start a print from Bambu
+								Studio or the printer; it appears here.
 							</p>
+							{#if ready.length}
+								<ul class="ready-list" aria-label="Ready to send">
+									{#each ready as j (j.id)}
+										{@const plate = j.sliced?.plates.find((x) => x.index === j.sliced?.plate)}
+										<li data-job={j.id}>
+											<span
+												><b>{lab.project(j.projectId)?.title}</b>
+												{j.revision}{#if plate}<small
+														>&nbsp;· {duration(plate.minutes)} · {plate.grams} g</small
+													>{/if}</span
+											>
+											<button class="mini primary-mini" onclick={() => act.sendToPrinter(j)}
+												>▣ Send</button
+											>
+										</li>
+									{/each}
+								</ul>
+							{/if}
 						{:else if linked}
 							<p class="panel-empty">
 								Linked to this job. It closes as Succeeded or Failed when the printer finishes. <button
@@ -343,3 +379,34 @@
 		{/if}
 	</div>
 </div>
+
+<style>
+	.print-controls {
+		display: flex;
+		gap: 8px;
+		margin: 0 0 12px;
+	}
+	.print-controls .danger {
+		color: var(--red);
+	}
+	.ready-list {
+		list-style: none;
+		margin: 8px 0 0;
+		padding: 0;
+		display: grid;
+		gap: 6px;
+	}
+	.ready-list li {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 10px;
+		padding: 8px 10px;
+		border: 1px solid var(--line);
+		border-radius: var(--r-md);
+		font-size: 13px;
+	}
+	.ready-list small {
+		color: var(--dim);
+	}
+</style>

@@ -5,6 +5,7 @@
 	import ProfileForm from './ProfileForm.svelte';
 	import JobForm from './JobForm.svelte';
 	import SpoolForm from './SpoolForm.svelte';
+	import SendPanel from './SendPanel.svelte';
 
 	let { panel }: { panel: Panel } = $props();
 	const { ui } = useApp();
@@ -93,6 +94,7 @@
 				onclose={close}
 			/>
 		{:else if panel.kind === 'profile'}<ProfileForm id={panel.id} onclose={close} />
+		{:else if panel.kind === 'send'}<SendPanel jobId={panel.id ?? ''} onclose={close} />
 		{:else if panel.kind === 'sketch'}
 			<!-- Heavy windows (3D, drawing) load only when opened. -->
 			{#await import('./SketchEditor.svelte') then { default: SketchEditor }}<SketchEditor

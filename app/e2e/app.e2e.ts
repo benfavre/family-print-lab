@@ -161,6 +161,68 @@ test('the simulated printer drives a linked job to completion', async ({ page })
 	expect(closed.printerTask).toBe('e2e_plate');
 });
 
+test('a sliced file is attached, sent to the printer, printed and closed automatically', async ({
+	page
+}) => {
+	await page.goto('/jobs');
+	await ready(page);
+	const created = await page.request.post('/api/jobs', {
+		headers: { origin: new URL(page.url()).origin },
+		data: { projectId: 'idea-02', revision: 'Sliced plate' }
+	});
+	expect(created.ok()).toBeTruthy();
+	const job = (await created.json()).workspace.jobs.find(
+		(j: { revision: string }) => j.revision === 'Sliced plate'
+	);
+	const card = page.locator(`.job-card[data-job="${job.id}"]`);
+	await expect(card).toBeVisible();
+
+	// A plain STL is refused with a hint; the sliced export from Bambu Studio is accepted.
+	await card.locator('input[type=file]').setInputFiles({
+		name: 'part.stl',
+		mimeType: 'model/stl',
+		buffer: Buffer.from('solid x')
+	});
+	await expect(page.locator('.toast').last()).toContainText('.gcode.3mf');
+	await card
+		.locator('input[type=file]')
+		.setInputFiles('src/lib/server/__fixtures__/cable-clip.gcode.3mf');
+	await expect(card.locator('.job-sliced')).toContainText('12m');
+	await expect(card.locator('.job-sliced')).toContainText('6 g');
+
+	// The send window matches the file's PLA to the AMS and starts the print.
+	await card.getByRole('button', { name: '▣ Send to printer' }).click();
+	const send = page.getByRole('dialog', { name: /^Print / });
+	await expect(send).toContainText('is ready');
+	await expect(send.getByLabel('AMS slot for filament 1')).toHaveValue('0');
+	await send.getByRole('button', { name: 'Send and start printing' }).click();
+	await expect
+		.poll(
+			async () => (await workspace(page)).jobs.find((j: { id: string }) => j.id === job.id).status,
+			{
+				timeout: 20_000
+			}
+		)
+		.toBe('Printing');
+	await page.goto('/printer');
+	await expect(page.locator('.panel', { hasText: 'Current print' })).toContainText(
+		'Linked to this job',
+		{ timeout: 20_000 }
+	);
+	// It pauses and resumes from the app.
+	await page.getByRole('button', { name: '❚❚ Pause' }).click();
+	await expect(page.getByRole('button', { name: '▶ Resume' })).toBeVisible({ timeout: 10_000 });
+	await page.getByRole('button', { name: '▶ Resume' }).click();
+	await expect
+		.poll(
+			async () => (await workspace(page)).jobs.find((j: { id: string }) => j.id === job.id).status,
+			{
+				timeout: 40_000
+			}
+		)
+		.toBe('Succeeded');
+});
+
 test('the command palette navigates and the backup exports', async ({ page }) => {
 	await page.goto('/');
 	await ready(page);

@@ -29,7 +29,7 @@ export type EditorKind = 'project' | 'profile' | 'job' | 'spool';
 /** A floating window (like a Gmail draft): an editor or the AI design window, docked bottom-right. */
 export interface Panel {
 	key: string;
-	kind: EditorKind | 'design' | 'sketch';
+	kind: EditorKind | 'design' | 'sketch' | 'send';
 	id: string | null;
 	preset: Record<string, unknown>;
 	/** Shown in the title bar; the content sets it. */
@@ -165,6 +165,13 @@ export class UiState {
 			: undefined;
 		if (existing) return this.focusPanel(existing.key);
 		this.addPanel({ kind: 'sketch', id: options.sketchId ?? null, preset: { ...options } }, true);
+	}
+
+	/** The send-to-printer window for a queued job. */
+	openSend(jobId: string) {
+		const existing = this.panels.find((p) => p.kind === 'send' && p.id === jobId);
+		if (existing) return this.focusPanel(existing.key);
+		this.addPanel({ kind: 'send', id: jobId, preset: {} });
 	}
 
 	/** The AI design window, optionally starting from a picture (e.g. a sketch) and a prompt. */

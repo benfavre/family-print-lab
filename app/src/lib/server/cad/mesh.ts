@@ -85,7 +85,14 @@ export function parseObj(text: string): Soup {
 
 // ---------- ZIP (for 3MF) ----------
 
-function readZip(buf: Buffer): Map<string, Buffer> {
+/**
+ * Reads the entries of a zip whose names match `want` (3MF meshes by default). `head` entries are only
+ * partly inflated (their first bytes), for peeking at large files such as G-code.
+ */
+export function readZip(
+	buf: Buffer,
+	want: (name: string) => 'all' | 'head' | false = (n) => (/\.model$/i.test(n) ? 'all' : false)
+): Map<string, Buffer> {
 	let eocd = -1;
 	for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65_557); i--)
 		if (buf.readUInt32LE(i) === 0x06054b50) {
@@ -107,7 +114,17 @@ function readZip(buf: Buffer): Map<string, Buffer> {
 		const name = buf.subarray(p + 46, p + 46 + nameLen).toString('utf8');
 		const dataStart = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
 		const raw = buf.subarray(dataStart, dataStart + size);
-		if (/\.model$/i.test(name)) {
+		const mode = want(name);
+		if (mode === 'head') {
+			files.set(
+				name,
+				method === 0
+					? raw.subarray(0, 16_384)
+					: zlib.inflateRawSync(raw.subarray(0, 16_384), {
+							finishFlush: zlib.constants.Z_SYNC_FLUSH
+						})
+			);
+		} else if (mode) {
 			if (method === 0) files.set(name, raw);
 			else if (method === 8)
 				files.set(name, zlib.inflateRawSync(raw, { maxOutputLength: 512 * 1024 * 1024 }));
@@ -129,7 +146,7 @@ function crc32(buf: Buffer) {
 }
 
 /** Deflated zip, enough for a 3MF container. */
-function writeZip(entries: [string, Buffer][]): Buffer {
+export function writeZip(entries: [string, Buffer][]): Buffer {
 	const chunks: Buffer[] = [],
 		central: Buffer[] = [];
 	let offset = 0;

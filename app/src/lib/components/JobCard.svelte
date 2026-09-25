@@ -85,6 +85,20 @@
 			minute: '2-digit'
 		});
 	});
+	const sliced = $derived(job.sliced);
+	const slicedPlate = $derived(sliced?.plates.find((p) => p.index === sliced.plate) ?? null);
+	const canSend = $derived(!!sliced && lab.printer.configured);
+	let fileInput = $state<HTMLInputElement>();
+	let fileOver = $state(false);
+	const isFileDrag = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files');
+	async function dropFile(e: DragEvent) {
+		fileOver = false;
+		const file = e.dataTransfer?.files?.[0];
+		if (!file || job.status !== 'Queued') return;
+		e.preventDefault();
+		e.stopPropagation();
+		await act.attachSliced(job, file);
+	}
 	const when = $derived(
 		job.status === 'Queued'
 			? `Queued ${stamp(job.createdAt)}`
@@ -106,6 +120,15 @@
 		ondragstart();
 	}}
 	{ondragend}
+	class:file-over={fileOver}
+	ondragover={(e) => {
+		if (job.status === 'Queued' && isFileDrag(e)) {
+			e.preventDefault();
+			fileOver = true;
+		}
+	}}
+	ondragleave={() => (fileOver = false)}
+	ondrop={dropFile}
 >
 	<div class="card-top">
 		<span class="job-rev"
@@ -156,13 +179,61 @@
 			>
 		</div>
 	{/if}
+	{#if sliced && slicedPlate && job.status === 'Queued'}
+		<div class="job-sliced" title="Sliced in {sliced.slicer || 'a slicer'}: {sliced.name}">
+			<img
+				src="/api/jobs/{job.id}/sliced/thumbnail?plate={slicedPlate.index}"
+				alt=""
+				loading="lazy"
+				onerror={(e) => ((e.currentTarget as HTMLImageElement).hidden = true)}
+			/>
+			<span
+				>▤ Sliced{sliced.plates.length > 1
+					? ` · plate ${slicedPlate.index} of ${sliced.plates.length}`
+					: ''}
+				· {duration(slicedPlate.minutes)} · {weight(slicedPlate.grams)}</span
+			>
+			<span class="fil">
+				{#each slicedPlate.filaments as f (f.id)}<i style:--c={f.color} title={f.type}></i>{/each}
+			</span>
+		</div>
+	{/if}
 	{#if job.notes}<p class="job-notes">{job.notes}</p>{/if}
 	<div class="job-actions">
 		{#if job.status === 'Queued'}
-			<button class="mini primary-mini" onclick={() => act.transition(job, 'Printing')}
-				>Start</button
-			>
+			{#if canSend}
+				<button class="mini primary-mini" onclick={() => act.sendToPrinter(job)}
+					>▣ Send to printer</button
+				>
+				<button
+					class="mini"
+					title="Mark as started (printed some other way)"
+					onclick={() => act.transition(job, 'Printing')}>Started</button
+				>
+			{:else}
+				<button class="mini primary-mini" onclick={() => act.transition(job, 'Printing')}
+					>Start</button
+				>
+				{#if !sliced}
+					<button
+						class="mini"
+						title="Attach the sliced file (.gcode.3mf) from Bambu Studio, or drop it on this card"
+						onclick={() => fileInput?.click()}>▤ Attach sliced file</button
+					>
+				{/if}
+			{/if}
 			<button class="mini" onclick={() => act.transition(job, 'Cancelled')}>Cancel</button>
+			<input
+				bind:this={fileInput}
+				type="file"
+				accept=".3mf,model/3mf"
+				hidden
+				onchange={async (e) => {
+					const file = e.currentTarget.files?.[0];
+					e.currentTarget.value = '';
+					if (file) await act.attachSliced(job, file);
+				}}
+			/>
 		{:else if job.status === 'Printing'}
 			<button class="mini primary-mini" onclick={() => act.transition(job, 'Succeeded')}
 				>Succeeded</button
@@ -189,6 +260,39 @@
 </article>
 
 <style>
+	.file-over {
+		outline: 2px dashed var(--cyan);
+		outline-offset: 2px;
+	}
+	.job-sliced {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin: 6px 0 0;
+		padding: 6px 8px;
+		border-radius: var(--r-sm);
+		background: rgb(var(--c1) / 0.06);
+		font-size: 12px;
+		color: var(--text-2);
+	}
+	.job-sliced img {
+		width: 34px;
+		height: 34px;
+		object-fit: contain;
+		border-radius: 4px;
+	}
+	.job-sliced .fil {
+		display: flex;
+		gap: 3px;
+		margin-left: auto;
+	}
+	.job-sliced i {
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+		background: var(--c);
+		box-shadow: 0 0 0 1px var(--line-strong) inset;
+	}
 	.draggable {
 		cursor: grab;
 	}

@@ -10,7 +10,8 @@
 		type JobStatus
 	} from '$lib/shared/domain';
 	import { useApp } from '$lib/client/app.svelte';
-	import { fromLocalInput, toLocalInput, weight } from '$lib/client/format';
+	import { duration, fromLocalInput, toLocalInput, weight } from '$lib/client/format';
+	import { actions, download } from '$lib/client/actions';
 	import EditorShell from './EditorShell.svelte';
 	import ExpandableText from './ExpandableText.svelte';
 
@@ -19,7 +20,9 @@
 		preset,
 		onclose
 	}: { id: string | null; preset: Record<string, unknown>; onclose: () => void } = $props();
-	const { lab, ui } = useApp();
+	const app = useApp();
+	const { lab, ui } = app;
+	const act = actions(app);
 	// The editor is recreated for each record ({#key}), so reading props once is intended.
 	const existing = untrack(() => (id ? lab.ws.jobs.find((j) => j.id === id) : undefined));
 	const initial = untrack(() => preset);
@@ -56,6 +59,38 @@
 		finishedAt: toLocalInput(src.finishedAt as string | null)
 	});
 	let busy = $state(false);
+	// Attaching a sliced file changes the job on the server; the form then continues from that version.
+	let baseVersion = untrack(() => existing?.version ?? 0);
+	const live = $derived(existing ? lab.ws.jobs.find((j) => j.id === existing.id) : undefined);
+	const sliced = $derived(live?.sliced ?? null);
+	let slicedInput = $state<HTMLInputElement>();
+	function syncFromServer() {
+		const j = existing && lab.ws.jobs.find((x) => x.id === existing.id);
+		if (!j) return;
+		baseVersion = j.version;
+		f.minutes = j.minutes;
+		f.grams = j.grams;
+		f.material = j.material || f.material;
+		f.supports = j.supports;
+	}
+	async function attach(file: File) {
+		if (existing && (await act.attachSliced(existing, file))) syncFromServer();
+	}
+	async function choosePlate(plate: number) {
+		if (
+			existing &&
+			(await lab.call(
+				'PATCH',
+				`/api/jobs/${existing.id}/sliced`,
+				{ plate },
+				`Plate ${plate} chosen.`
+			))
+		)
+			syncFromServer();
+	}
+	async function detach() {
+		if (existing && (await act.detachSliced(existing))) syncFromServer();
+	}
 	let aiNote = $state('The AI reads the project and recommends slicer settings.');
 	let aiBusy = $state(false);
 	// Model versions of the chosen project, newest first, for linking the job to the exact geometry printed.
@@ -123,7 +158,7 @@
 			? await lab.call(
 					'PATCH',
 					`/api/jobs/${existing.id}`,
-					{ ...body, version: existing.version },
+					{ ...body, version: baseVersion },
 					'Saved.'
 				)
 			: await lab.call('POST', '/api/jobs', body, 'Added to the print queue.');
@@ -157,6 +192,60 @@
 			>✦ Suggest settings</button
 		><small>{aiNote}</small>
 	</div>
+	{#if existing && (sliced || live?.status === 'Queued')}
+		<section class="sliced-box" aria-label="Sliced file">
+			{#if sliced}
+				{@const plate = sliced.plates.find((p) => p.index === sliced.plate)}
+				<div class="sb-head">
+					<b>▤ {sliced.name}</b>
+					<button
+						type="button"
+						class="mini"
+						title="Download the sliced file"
+						aria-label="Download the sliced file"
+						onclick={() => download(`/api/jobs/${existing.id}/sliced/file`)}>⤓</button
+					>
+					{#if live?.status === 'Queued'}<button type="button" class="mini" onclick={detach}
+							>Remove</button
+						>{/if}
+				</div>
+				{#if plate}<small
+						>{duration(plate.minutes)} · {weight(plate.grams)}{plate.layers
+							? ` · ${plate.layers} layers`
+							: ''} · {plate.filaments.map((x) => x.type).join(' + ')}{sliced.slicer
+							? ` · ${sliced.slicer}`
+							: ''}</small
+					>{/if}
+				{#if sliced.plates.length > 1}
+					<label class="field"
+						>Plate to print<select
+							value={sliced.plate}
+							disabled={live?.status !== 'Queued'}
+							onchange={(e) => choosePlate(Number(e.currentTarget.value))}
+							>{#each sliced.plates as p (p.index)}<option value={p.index}
+									>Plate {p.index} · {duration(p.minutes)} · {weight(p.grams)}</option
+								>{/each}</select
+						></label
+					>
+				{/if}
+			{:else if live?.status === 'Queued'}
+				<button type="button" class="mini" onclick={() => slicedInput?.click()}
+					>▤ Attach sliced file…</button
+				><small>Slice in Bambu Studio, then “Export plate sliced file” (.gcode.3mf).</small>
+			{/if}
+			<input
+				bind:this={slicedInput}
+				type="file"
+				accept=".3mf,model/3mf"
+				hidden
+				onchange={(e) => {
+					const file = e.currentTarget.files?.[0];
+					e.currentTarget.value = '';
+					if (file) void attach(file);
+				}}
+			/>
+		</section>
+	{/if}
 	<div class="fields-row">
 		<label class="field"
 			>Project<select bind:value={f.projectId}
@@ -273,3 +362,32 @@
 		}}
 	/>
 </EditorShell>
+
+<style>
+	.sliced-box {
+		display: grid;
+		gap: 6px;
+		margin: 0 0 12px;
+		padding: 10px 12px;
+		border: 1px dashed var(--line-strong);
+		border-radius: var(--r-md);
+	}
+	.sb-head {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.sb-head b {
+		flex: 1;
+		min-width: 0;
+		font-size: 13px;
+		font-weight: 550;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.sliced-box small {
+		font-size: 12px;
+		color: var(--dim);
+	}
+</style>

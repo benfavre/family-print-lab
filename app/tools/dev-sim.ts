@@ -23,6 +23,7 @@ const env = {
 	...(realData ? {} : { MODELS_DIR: 'data/dev-sim-models', BACKUP_DIR: 'data/dev-sim-backups' }),
 	BAMBU_HOST: '127.0.0.1',
 	BAMBU_PORT: '1883',
+	BAMBU_FTP_PORT: '8990',
 	BAMBU_TLS: 'off',
 	BAMBU_SERIAL: 'SIM-X2D-0001',
 	BAMBU_ACCESS_CODE: '12345678',

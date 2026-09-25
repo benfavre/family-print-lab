@@ -107,6 +107,42 @@ export interface Spool {
 	updatedAt: string;
 }
 
+export interface SlicedFilament {
+	/** 1-based filament number in the sliced project. */
+	id: number;
+	type: string;
+	color: string;
+	grams: number;
+	meters: number;
+}
+export interface SlicedPlate {
+	index: number;
+	/** Path of the plate's G-code inside the file, e.g. Metadata/plate_1.gcode. */
+	gcode: string;
+	md5: string;
+	minutes: number;
+	grams: number;
+	layers: number;
+	supports: boolean;
+	filaments: SlicedFilament[];
+}
+/** A sliced print file attached to a job, ready to send to the printer. */
+export interface SlicedInfo {
+	/** Stored file name (under data/sliced). */
+	file: string;
+	/** What the person called it (the uploaded file name, or the model's name). */
+	name: string;
+	size: number;
+	plates: SlicedPlate[];
+	/** The plate this job prints. */
+	plate: number;
+	printerModelId: string;
+	slicer: string;
+	/** 'upload' (sliced in Bambu Studio by hand) or 'app' (sliced here). */
+	source: 'upload' | 'app';
+	at: string;
+}
+
 export interface Job {
 	id: string;
 	projectId: string;
@@ -125,6 +161,8 @@ export interface Job {
 	notes: string;
 	printerTask: string;
 	modelVersionId: string | null;
+	/** The sliced file this job will send to the printer, if one is attached. */
+	sliced: SlicedInfo | null;
 	chargeSpoolId: string | null;
 	chargeGrams: number;
 	version: number;

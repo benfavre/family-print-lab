@@ -29,6 +29,8 @@
 		'ai-edit': ['✦', 'AI change'],
 		'blender-repair': ['◉', 'Blender repair'],
 		'blender-decimate': ['◉', 'Blender simplify'],
+		'print-send': ['▣', 'Send to printer'],
+		slice: ['▤', 'Slicing'],
 		'blender-session': ['◉', 'Blender window']
 	};
 	const elapsed = (t: TaskInfo) => {

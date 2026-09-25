@@ -100,7 +100,7 @@ function controlServer(sim: Simulator) {
 			return i >= 0 ? args[i + 1] : fallback;
 		};
 	if (args.includes('--help')) {
-		console.log(`Usage: npm run sim -- [--port 1883] [--control 8766] [--serial SIM-X2D-0001] [--code 12345678] [--speed 20] [--auto] [--fail-rate 0.15]
+		console.log(`Usage: npm run sim -- [--port 1883] [--ftp-port 8990] [--control 8766] [--serial SIM-X2D-0001] [--code 12345678] [--speed 20] [--auto] [--fail-rate 0.15]
 Commands on stdin: start [name] [minutes] [slot 1-4] · pause · resume · finish · fail · stop · alert · speed N · auto on|off · status`);
 		process.exit(0);
 	}
@@ -115,12 +115,16 @@ Commands on stdin: start [name] [minutes] [slot 1-4] · pause · resume · finis
 		log: (m: string) => console.log(`[sim ${stamp()}] ${m}`)
 	});
 	(async () => {
-		const port = await sim.listen(Number(opt('port', 1883)));
+		const port = await sim.listen(
+			Number(opt('port', 1883)),
+			'127.0.0.1',
+			Number(opt('ftp-port', 8990))
+		);
 		const control = controlServer(sim),
 			controlPort = Number(opt('control', 8766));
 		control.listen(controlPort, '127.0.0.1');
 		console.log(
-			`[sim] Bambu printer simulator on 127.0.0.1:${port} · serial ${sim.serial} · access code ${sim.accessCode} · speed ×${sim.sim.speed}`
+			`[sim] Bambu printer simulator on 127.0.0.1:${port} · serial ${sim.serial} · access code ${sim.accessCode} · files on :${sim.ftpPort} · speed ×${sim.sim.speed}`
 		);
 		console.log(`[sim] Control page: http://127.0.0.1:${controlPort}  (or type "help")`);
 		const rl = readline.createInterface({ input: process.stdin });

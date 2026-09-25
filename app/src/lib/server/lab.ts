@@ -29,6 +29,7 @@ import {
 	type Profile,
 	type Project,
 	type ProjectStatus,
+	type SlicedInfo,
 	type Spool,
 	type Workspace
 } from '$lib/shared/domain';
@@ -734,9 +735,10 @@ export class Lab {
 			nozzle,
 			plate,
 			supports,
-			infill
+			infill,
+			sliced
 		} = source;
-		return this.createJob({
+		const id2 = this.createJob({
 			projectId,
 			spoolId,
 			material,
@@ -750,6 +752,48 @@ export class Lab {
 			...overrides,
 			status: 'Queued'
 		});
+		// The same sliced file prints again as-is.
+		if (sliced && !('sliced' in overrides)) this.setJobSliced(id2, sliced);
+		return id2;
+	}
+
+	/**
+	 * Attaches (or with null, removes) a sliced print file. The job's time and filament estimates follow
+	 * the slicer's figures for the chosen plate unless someone typed their own.
+	 */
+	setJobSliced(id: string, sliced: SlicedInfo | null) {
+		this.write('job', (tx) => {
+			const job = this.job(tx, id);
+			if (job.status !== 'Queued' && sliced)
+				throw new AppError(409, 'Only a queued job can take a new sliced file.');
+			const plate = sliced?.plates.find((p) => p.index === sliced.plate);
+			const patch: Partial<Job> = { sliced };
+			if (plate) {
+				if (job.minutes === null || job.sliced) patch.minutes = plate.minutes;
+				if (job.grams === null || job.sliced) patch.grams = plate.grams;
+				if (!job.material && plate.filaments[0]) patch.material = plate.filaments[0].type;
+				if (plate.supports && job.supports === 'None') patch.supports = 'Normal';
+			}
+			tx.update(jobs)
+				.set({ ...patch, updatedAt: nowIso(), version: sql`${jobs.version} + 1` })
+				.where(eq(jobs.id, id))
+				.run();
+			this.log(
+				tx,
+				'job',
+				sliced
+					? `${job.revision || 'Print'}: sliced file “${sliced.name}” attached`
+					: `${job.revision || 'Print'}: sliced file removed`,
+				job.projectId,
+				id
+			);
+		});
+	}
+
+	/** Sliced files any job still refers to (the rest can be deleted). */
+	slicedFilesInUse(): Set<string> {
+		const rows = this.db.select({ sliced: jobs.sliced }).from(jobs).all();
+		return new Set(rows.map((r) => r.sliced?.file).filter((f): f is string => !!f));
 	}
 
 	deleteJob(id: string) {

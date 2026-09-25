@@ -12,6 +12,7 @@ import {
 import type { AppContext, MenuItem } from './app.svelte';
 import { fileUrl, meshFormat, modelHref } from './models';
 import type { ModelSummary } from '$lib/shared/domain';
+import { duration, weight } from './format';
 
 export const projectHref = (id: string) => resolve('/projects/[id]', { id });
 
@@ -142,6 +143,60 @@ export function actions({ lab, ui }: AppContext) {
 			// eslint-disable-next-line svelte/no-navigation-without-resolve -- modelHref() is built with resolve()
 			if (res) await goto(modelHref(projectId, res.id));
 			return res?.id ?? null;
+		},
+		/** Attaches a sliced .gcode.3mf (exported from Bambu Studio) to a queued job. */
+		async attachSliced(job: Job, file: File) {
+			if (!/\.3mf$/i.test(file.name))
+				return (ui.toast('Choose the sliced file (.gcode.3mf) from Bambu Studio.', 'error'), false);
+			if (file.size > 110_000_000)
+				return (ui.toast('Sliced files must be under 110 MB.', 'error'), false);
+			lab.saving++;
+			try {
+				const r = await fetch(
+					`/api/jobs/${job.id}/sliced?${new URLSearchParams({ name: file.name })}`,
+					{ method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: file }
+				);
+				const data = await r.json().catch(() => ({}));
+				if (!r.ok) throw new Error(data.error ?? `Upload failed (${r.status}).`);
+				if (data.workspace) lab.ws = data.workspace;
+				const plate = data.sliced.plates.find(
+					(p: { index: number }) => p.index === data.sliced.plate
+				);
+				ui.toast(
+					`Sliced file attached: ${data.sliced.plates.length > 1 ? `${data.sliced.plates.length} plates, ` : ''}${duration(plate.minutes)}, ${weight(plate.grams)}.`
+				);
+				return true;
+			} catch (error) {
+				ui.toast((error as Error).message, 'error');
+				return false;
+			} finally {
+				lab.saving--;
+			}
+		},
+		async detachSliced(job: Job) {
+			return !!(await lab.call(
+				'DELETE',
+				`/api/jobs/${job.id}/sliced`,
+				undefined,
+				'Sliced file removed.'
+			));
+		},
+		/** Opens the send window for a queued job with a sliced file. */
+		sendToPrinter(job: Job) {
+			ui.openSend(job.id);
+		},
+		async printerControl(action: 'pause' | 'resume' | 'stop') {
+			if (
+				action === 'stop' &&
+				!(await ui.ask(
+					'Stop this print?',
+					'The printer stops and the plate cannot be resumed. The job is marked as failed when the printer reports it.',
+					'Stop print'
+				))
+			)
+				return false;
+			const done = { pause: 'Pausing…', resume: 'Resuming…', stop: 'Stopping…' }[action];
+			return !!(await lab.call('POST', '/api/printer/control', { action }, done));
 		},
 		/** Uploads an STL/3MF/OBJ file as a new mesh model. */
 		async uploadModel(projectId: string, file: File, open = true) {
