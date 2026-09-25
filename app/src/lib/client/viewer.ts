@@ -486,8 +486,11 @@ export class ModelViewer {
 
 	// ---------- Output ----------
 
-	/** A PNG thumbnail from the standard iso view (the user's camera is restored afterwards). */
-	async thumbnail(width = 480, height = 360): Promise<Blob | null> {
+	/**
+	 * Thumbnails from the standard iso view (the user's camera is restored afterwards): a PNG (the printer
+	 * shows it as the plate picture) and a small WebP for the app, about a tenth of the size.
+	 */
+	async thumbnail(width = 480, height = 360): Promise<{ png: Blob; webp: Blob | null } | null> {
 		if (!this.mesh) return null;
 		const pos = this.camera.position.clone(),
 			target = this.controls.target.clone();
@@ -512,7 +515,17 @@ export class ModelViewer {
 		this.controls.target.copy(target);
 		this.controls.update();
 		this.render();
-		return new Promise((resolve) => out.toBlob(resolve, 'image/png'));
+		const blob = (canvas: HTMLCanvasElement, type: string, quality?: number) =>
+			new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
+		const png = await blob(out, 'image/png');
+		if (!png) return null;
+		const small = document.createElement('canvas');
+		small.width = 320;
+		small.height = 240;
+		small.getContext('2d')!.drawImage(out, 0, 0, 320, 240);
+		const webp = await blob(small, 'image/webp', 0.82);
+		// Browsers that cannot encode WebP hand back a PNG instead; the PNG then serves both.
+		return { png, webp: webp?.type === 'image/webp' ? webp : null };
 	}
 
 	refreshTheme() {

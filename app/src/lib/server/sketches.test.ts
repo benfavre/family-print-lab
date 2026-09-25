@@ -71,6 +71,10 @@ describe('sketches', () => {
 		expect(store.png(id).subarray(1, 4).toString()).toBe('PNG');
 		store.update(id, png(80, 60));
 		expect(lab.snapshot().sketches[0]).toMatchObject({ width: 80, height: 60, version: 2 });
+		// A save that started from version 1 now conflicts instead of overwriting version 2.
+		expect(() => store.update(id, png(20, 20), 1)).toThrow(/saved from somewhere else/);
+		store.update(id, png(20, 20), 2);
+		expect(lab.snapshot().sketches[0]).toMatchObject({ width: 20, version: 3 });
 		expect(lab.snapshot().activity.some((a) => a.message.startsWith('Added a sketch'))).toBe(true);
 		store.remove(id);
 		expect(lab.snapshot().sketches).toEqual([]);

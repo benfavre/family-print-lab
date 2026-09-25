@@ -135,7 +135,7 @@
 							{#each m.models as { m: model, v } (model.id)}
 								<a href={modelHref(model.projectId, model.id)} title={model.name}
 									><img
-										src={fileUrl(model.id, v!.id, 'thumbnail.png')}
+										src={fileUrl(model.id, v!.id, 'thumbnail.webp')}
 										alt={model.name}
 										loading="lazy"
 									/></a

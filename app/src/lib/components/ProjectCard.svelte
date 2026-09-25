@@ -44,7 +44,7 @@
 		for (const m of models) {
 			const v = m.versions.find((x) => x.id === m.currentVersionId);
 			if (v?.hasThumbnail)
-				return { url: fileUrl(m.id, v.id, 'thumbnail.png'), count: models.length };
+				return { url: fileUrl(m.id, v.id, 'thumbnail.webp'), count: models.length };
 		}
 		return null;
 	});

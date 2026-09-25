@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { useApp } from '$lib/client/app.svelte';
 	import { usePanel } from '$lib/client/panel';
 	import SketchPad from './SketchPad.svelte';
@@ -17,6 +18,8 @@
 	} = $props();
 	const { lab, ui } = useApp();
 	const existing = $derived(sketchId ? lab.ws.sketches.find((s) => s.id === sketchId) : undefined);
+	/** The version this editor opened; a save is refused if someone else saved after it. */
+	const openedVersion = untrack(() => existing?.version);
 	const project = $derived(lab.project(projectId ?? existing?.projectId));
 	// svelte-ignore state_referenced_locally
 	let title = $state(existing?.title ?? '');
@@ -31,6 +34,9 @@
 		);
 	});
 
+	const newUrl = () =>
+		`/api/projects/${project?.id ?? existing?.projectId}/sketches?title=${encodeURIComponent(title)}`;
+
 	async function save(png: Blob) {
 		if (onsaved) {
 			onsaved(png);
@@ -38,21 +44,34 @@
 		}
 		saving = true;
 		try {
-			const url = existing
-				? `/api/sketches/${existing.id}`
-				: `/api/projects/${project?.id}/sketches?title=${encodeURIComponent(title)}`;
-			const r = await fetch(url, {
-				method: existing ? 'PUT' : 'POST',
-				headers: { 'content-type': 'image/png' },
-				body: png
-			});
+			let asNew = !existing;
+			const put = (url: string, method: string) =>
+				fetch(url, { method, headers: { 'content-type': 'image/png' }, body: png });
+			let r = asNew
+				? await put(newUrl(), 'POST')
+				: await put(`/api/sketches/${existing!.id}?version=${openedVersion}`, 'PUT');
+			// Saved from another device meanwhile: keep both instead of overwriting theirs.
+			if (r.status === 409) {
+				saving = false;
+				if (
+					!(await ui.ask(
+						'This sketch changed on another device',
+						'Someone saved it after you opened it. Save your drawing as a new sketch, so both are kept?',
+						'Save as new'
+					))
+				)
+					return;
+				saving = true;
+				asNew = true;
+				r = await put(newUrl(), 'POST');
+			}
 			const data = await r.json().catch(() => ({}));
 			if (!r.ok) throw new Error(data.error ?? 'Could not save the sketch.');
-			if (existing && title.trim() !== existing.title)
+			if (!asNew && existing && title.trim() !== existing.title)
 				await lab.call('PATCH', `/api/sketches/${existing.id}`, { title });
 			if (data.workspace) lab.adopt(data.workspace);
 			else void lab.refresh();
-			ui.toast(existing ? 'Sketch updated.' : 'Sketch saved to the project.');
+			ui.toast(asNew ? 'Sketch saved to the project.' : 'Sketch updated.');
 			onclose();
 		} catch (error) {
 			ui.toast((error as Error).message, 'error');

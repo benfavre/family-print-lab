@@ -38,24 +38,26 @@ export class Backups {
 
 	list(): BackupInfo[] {
 		if (!fs.existsSync(this.dir)) return [];
-		return fs
-			.readdirSync(this.dir)
-			.filter((f) => /^printlab-/.test(f))
-			.map((file) => {
-				const full = path.join(this.dir, file);
-				const stat = fs.statSync(full);
-				const dbFile = stat.isDirectory() ? path.join(full, 'printlab.db') : full;
-				const modelsDir = path.join(full, 'models');
-				return {
-					file,
-					size: fs.existsSync(dbFile) ? fs.statSync(dbFile).size : 0,
-					createdAt: stat.mtime.toISOString(),
-					reason: file.match(/Z-(.+)$/)?.[1] ?? file.split('-').pop() ?? '',
-					models: stat.isDirectory() && fs.existsSync(modelsDir) ? countFiles(modelsDir) : 0
-				};
-			})
-			// Newest first; the name's timestamp breaks ties between snapshots in the same millisecond.
-			.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.file.localeCompare(a.file));
+		return (
+			fs
+				.readdirSync(this.dir)
+				.filter((f) => /^printlab-/.test(f))
+				.map((file) => {
+					const full = path.join(this.dir, file);
+					const stat = fs.statSync(full);
+					const dbFile = stat.isDirectory() ? path.join(full, 'printlab.db') : full;
+					const modelsDir = path.join(full, 'models');
+					return {
+						file,
+						size: fs.existsSync(dbFile) ? fs.statSync(dbFile).size : 0,
+						createdAt: stat.mtime.toISOString(),
+						reason: file.match(/Z-(.+)$/)?.[1] ?? file.split('-').pop() ?? '',
+						models: stat.isDirectory() && fs.existsSync(modelsDir) ? countFiles(modelsDir) : 0
+					};
+				})
+				// Newest first; the name's timestamp breaks ties between snapshots in the same millisecond.
+				.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.file.localeCompare(a.file))
+		);
 	}
 
 	/** `protect`: a snapshot that must survive pruning (the one about to be restored). */
@@ -203,7 +205,7 @@ function linkTree(from: string, to: string) {
 			dst = path.join(to, entry.name);
 		if (entry.isDirectory()) {
 			if (entry.name !== 'blender') linkTree(src, dst); // Blender session files are scratch space
-		} else if (/\.(stl|png)$/.test(entry.name)) {
+		} else if (/\.(stl|png|webp)$/.test(entry.name)) {
 			try {
 				fs.linkSync(src, dst);
 			} catch {

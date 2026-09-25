@@ -412,11 +412,17 @@ export class ModelStore {
 		this.lab.touch('model', `Deleted model “${model.name}”`, model.projectId);
 	}
 
-	saveThumbnail(modelId: string, versionId: string, png: Buffer) {
+	/** Stores a version's thumbnail: the PNG (also the printer's plate picture) or the app's small WebP. */
+	saveThumbnail(modelId: string, versionId: string, image: Buffer, kind: 'png' | 'webp' = 'png') {
 		this.version(modelId, versionId);
-		if (png.length > 2_000_000 || png.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a')
-			throw new AppError(400, 'Thumbnails must be PNG images under 2 MB.');
-		fs.writeFileSync(this.path(modelId, versionId, 'png'), png);
+		const ok =
+			kind === 'png'
+				? image.subarray(0, 8).toString('hex') === '89504e470d0a1a0a'
+				: image.subarray(0, 4).toString() === 'RIFF' && image.subarray(8, 12).toString() === 'WEBP';
+		if (image.length > 2_000_000 || !ok)
+			throw new AppError(400, `Thumbnails must be ${kind.toUpperCase()} images under 2 MB.`);
+		fs.writeFileSync(this.path(modelId, versionId, kind), image);
+		if (kind === 'webp') return;
 		this.db
 			.update(modelVersions)
 			.set({ hasThumbnail: true })

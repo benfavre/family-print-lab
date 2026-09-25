@@ -1,5 +1,5 @@
 // Hand-drawn sketches for project ideas. PNGs live in the database, so backups and restores include them.
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { DB } from './db';
 import { projects, sketches } from './db/schema';
 import type { Lab } from './lab';
@@ -56,7 +56,8 @@ export class SketchStore {
 		return id;
 	}
 
-	update(id: string, png: Buffer) {
+	/** Replaces the drawing; with `expected`, only if nobody saved it since that version. */
+	update(id: string, png: Buffer, expected?: number) {
 		const { width, height } = pngSize(png);
 		const done = this.db
 			.update(sketches)
@@ -67,9 +68,21 @@ export class SketchStore {
 				updatedAt: new Date().toISOString(),
 				version: sql`${sketches.version} + 1`
 			})
-			.where(eq(sketches.id, id))
+			.where(
+				expected === undefined
+					? eq(sketches.id, id)
+					: and(eq(sketches.id, id), eq(sketches.version, expected))
+			)
 			.run();
-		if (!done.changes) throw new AppError(404, 'That sketch no longer exists.');
+		if (!done.changes) {
+			const exists = this.db
+				.select({ id: sketches.id })
+				.from(sketches)
+				.where(eq(sketches.id, id))
+				.get();
+			if (!exists) throw new AppError(404, 'That sketch no longer exists.');
+			throw new AppError(409, 'This sketch was saved from somewhere else since you opened it.');
+		}
 		this.lab.touch('sketch');
 	}
 

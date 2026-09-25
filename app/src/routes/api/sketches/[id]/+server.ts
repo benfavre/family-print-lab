@@ -13,9 +13,14 @@ export const GET = api(({ params }, rt) => {
 	});
 });
 
-/** Replaces the drawing. */
-export const PUT = api(async ({ request, params }, rt) => {
-	rt.sketches.update(params.id!, await readBinary(request, 4_000_000));
+/** Replaces the drawing. ?version= is the version the editor started from (stale saves are refused). */
+export const PUT = api(async ({ request, params, url }, rt) => {
+	const version = url.searchParams.get('version');
+	rt.sketches.update(
+		params.id!,
+		await readBinary(request, 4_000_000),
+		version === null ? undefined : Number(version)
+	);
 	return { ok: true };
 });
 

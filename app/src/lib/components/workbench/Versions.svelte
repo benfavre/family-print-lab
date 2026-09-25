@@ -58,7 +58,7 @@
 			>
 				<span class="thumb">
 					{#if v.hasThumbnail}<img
-							src={fileUrl(modelId, v.id, 'thumbnail.png')}
+							src={fileUrl(modelId, v.id, 'thumbnail.webp')}
 							alt=""
 							loading="lazy"
 						/>{:else}<span class="num">v{v.number}</span>{/if}

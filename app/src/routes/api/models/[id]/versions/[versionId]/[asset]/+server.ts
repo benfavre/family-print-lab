@@ -8,14 +8,21 @@ import { readBinary } from '$lib/server/cad/requests';
 /** Version files: model.stl, model.3mf (downloads) and thumbnail.png. */
 export const GET: RequestHandler = api(({ params, url, request }, rt) => {
 	const { id, versionId, asset } = params as { id: string; versionId: string; asset: string };
-	if (asset === 'thumbnail.png') {
+	if (asset === 'thumbnail.png' || asset === 'thumbnail.webp') {
 		rt.models.version(id, versionId);
-		const file = rt.models.path(id, versionId, 'png');
+		// thumbnail.webp falls back to the PNG for versions made before small thumbnails existed.
+		const webp = rt.models.path(id, versionId, 'webp');
+		const useWebp = asset === 'thumbnail.webp' && fs.existsSync(webp);
+		const file = useWebp ? webp : rt.models.path(id, versionId, 'png');
 		if (!fs.existsSync(file)) throw new AppError(404, 'No thumbnail yet.');
-		return new Response(fs.readFileSync(file), {
+		return new Response(new Uint8Array(fs.readFileSync(file)), {
 			headers: {
-				'content-type': 'image/png',
-				'cache-control': 'private, max-age=31536000, immutable'
+				'content-type': useWebp ? 'image/webp' : 'image/png',
+				// The WebP may still arrive for an old version, so its fallback is not cached for good.
+				'cache-control':
+					asset === 'thumbnail.webp' && !useWebp
+						? 'private, max-age=60'
+						: 'private, max-age=31536000, immutable'
 			}
 		});
 	}
@@ -55,7 +62,13 @@ export const GET: RequestHandler = api(({ params, url, request }, rt) => {
 });
 
 export const PUT: RequestHandler = api(async ({ params, request }, rt) => {
-	if (params.asset !== 'thumbnail.png') throw new AppError(404, 'Unknown file.');
-	rt.models.saveThumbnail(params.id!, params.versionId!, await readBinary(request, 2_000_000));
+	if (params.asset !== 'thumbnail.png' && params.asset !== 'thumbnail.webp')
+		throw new AppError(404, 'Unknown file.');
+	rt.models.saveThumbnail(
+		params.id!,
+		params.versionId!,
+		await readBinary(request, 2_000_000),
+		params.asset === 'thumbnail.webp' ? 'webp' : 'png'
+	);
 	return new Response(null, { status: 204 });
 });

@@ -9,6 +9,7 @@
 		decodeStl,
 		fileUrl,
 		getDetail,
+		lacksSmallThumbnail,
 		loadMesh,
 		modelHref,
 		preview,
@@ -123,7 +124,14 @@
 			const mesh = await loadMesh(modelId, v.id);
 			viewer?.load(mesh, keepCamera && viewer.hasPart);
 			syncBounds();
-			if (v.id === detail?.model.currentVersionId && !v.hasThumbnail) void thumbnail(v);
+			if (v.id === detail?.model.currentVersionId) {
+				if (!v.hasThumbnail) void thumbnail(v);
+				// Older versions only have the big PNG: add the small one the app shows.
+				else
+					void lacksSmallThumbnail(modelId, v.id).then((old) => {
+						if (old) void thumbnail(v);
+					});
+			}
 		} catch (error) {
 			ui.toast((error as Error).message, 'error');
 		}
@@ -131,9 +139,9 @@
 
 	async function thumbnail(v: ModelVersion) {
 		await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-		const png = await viewer?.thumbnail();
-		if (png) {
-			await uploadThumbnail(modelId, v.id, png);
+		const pics = await viewer?.thumbnail();
+		if (pics) {
+			await uploadThumbnail(modelId, v.id, pics);
 			v.hasThumbnail = true;
 		}
 	}

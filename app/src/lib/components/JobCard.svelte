@@ -161,7 +161,7 @@
 					draggable="false"
 				>
 					{#if model.v.hasThumbnail}<img
-							src={fileUrl(model.m.id, model.v.id, 'thumbnail.png')}
+							src={fileUrl(model.m.id, model.v.id, 'thumbnail.webp')}
 							alt=""
 							loading="lazy"
 							draggable="false"

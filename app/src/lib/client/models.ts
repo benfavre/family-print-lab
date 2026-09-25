@@ -11,7 +11,7 @@ export const modelHref = (projectId: string, modelId: string) =>
 export const fileUrl = (
 	modelId: string,
 	versionId: string,
-	file: 'model.stl' | 'model.3mf' | 'thumbnail.png'
+	file: 'model.stl' | 'model.3mf' | 'thumbnail.png' | 'thumbnail.webp'
 ) => `/api/models/${modelId}/versions/${versionId}/${file}`;
 
 export class RequestError extends Error {
@@ -87,12 +87,30 @@ export function decodeStl(base64: string): Float32Array {
 	return parseStl(bytes.buffer);
 }
 
-export async function uploadThumbnail(modelId: string, versionId: string, png: Blob) {
+export async function uploadThumbnail(
+	modelId: string,
+	versionId: string,
+	pics: { png: Blob; webp: Blob | null }
+) {
 	await fetch(fileUrl(modelId, versionId, 'thumbnail.png'), {
 		method: 'PUT',
 		headers: { 'content-type': 'image/png' },
-		body: png
+		body: pics.png
 	}).catch(() => {});
+	if (pics.webp)
+		await fetch(fileUrl(modelId, versionId, 'thumbnail.webp'), {
+			method: 'PUT',
+			headers: { 'content-type': 'image/webp' },
+			body: pics.webp
+		}).catch(() => {});
+}
+
+/** Whether a version still has only the large PNG thumbnail (made before WebP ones existed). */
+export async function lacksSmallThumbnail(modelId: string, versionId: string) {
+	const r = await fetch(fileUrl(modelId, versionId, 'thumbnail.webp'), { method: 'HEAD' }).catch(
+		() => null
+	);
+	return r?.ok === true && r.headers.get('content-type') === 'image/png';
 }
 
 /** Reads an image file for the AI (as the assistant does): JPEG/PNG/WebP/GIF under 5 MB. */
@@ -131,9 +149,9 @@ export async function makeThumbnail(modelId: string, versionId: string): Promise
 		viewer = new ModelViewer(host);
 		viewer.load(await loadMesh(modelId, versionId));
 		await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-		const png = await viewer.thumbnail();
-		if (!png) return false;
-		await uploadThumbnail(modelId, versionId, png);
+		const pics = await viewer.thumbnail();
+		if (!pics) return false;
+		await uploadThumbnail(modelId, versionId, pics);
 		return true;
 	} catch {
 		return false;

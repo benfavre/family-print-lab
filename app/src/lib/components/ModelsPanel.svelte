@@ -144,7 +144,7 @@
 				<a class="model-card" href={modelHref(projectId, m.id)} data-model={m.id}>
 					<span class="model-thumb">
 						{#if v?.hasThumbnail}<img
-								src={fileUrl(m.id, v.id, 'thumbnail.png')}
+								src={fileUrl(m.id, v.id, 'thumbnail.webp')}
 								alt=""
 								loading="lazy"
 							/>{:else}<span aria-hidden="true">⬡</span>{/if}
