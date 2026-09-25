@@ -87,6 +87,9 @@
 		if (e.ctrlKey || e.metaKey || e.altKey || document.querySelector('dialog[open]')) return;
 		if ((e.target as HTMLElement).closest('input, textarea, select, .cm-editor, [contenteditable]'))
 			return;
+		// Only the viewer where the keypress happens: a floating panel's viewer, or the page's.
+		const panelOf = (el: Element | null) => el?.closest('.float-panel') ?? null;
+		if (panelOf(e.target as Element) !== panelOf(host)) return;
 		const v = views.find((x) => x[2] === e.key);
 		if (v) viewer?.setView(v[0]);
 		if (e.key === 'f' || e.key === 'F') viewer?.fit();

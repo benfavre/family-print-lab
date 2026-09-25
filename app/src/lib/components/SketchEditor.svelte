@@ -50,7 +50,7 @@
 			if (!r.ok) throw new Error(data.error ?? 'Could not save the sketch.');
 			if (existing && title.trim() !== existing.title)
 				await lab.call('PATCH', `/api/sketches/${existing.id}`, { title });
-			if (data.workspace) lab.ws = data.workspace;
+			if (data.workspace) lab.adopt(data.workspace);
 			else void lab.refresh();
 			ui.toast(existing ? 'Sketch updated.' : 'Sketch saved to the project.');
 			onclose();

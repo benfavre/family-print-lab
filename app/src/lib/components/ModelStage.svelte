@@ -49,10 +49,11 @@
 			'requestIdleCallback' in window
 				? requestIdleCallback(fn, { timeout: 1500 })
 				: setTimeout(fn, 200);
+		let io: IntersectionObserver | null = null;
 		const seen = new Promise<void>((resolve) => {
-			const io = new IntersectionObserver((entries) => {
+			io = new IntersectionObserver((entries) => {
 				if (entries.some((e) => e.isIntersecting)) {
-					io.disconnect();
+					io?.disconnect();
 					resolve();
 				}
 			});
@@ -76,6 +77,7 @@
 			});
 		return () => {
 			disposed = true;
+			io?.disconnect();
 			viewer?.dispose();
 			viewer = null;
 		};

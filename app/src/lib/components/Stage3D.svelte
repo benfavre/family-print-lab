@@ -21,7 +21,8 @@
 	const { lab, ui } = useApp();
 
 	// ---------- Which real model to show (falls back to the category shapes when there is none) ----------
-	let modelFailed = $state(false);
+	/** The version that could not be shown; others still get their chance. */
+	let failedVersion = $state<string | null>(null);
 	let tourIndex = $state(0);
 	let modelLayer = $state({ layer: 0, total: 0 });
 	const tour = $derived(context.kind === 'project' ? [] : lab.recentStages());
@@ -41,7 +42,9 @@
 		if (printing) return { model: printing, why: 'printing' as const };
 		return { model: tour.length ? tour[tourIndex % tour.length] : null, why: 'tour' as const };
 	});
-	const model = $derived(modelFailed ? null : source.model);
+	const model = $derived(
+		source.model && source.model.versionId !== failedVersion ? source.model : null
+	);
 	// No model yet? A project's latest sketch is more telling than a stand-in shape.
 	const sketch = $derived(
 		!model && context.kind === 'project'
@@ -90,6 +93,10 @@
 		void ui.theme;
 		scene?.refreshTheme();
 	});
+	// The stand-in shapes stop drawing while a real model or sketch covers them.
+	$effect(() => {
+		scene?.setPaused(!!model || !!sketch);
+	});
 </script>
 
 <figure
@@ -109,7 +116,7 @@
 		<ModelStage
 			{model}
 			onlayer={(l, t) => (modelLayer = { layer: l, total: t })}
-			onfail={() => (modelFailed = true)}
+			onfail={() => (failedVersion = model?.versionId ?? null)}
 		/>
 	{/if}
 	<div class="stage-hud" aria-hidden="true">

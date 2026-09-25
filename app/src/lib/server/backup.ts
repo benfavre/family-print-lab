@@ -54,10 +54,12 @@ export class Backups {
 					models: stat.isDirectory() && fs.existsSync(modelsDir) ? countFiles(modelsDir) : 0
 				};
 			})
-			.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+			// Newest first; the name's timestamp breaks ties between snapshots in the same millisecond.
+			.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.file.localeCompare(a.file));
 	}
 
-	async create(reason = 'manual'): Promise<BackupInfo> {
+	/** `protect`: a snapshot that must survive pruning (the one about to be restored). */
+	async create(reason = 'manual', protect?: string): Promise<BackupInfo> {
 		const stamp = new Date().toISOString().replace(/[:.]/g, '-');
 		const name = `printlab-${stamp}-${reason}`;
 		const target = path.join(this.dir, name);
@@ -66,7 +68,8 @@ export class Backups {
 		if (this.modelsDir && fs.existsSync(this.modelsDir))
 			linkTree(this.modelsDir, path.join(target, 'models'));
 		for (const old of this.list().slice(this.keep))
-			fs.rmSync(path.join(this.dir, old.file), { recursive: true, force: true });
+			if (old.file !== protect)
+				fs.rmSync(path.join(this.dir, old.file), { recursive: true, force: true });
 		if (this.mirror) this.copyToMirror(target, name);
 		return this.list().find((b) => b.file === name)!;
 	}
@@ -105,7 +108,7 @@ export class Backups {
 		const dbFile = found && path.join(this.dir, file, 'printlab.db');
 		if (!found || !dbFile || !fs.existsSync(dbFile))
 			throw new AppError(404, 'That backup is not there.');
-		await this.create('before-restore');
+		await this.create('before-restore', file);
 
 		const client = this.db.$client;
 		const q = (name: string) => `"${name.replace(/"/g, '""')}"`;

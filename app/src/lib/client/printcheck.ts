@@ -31,27 +31,59 @@ export function meshFacts(p: Float32Array): MeshFacts {
 	if (n > MAX_WELD) return { openEdges: null, contactArea };
 
 	// Weld corners that share a position (to 1/1000 mm), then count how many faces use each edge.
-	const ids = new Map<string, number>();
-	const vid = new Uint32Array(n * 3);
-	for (let v = 0; v < n * 3; v++) {
-		const key = `${Math.round(p[v * 3] * 1000)},${Math.round(p[v * 3 + 1] * 1000)},${Math.round(p[v * 3 + 2] * 1000)}`;
-		let id = ids.get(key);
-		if (id === undefined) ids.set(key, (id = ids.size));
-		vid[v] = id;
+	// Open-addressing hash tables over typed arrays: ~10× faster than string keys on big meshes.
+	const corners = n * 3;
+	let size = 1;
+	while (size < corners * 2) size <<= 1;
+	const mask = size - 1;
+	const keys = new Int32Array(size * 3);
+	const slotId = new Int32Array(size).fill(-1);
+	const vid = new Int32Array(corners);
+	let nextId = 0;
+	for (let v = 0; v < corners; v++) {
+		const x = Math.round(p[v * 3] * 1000),
+			y = Math.round(p[v * 3 + 1] * 1000),
+			z = Math.round(p[v * 3 + 2] * 1000);
+		let h = (Math.imul(x, 73856093) ^ Math.imul(y, 19349663) ^ Math.imul(z, 83492791)) & mask;
+		for (;;) {
+			const id = slotId[h];
+			if (id === -1) {
+				slotId[h] = vid[v] = nextId++;
+				keys[h * 3] = x;
+				keys[h * 3 + 1] = y;
+				keys[h * 3 + 2] = z;
+				break;
+			}
+			if (keys[h * 3] === x && keys[h * 3 + 1] === y && keys[h * 3 + 2] === z) {
+				vid[v] = id;
+				break;
+			}
+			h = (h + 1) & mask;
+		}
 	}
-	const uses = new Map<number, number>();
-	const span = ids.size;
+	let esize = 1;
+	while (esize < corners * 2) esize <<= 1;
+	const emask = esize - 1;
+	const ea = new Int32Array(esize).fill(-1);
+	const eb = new Int32Array(esize);
+	const count = new Uint8Array(esize);
 	for (let i = 0; i < n; i++) {
 		for (let k = 0; k < 3; k++) {
-			const a = vid[i * 3 + k],
+			let a = vid[i * 3 + k],
 				b = vid[i * 3 + ((k + 1) % 3)];
 			if (a === b) continue;
-			const key = a < b ? a * span + b : b * span + a;
-			uses.set(key, (uses.get(key) ?? 0) + 1);
+			if (a > b) [a, b] = [b, a];
+			let h = (Math.imul(a, 73856093) ^ Math.imul(b, 19349663)) & emask;
+			while (ea[h] !== -1 && (ea[h] !== a || eb[h] !== b)) h = (h + 1) & emask;
+			if (ea[h] === -1) {
+				ea[h] = a;
+				eb[h] = b;
+			}
+			if (count[h] < 255) count[h]++;
 		}
 	}
 	let openEdges = 0;
-	for (const count of uses.values()) if (count !== 2) openEdges++;
+	for (let h = 0; h < esize; h++) if (ea[h] !== -1 && count[h] !== 2) openEdges++;
 	return { openEdges, contactArea };
 }
 

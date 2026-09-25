@@ -52,6 +52,22 @@ describe('backups', () => {
 		}
 	});
 
+	it('restores the oldest kept snapshot even when the safety copy pushes it past the limit', async () => {
+		const { root, db, lab, backups, profileId } = workspace();
+		try {
+			lab.createProject({ title: 'Oldest state', profileId, category: 'Home' });
+			const oldest = await backups.create('manual');
+			for (let i = 0; i < 13; i++) await backups.create('manual');
+			expect(backups.list().at(-1)?.file).toBe(oldest.file);
+			lab.createProject({ title: 'Newer', profileId, category: 'Home' });
+			await backups.restore(oldest.file);
+			expect(lab.snapshot().projects.map((p) => p.title)).toEqual(['Oldest state']);
+		} finally {
+			db.$client.close();
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it('refuses names that are not its own snapshots', async () => {
 		const { root, db, backups } = workspace();
 		try {

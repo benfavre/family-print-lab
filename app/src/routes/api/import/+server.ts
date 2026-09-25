@@ -7,5 +7,6 @@ export const POST = api(async ({ request }, rt) => {
 	await rt.backups.create('before-import');
 	replaceWorkspace(rt.db, rt.lab, data);
 	rt.models.sweep(); // model files of projects that no longer exist
+	rt.printing.sweep(); // and their sliced print files
 	return { imported: { projects: data.projects.length, jobs: data.jobs.length } };
 });

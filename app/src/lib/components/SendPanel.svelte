@@ -18,6 +18,9 @@
 	const status = $derived(lab.printer);
 	const slots = $derived(loadedSlots(status.state));
 	const busy = $derived(!!status.state && ACTIVE_PRINTER_STATES.has(status.state.gcodeState));
+	// Plain values, so live printer pushes (every ~0.75 s) only re-check when something relevant moved.
+	const connected = $derived(!!status.connected);
+	const slotsKey = $derived(slots.map((s) => `${s.index}${s.type}${s.color}${s.remain}`).join());
 
 	let useAms = $state(true);
 	let mapping = $state<number[]>([]);
@@ -25,6 +28,17 @@
 	let timelapse = $state(false);
 	let sending = $state(false);
 	let check = $state<{ blocking: string[]; warnings: string[] } | null>(null);
+	/** The exact settings the shown check is about; "send anyway" only covers those. */
+	let checkedFor = '';
+	let amsTouched = false;
+	const settings = () =>
+		JSON.stringify({
+			plate: plateNo,
+			useAms,
+			amsMapping: useAms ? mapping : [],
+			bedLeveling,
+			timelapse
+		});
 
 	$effect(() => {
 		panel?.setTitle(`Print ${project?.title ?? ''} ${job?.revision ?? ''}`.trim());
@@ -37,34 +51,43 @@
 		if (key === mappedFor) return;
 		mappedFor = key;
 		mapping = autoMapping(plate.filaments, slots);
-		if (!slots.length) useAms = false;
+		// Follow what is loaded until the person decides; a brief gap in AMS data must not stick.
+		if (!amsTouched) useAms = slots.length > 0;
 	});
-	// Ask the server what it thinks, a moment after anything changes.
+	// Ask the server what it thinks, a moment after anything changes. Older answers are dropped.
 	$effect(() => {
-		const body = {
-			plate: plateNo,
-			useAms,
-			amsMapping: [...mapping],
-			bedLeveling,
-			timelapse,
-			check: true
-		};
-		void status.connected;
+		const body = settings();
+		void connected;
 		void busy;
+		void slotsKey;
+		check = null;
+		const abort = new AbortController();
 		const timer = setTimeout(async () => {
-			const r = await fetch(`/api/jobs/${jobId}/send`, {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify(body)
-			}).catch(() => null);
-			const data = await r?.json().catch(() => null);
-			check = data?.check ?? null;
+			try {
+				const r = await fetch(`/api/jobs/${jobId}/send`, {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ ...JSON.parse(body), check: true }),
+					signal: abort.signal
+				});
+				const data = await r.json();
+				if (abort.signal.aborted) return;
+				check = data?.check ?? null;
+				checkedFor = body;
+			} catch {
+				/* superseded or offline; the next change asks again */
+			}
 		}, 150);
-		return () => clearTimeout(timer);
+		return () => {
+			clearTimeout(timer);
+			abort.abort();
+		};
 	});
 
 	async function send() {
 		if (!job || !check || check.blocking.length) return;
+		const body = settings();
+		if (body !== checkedFor) return; // settings changed since the check; wait for the new one
 		sending = true;
 		const res = await lab.call<{ task: { id: string } }>('POST', `/api/jobs/${jobId}/send`, {
 			plate: plateNo,
@@ -72,7 +95,7 @@
 			amsMapping: useAms ? mapping : [],
 			bedLeveling,
 			timelapse,
-			force: check.warnings.length > 0
+			force: check.warnings.length > 0 && body === checkedFor
 		});
 		sending = false;
 		if (res) {
@@ -107,7 +130,10 @@
 						role="radio"
 						aria-checked={p.index === plateNo}
 						onclick={() => (plateNo = p.index)}
-						><img src="/api/jobs/{jobId}/sliced/thumbnail?plate={p.index}" alt="" />Plate {p.index}</button
+						><img
+							src="/api/jobs/{jobId}/sliced/thumbnail?plate={p.index}&f={sliced.file}"
+							alt=""
+						/>Plate {p.index}</button
 					>
 				{/each}
 			</div>
@@ -116,7 +142,7 @@
 		<div class="sp-summary">
 			<img
 				class="sp-thumb"
-				src="/api/jobs/{jobId}/sliced/thumbnail?plate={plate.index}"
+				src="/api/jobs/{jobId}/sliced/thumbnail?plate={plate.index}&f={sliced.file}"
 				alt="Plate {plate.index} as sliced"
 				onerror={(e) => ((e.currentTarget as HTMLImageElement).style.visibility = 'hidden')}
 			/>
@@ -143,7 +169,8 @@
 		<fieldset class="sp-fil">
 			<legend>
 				<label class="check"
-					><input type="checkbox" bind:checked={useAms} /> Feed from the AMS</label
+					><input type="checkbox" bind:checked={useAms} onchange={() => (amsTouched = true)} /> Feed from
+					the AMS</label
 				>
 			</legend>
 			{#if useAms}

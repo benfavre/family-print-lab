@@ -112,7 +112,9 @@ export const projectBulk = z.strictObject({
 });
 export const jobTransition = z.strictObject({
 	to: z.enum(JOB_STATUSES),
-	printerTask: text(200).optional()
+	printerTask: text(200).optional(),
+	/** The status the caller saw; refused when the job has moved on since. */
+	from: z.enum(JOB_STATUSES).optional()
 });
 
 export const checklistPatch = z.strictObject({

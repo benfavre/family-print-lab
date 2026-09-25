@@ -65,14 +65,9 @@
 			: `${Math.round(progress * 100)}% (estimated) · ~${duration((job.minutes ?? 0) * (1 - progress))} left`;
 	});
 	// The model version this print is of, with its thumbnail.
-	const model = $derived.by(() => {
-		if (!job.modelVersionId) return null;
-		for (const m of lab.ws.models) {
-			const v = m.versions.find((x) => x.id === job.modelVersionId);
-			if (v) return { m, v };
-		}
-		return null;
-	});
+	const model = $derived(
+		job.modelVersionId ? (lab.versions.get(job.modelVersionId) ?? null) : null
+	);
 	/** Clock time the print should finish, from live remaining time or the estimate. */
 	const eta = $derived.by(() => {
 		if (job.status !== 'Printing') return '';
@@ -192,7 +187,7 @@
 	{#if sliced && slicedPlate && job.status === 'Queued'}
 		<div class="job-sliced" title="Sliced in {sliced.slicer || 'a slicer'}: {sliced.name}">
 			<img
-				src="/api/jobs/{job.id}/sliced/thumbnail?plate={slicedPlate.index}"
+				src="/api/jobs/{job.id}/sliced/thumbnail?plate={slicedPlate.index}&f={sliced.file}"
 				alt=""
 				loading="lazy"
 				onerror={(e) => ((e.currentTarget as HTMLImageElement).hidden = true)}

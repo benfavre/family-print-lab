@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
+import net from 'node:net';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -123,5 +124,65 @@ describe('uploading to the printer', () => {
 		} finally {
 			await server.close();
 		}
+	});
+
+	it('fails cleanly, without crashing the app, when the printer never confirms the file', async () => {
+		// A file service that accepts the data connection but never answers STOR.
+		const server = net.createServer((c) => {
+			c.write('220 hi\r\n');
+			c.on('data', (b) => {
+				const line = b.toString();
+				if (line.startsWith('USER')) c.write('331 pw\r\n');
+				else if (line.startsWith('PASS')) c.write('230 ok\r\n');
+				else if (line.startsWith('TYPE')) c.write('200 ok\r\n');
+				else if (line.startsWith('PASV')) {
+					const data = net.createServer((d) => d.on('error', () => {}));
+					data.listen(0, '127.0.0.1', () => {
+						const port = (data.address() as net.AddressInfo).port;
+						c.write(`227 Entering Passive Mode (127,0,0,1,${port >> 8},${port & 255})\r\n`);
+					});
+				}
+			});
+			c.on('error', () => {});
+		});
+		await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
+		const port = (server.address() as net.AddressInfo).port;
+		const crashes: unknown[] = [];
+		const onCrash = (e: unknown) => crashes.push(e);
+		process.on('uncaughtException', onCrash);
+		try {
+			await expect(
+				uploadFile(
+					{ host: '127.0.0.1', port, password: 'x', useTls: false, timeoutMs: 300 },
+					'slow.gcode.3mf',
+					Buffer.from('data')
+				)
+			).rejects.toThrow(/did not answer/);
+			await new Promise((r) => setTimeout(r, 800));
+			expect(crashes).toEqual([]);
+		} finally {
+			process.off('uncaughtException', onCrash);
+			server.close();
+		}
+	});
+});
+
+describe('rewriting sliced files', () => {
+	it('replaces a few entries and copies the rest byte for byte', async () => {
+		const { rewriteZip, readZip } = await import('../cad/mesh');
+		const original = fakeSliced({ minutes: 5, grams: 2 });
+		const out = rewriteZip(
+			original,
+			new Map([['Metadata/slice_info.config', Buffer.from('<config/>')]])
+		);
+		const before = readZip(original, () => 'all');
+		const after = readZip(out, () => 'all');
+		expect(after.get('Metadata/slice_info.config')?.toString()).toBe('<config/>');
+		expect(after.get('Metadata/plate_1.gcode')?.equals(before.get('Metadata/plate_1.gcode')!)).toBe(
+			true
+		);
+		expect(() =>
+			readZip(Buffer.concat([original.subarray(0, 100), original.subarray(-22)]))
+		).toThrow(/Corrupt|valid/);
 	});
 });

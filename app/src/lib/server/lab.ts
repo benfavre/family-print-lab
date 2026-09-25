@@ -55,6 +55,15 @@ const nowIso = () => new Date().toISOString();
 const uuid = () => crypto.randomUUID();
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
+/** Status moves a job can make. Finished prints are printed again as a new job, not re-opened. */
+const JOB_MOVES: Record<JobStatus, JobStatus[]> = {
+	Queued: ['Printing', 'Cancelled'],
+	Printing: ['Queued', 'Succeeded', 'Failed', 'Cancelled'],
+	Succeeded: ['Failed'],
+	Failed: ['Succeeded'],
+	Cancelled: ['Queued']
+};
+
 export interface ChangeEvent {
 	changeId: number;
 	kind: string;
@@ -575,6 +584,10 @@ export class Lab {
 
 	/** Refunds any previous charge, then charges finished (succeeded or failed) prints to their spool. */
 	private settle(tx: Tx, job: Job) {
+		const consumes = !!job.spoolId && CONSUMING_JOB.has(job.status) && (job.grams ?? 0) > 0;
+		// Linked to its spool with nothing refundable: the spool was weighed by hand since (a new
+		// baseline that already includes this print) or was empty. Charging again would count it twice.
+		if (consumes && job.chargeSpoolId === job.spoolId && job.chargeGrams === 0) return;
 		this.refund(tx, job);
 		if (job.spoolId && CONSUMING_JOB.has(job.status) && (job.grams ?? 0) > 0) {
 			const spool = tx.select().from(spools).where(eq(spools.id, job.spoolId)).get();
@@ -626,12 +639,13 @@ export class Lab {
 			this.project(tx, data.projectId);
 			if (data.spoolId)
 				this.need(tx.select().from(spools).where(eq(spools.id, data.spoolId)).get(), 'spool');
-			const count =
-				tx
-					.select({ n: sql<number>`count(*)` })
-					.from(jobs)
-					.where(eq(jobs.projectId, data.projectId))
-					.get()?.n ?? 0;
+			// Next free vNN, so deleting a job never makes two plates share a label.
+			const count = tx
+				.select({ revision: jobs.revision })
+				.from(jobs)
+				.where(eq(jobs.projectId, data.projectId))
+				.all()
+				.reduce((max, j) => Math.max(max, Number(j.revision.match(/^v(\d+)$/)?.[1] ?? 0)), 0);
 			const status = data.status ?? 'Queued';
 			const at = nowIso();
 			const row = {
@@ -678,8 +692,32 @@ export class Lab {
 
 	/** Start / succeed / fail / cancel a job, keeping project status and spool stock in step. */
 	transitionJob(id: string, input: unknown) {
-		const { to, printerTask } = parse(jobTransition, input);
-		return this.write('job', (tx) => this.applyTransition(tx, id, to, printerTask));
+		const { to, printerTask, from } = parse(jobTransition, input);
+		return this.write('job', (tx) => {
+			const job = this.job(tx, id);
+			// A tab that has not caught up must not undo what happened since (e.g. cancel a finished print).
+			if (from && job.status !== from)
+				throw new AppError(409, `This job is already ${job.status.toLowerCase()}.`);
+			if (!JOB_MOVES[job.status].includes(to))
+				throw new AppError(
+					409,
+					job.status === to
+						? `This job is already ${to.toLowerCase()}.`
+						: `A ${job.status.toLowerCase()} job cannot become ${to.toLowerCase()}; print it again instead.`
+				);
+			return this.applyTransition(tx, id, to, printerTask);
+		});
+	}
+
+	/** One job, straight from its row (cheaper than a workspace snapshot). */
+	getJob(id: string): Job | undefined {
+		return this.db.select().from(jobs).where(eq(jobs.id, id)).get() as Job | undefined;
+	}
+
+	/** A project's title, straight from its row. */
+	projectTitle(id: string): string | undefined {
+		return this.db.select({ title: projects.title }).from(projects).where(eq(projects.id, id)).get()
+			?.title;
 	}
 
 	private applyTransition(tx: Tx, id: string, to: JobStatus, printerTask?: string) {

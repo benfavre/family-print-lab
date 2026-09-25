@@ -93,7 +93,11 @@ function open(opts: Required<FtpOptions>, port: number, session?: Buffer): Promi
 	return new Promise((resolve, reject) => {
 		const done = (s: Sock) => {
 			s.off('error', reject);
-			s.setTimeout(0); // connected: the control line may sit quiet during a long upload
+			// Connected: drop the connect timeout (the control line may sit quiet during a long upload)
+			// and keep an error listener at all times, so a reset can never become an uncaught error.
+			s.removeAllListeners('timeout');
+			s.setTimeout(0);
+			s.on('error', () => {});
 			resolve(s);
 		};
 		const socket: Sock = opts.useTls
@@ -125,7 +129,8 @@ export async function uploadFile(
 	options: FtpOptions,
 	name: string,
 	data: Buffer,
-	onProgress?: (fraction: number) => void
+	onProgress?: (fraction: number) => void,
+	signal?: AbortSignal
 ): Promise<string> {
 	const opts: Required<FtpOptions> = {
 		port: options.useTls === false ? 21 : 990,
@@ -138,6 +143,12 @@ export async function uploadFile(
 		throw new Error('That file name cannot be sent to the printer.');
 	const socket = await open(opts, opts.port);
 	const control = new Control(socket, opts.timeoutMs);
+	let dataSocket: Sock | null = null;
+	const cancel = () => {
+		dataSocket?.destroy(new Error('Stopped'));
+		socket.destroy(new Error('Stopped'));
+	};
+	signal?.addEventListener('abort', cancel, { once: true });
 	try {
 		const hello = await control.read();
 		if (hello.code !== 220) throw ftpError('CONNECT', hello);
@@ -155,39 +166,43 @@ export async function uploadFile(
 		const dataPort = Number(nums[5]) * 256 + Number(nums[6]);
 		const session =
 			socket instanceof tls.TLSSocket ? (control.session ?? socket.getSession()) : undefined;
-		const dataSocket = await open(opts, dataPort, session);
+		const data$ = (dataSocket = await open(opts, dataPort, session));
 		// A transfer that stalls for this long has failed.
-		dataSocket.setTimeout(opts.timeoutMs, () =>
-			dataSocket.destroy(new Error('The upload to the printer stalled.'))
+		data$.setTimeout(opts.timeoutMs, () =>
+			data$.destroy(new Error('The upload to the printer stalled.'))
 		);
 		socket.write(`STOR ${name}\r\n`);
 		const accepted = await control.read();
-		if (accepted.code !== 150 && accepted.code !== 125) {
-			dataSocket.destroy();
-			throw ftpError('STOR', accepted);
-		}
+		if (accepted.code !== 150 && accepted.code !== 125) throw ftpError('STOR', accepted);
 		await new Promise<void>((resolve, reject) => {
 			const CHUNK = 256 * 1024;
 			let offset = 0;
-			dataSocket.on('error', reject);
+			data$.on('error', reject);
 			const pump = () => {
 				while (offset < data.length) {
 					const end = Math.min(data.length, offset + CHUNK);
-					const more = dataSocket.write(data.subarray(offset, end));
+					const more = data$.write(data.subarray(offset, end));
 					offset = end;
 					onProgress?.(offset / data.length);
-					if (!more) return void dataSocket.once('drain', pump);
+					if (!more) return void data$.once('drain', pump);
 				}
-				dataSocket.end();
+				data$.end();
 			};
-			dataSocket.once('close', () => resolve());
+			data$.once('close', (hadError) =>
+				hadError ? reject(new Error('The upload to the printer was interrupted.')) : resolve()
+			);
 			pump();
 		});
 		const stored = await control.read();
 		if (stored.code !== 226 && stored.code !== 250) throw ftpError('STOR', stored);
 		socket.write('QUIT\r\n');
 		return name;
+	} catch (error) {
+		if (signal?.aborted) throw new Error('Stopped', { cause: error });
+		throw error;
 	} finally {
+		signal?.removeEventListener('abort', cancel);
+		dataSocket?.destroy();
 		setTimeout(() => socket.destroy(), 200).unref();
 	}
 }

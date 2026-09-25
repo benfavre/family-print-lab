@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { readZip, writeZip } from './cad/mesh';
+import { readZip, rewriteZip } from './cad/mesh';
 import { AppError } from './validation';
 
 type Profile = Record<string, unknown> & { name: string; inherits?: string };
@@ -228,12 +228,11 @@ export async function slice(opts: {
 		if (s.color && /^#?[0-9a-f]{6}$/i.test(s.color))
 			filament.filament_colour = [`#${s.color.replace('#', '').toUpperCase()}`];
 		write('filament.json', filament);
-		const input = `${
-			opts.name
-				.replace(/[^\w .()+-]/g, '')
-				.trim()
-				.slice(0, 60) || 'part'
-		}.stl`;
+		// Never starts with "-", so the slicer cannot mistake the file for an option.
+		const input = `part ${opts.name
+			.replace(/[^\w .()+-]/g, '')
+			.trim()
+			.slice(0, 60)}.stl`;
 		fs.writeFileSync(path.join(dir, input), opts.stl);
 		fs.mkdirSync(path.join(dir, 'out'));
 
@@ -302,10 +301,15 @@ export async function slice(opts: {
 
 /** Fills in the printer model code and plate pictures the command line leaves out. */
 function finish(file: Buffer, modelId: string, thumbnail: Buffer | null): Buffer {
-	const entries = readZip(file, () => 'all');
+	const entries = readZip(file, (name) =>
+		name === 'Metadata/slice_info.config' || /^Metadata\/plate_\d+\.(gcode\.md5|png)$/.test(name)
+			? 'all'
+			: false
+	);
+	const changes = new Map<string, Buffer>();
 	const info = entries.get('Metadata/slice_info.config');
 	if (info)
-		entries.set(
+		changes.set(
 			'Metadata/slice_info.config',
 			Buffer.from(
 				info
@@ -317,13 +321,14 @@ function finish(file: Buffer, modelId: string, thumbnail: Buffer | null): Buffer
 			)
 		);
 	if (thumbnail)
-		for (const name of [...entries.keys()]) {
-			const m = name.match(/^Metadata\/plate_(\d+)\.gcode$/);
+		for (const name of entries.keys()) {
+			const m = name.match(/^Metadata\/plate_(\d+)\.gcode\.md5$/);
 			if (!m) continue;
 			for (const pic of [`plate_${m[1]}.png`, `plate_no_light_${m[1]}.png`])
-				if (!entries.has(`Metadata/${pic}`)) entries.set(`Metadata/${pic}`, thumbnail);
+				if (!entries.has(`Metadata/${pic}`)) changes.set(`Metadata/${pic}`, thumbnail);
 		}
-	return writeZip([...entries]);
+	// Everything else, above all the large G-code, is copied as it is.
+	return rewriteZip(file, changes);
 }
 
 function lastLine(log: string) {

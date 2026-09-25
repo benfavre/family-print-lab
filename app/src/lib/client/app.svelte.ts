@@ -1,11 +1,12 @@
 // Client state: the live workspace (kept in sync over server-sent events) and UI state (filters,
 // dialogs, toasts, menus). Created once per page load in the root layout and shared via context.
 import { getContext, setContext, untrack } from 'svelte';
-import { SvelteMap } from 'svelte/reactivity';
 import {
 	ACTIVE_PRINTER_STATES,
 	type Category,
 	type Job,
+	type ModelSummary,
+	type ModelVersionSummary,
 	type PrinterStatus,
 	type Profile,
 	type Project,
@@ -270,6 +271,10 @@ export class LabStore {
 	saving = $state(0);
 	private source: EventSource | null = null;
 	private refreshing: Promise<void> | null = null;
+	/** Newest change the server has announced; the workspace is refreshed until it catches up. */
+	private latestSeen = 0;
+	private retryMs = 1000;
+	private retryTimer: ReturnType<typeof setTimeout> | undefined;
 	/** Lookup tables rebuilt whenever the workspace changes. */
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- rebuilt by $derived, never mutated
 	profiles = $derived(new Map(this.ws.profiles.map((p) => [p.id, p])));
@@ -278,8 +283,20 @@ export class LabStore {
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- rebuilt by $derived, never mutated
 	spools = $derived(new Map(this.ws.spools.map((s) => [s.id, s])));
 	jobsByProject = $derived.by(() => {
-		const map = new SvelteMap<string, Job[]>();
-		for (const j of this.ws.jobs) map.set(j.projectId, [...(map.get(j.projectId) ?? []), j]);
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- rebuilt by $derived, never mutated
+		const map = new Map<string, Job[]>();
+		for (const j of this.ws.jobs) {
+			const list = map.get(j.projectId);
+			if (list) list.push(j);
+			else map.set(j.projectId, [j]);
+		}
+		return map;
+	});
+	/** Model version id → its model and version, for job cards and links. */
+	versions = $derived.by(() => {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- rebuilt by $derived, never mutated
+		const map = new Map<string, { m: ModelSummary; v: ModelVersionSummary }>();
+		for (const m of this.ws.models) for (const v of m.versions) map.set(v.id, { m, v });
 		return map;
 	});
 
@@ -304,6 +321,7 @@ export class LabStore {
 		this.source = source;
 		source.addEventListener('hello', (e) => {
 			this.online = true;
+			this.retryMs = 1000;
 			const data = JSON.parse((e as MessageEvent).data);
 			this.printer = data.printer;
 			this.sampleTemps();
@@ -311,11 +329,11 @@ export class LabStore {
 				this.tasks = data.tasks;
 				for (const t of data.tasks as TaskInfo[]) if (t.status !== 'running') this.settle(t);
 			}
-			if (data.changeId !== this.ws.changeId) void this.refresh();
+			this.announce(data.changeId);
 		});
-		source.addEventListener('change', (e) => {
-			if (JSON.parse((e as MessageEvent).data).changeId !== this.ws.changeId) void this.refresh();
-		});
+		source.addEventListener('change', (e) =>
+			this.announce(JSON.parse((e as MessageEvent).data).changeId)
+		);
 		source.addEventListener('task', (e) => this.upsertTask(JSON.parse((e as MessageEvent).data)));
 		source.addEventListener('task-removed', (e) => {
 			const { id } = JSON.parse((e as MessageEvent).data);
@@ -325,23 +343,52 @@ export class LabStore {
 			this.printer = JSON.parse((e as MessageEvent).data);
 			this.sampleTemps();
 		});
-		source.onerror = () => (this.online = false);
+		source.onerror = () => {
+			this.online = false;
+			// The browser retries dropped connections itself, but gives up for good after an HTTP error.
+			if (source.readyState === EventSource.CLOSED) {
+				this.disconnect();
+				this.retryTimer = setTimeout(() => this.connect(), this.retryMs);
+				this.retryMs = Math.min(this.retryMs * 2, 30_000);
+			}
+		};
 	}
 
 	disconnect() {
+		clearTimeout(this.retryTimer);
 		this.source?.close();
 		this.source = null;
 	}
 
+	/** The server says the workspace is at `changeId`; fetch it unless we already have it. */
+	private announce(changeId: number) {
+		this.latestSeen = Math.max(this.latestSeen, changeId);
+		// Our own write's response brings the new workspace; call() checks again when it is done.
+		if (this.saving === 0 && changeId !== this.ws.changeId) void this.refresh();
+	}
+
 	refresh(): Promise<void> {
-		this.refreshing ??= fetch('/api/workspace')
+		if (this.refreshing) return this.refreshing;
+		let fetched = -1;
+		this.refreshing = fetch('/api/workspace')
 			.then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
 			.then((ws: Workspace) => {
-				if (ws.changeId >= this.ws.changeId) this.ws = ws;
+				fetched = ws.changeId;
+				this.adopt(ws);
 			})
 			.catch(() => {})
-			.finally(() => (this.refreshing = null));
+			.finally(() => {
+				this.refreshing = null;
+				// Changes announced while this request was in flight need another look (only after a
+				// successful fetch that is still behind, so a failing server is not hammered).
+				if (fetched >= 0 && this.latestSeen > fetched) void this.refresh();
+			});
 		return this.refreshing;
+	}
+
+	/** Applies a workspace from a response, unless a newer one is already here. */
+	adopt(ws: Workspace | undefined) {
+		if (ws && ws.changeId >= this.ws.changeId) this.ws = ws;
 	}
 
 	/** Calls the API; applies the returned workspace; toasts on success or error. Returns the response body, or null on failure. */
@@ -361,7 +408,7 @@ export class LabStore {
 			const data = await response.json().catch(() => ({}));
 			if (!response.ok)
 				throw new ApiError(data.error ?? `Request failed (${response.status}).`, response.status);
-			if (data.workspace && data.workspace.changeId >= this.ws.changeId) this.ws = data.workspace;
+			this.adopt(data.workspace);
 			if (success) this.ui.toast(success);
 			return data;
 		} catch (error) {
@@ -374,6 +421,7 @@ export class LabStore {
 			return null;
 		} finally {
 			this.saving--;
+			if (this.saving === 0 && this.latestSeen > this.ws.changeId) void this.refresh();
 		}
 	}
 

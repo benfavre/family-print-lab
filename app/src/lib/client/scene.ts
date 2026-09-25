@@ -12,6 +12,8 @@ export interface Scene {
 	focus(category: string, progress?: number | null): void;
 	release(): void;
 	refreshTheme(): void;
+	/** Stops drawing while something else covers the scene (e.g. a real model on top). */
+	setPaused(paused: boolean): void;
 	destroy(): void;
 }
 
@@ -340,6 +342,7 @@ export function createScene(
 		started = performance.now(),
 		pending: ReturnType<typeof setTimeout> | undefined,
 		visible = true,
+		paused = false,
 		frameId = 0,
 		lastHud = 0,
 		destroyed = false;
@@ -527,10 +530,11 @@ export function createScene(
 		frameId = 0;
 		if (destroyed) return;
 		draw(now);
-		if (visible && !document.hidden && !reduced.matches) frameId = requestAnimationFrame(loop);
+		if (visible && !paused && !document.hidden && !reduced.matches)
+			frameId = requestAnimationFrame(loop);
 	}
 	const kick = () => {
-		if (!frameId && !destroyed) frameId = requestAnimationFrame(loop);
+		if (!frameId && !destroyed && !paused) frameId = requestAnimationFrame(loop);
 	};
 
 	const resizeObserver = new ResizeObserver(kick);
@@ -554,6 +558,13 @@ export function createScene(
 	});
 
 	const api = {
+		setPaused(on: boolean) {
+			paused = on;
+			if (on) {
+				cancelAnimationFrame(frameId);
+				frameId = 0;
+			} else kick();
+		},
 		setShape(category: string) {
 			clearTimeout(pending);
 			pending = setTimeout(() => {

@@ -237,6 +237,40 @@ describe('jobs and filament', () => {
 		expect(spool(spoolId).remainingGrams).toBe(300);
 	});
 
+	it('does not charge a print twice after the spool is weighed by hand', () => {
+		const { projectId, spoolId } = setup();
+		const id = lab.createJob({ projectId, spoolId, grams: 60, status: 'Succeeded' });
+		lab.updateSpool(spoolId, { version: spool(spoolId).version, remainingGrams: 300 });
+		// Unrelated edits and corrections keep the weighed amount as it is.
+		lab.updateJob(id, { version: job(id).version, notes: 'Nice print' });
+		lab.transitionJob(id, { to: 'Failed' });
+		expect(spool(spoolId).remainingGrams).toBe(300);
+	});
+
+	it('only allows real status moves, and refuses moves from a tab that has not caught up', () => {
+		const { projectId, spoolId } = setup();
+		const id = lab.createJob({ projectId, spoolId, grams: 30 });
+		expect(() => lab.transitionJob(id, { to: 'Succeeded' })).toThrow(/cannot become succeeded/);
+		expect(() => lab.transitionJob(id, { to: 'Queued' })).toThrow(/already queued/);
+		lab.transitionJob(id, { to: 'Printing', from: 'Queued' });
+		lab.transitionJob(id, { to: 'Succeeded' });
+		expect(spool(spoolId).remainingGrams).toBe(470);
+		// A stale tab still showing it as printing tries to cancel: refused, filament stays charged.
+		expect(() => lab.transitionJob(id, { to: 'Cancelled', from: 'Printing' })).toThrow(
+			/already succeeded/
+		);
+		expect(() => lab.transitionJob(id, { to: 'Queued' })).toThrow(/print it again/);
+		expect(spool(spoolId).remainingGrams).toBe(470);
+	});
+
+	it('numbers plates after the highest one, even after a delete', () => {
+		const { projectId } = setup();
+		const a = lab.createJob({ projectId });
+		lab.createJob({ projectId });
+		lab.deleteJob(a);
+		expect(job(lab.createJob({ projectId })).revision).toBe('v03');
+	});
+
 	it('refunds every job when a project is deleted', () => {
 		const { projectId, spoolId } = setup();
 		lab.createJob({ projectId, spoolId, grams: 50, status: 'Succeeded' });

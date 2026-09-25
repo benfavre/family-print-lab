@@ -70,6 +70,12 @@ export class ModelViewer {
 	private down: { x: number; y: number } | null = null;
 	private overhangMask: Uint8Array | null = null;
 	private stats: Analysis | null = null;
+	private positions: Float32Array | null = null;
+	private disposed = false;
+	/** Showcase: whether the canvas is on screen (no drawing while scrolled away or in a background tab). */
+	private onScreen = true;
+	private io: IntersectionObserver | null = null;
+	private onVisibility = () => this.resumeShowcase();
 	overhangs = false;
 	mode: PickMode = 'orbit';
 	wireframe = false;
@@ -131,7 +137,10 @@ export class ModelViewer {
 		geometry.computeVertexNormals();
 		geometry.computeBoundingBox();
 		this.box.copy(geometry.boundingBox!);
-		this.analyse(positions);
+		// Printability figures are worked out on first use: the header showcase never needs them.
+		this.positions = positions;
+		this.stats = null;
+		this.overhangMask = null;
 		geometry.setAttribute(
 			'color',
 			new THREE.BufferAttribute(new Float32Array(positions.length), 3)
@@ -171,6 +180,7 @@ export class ModelViewer {
 	}
 
 	analysis(): Analysis | null {
+		if (!this.stats && this.positions && this.mesh) this.analyse(this.positions);
 		return this.stats;
 	}
 
@@ -289,12 +299,36 @@ export class ModelViewer {
 		this.controls.autoRotate = options.rotate;
 		this.controls.autoRotateSpeed = 1.1;
 		this.volume.visible = false;
-		cancelAnimationFrame(this.loop);
+		this.io?.disconnect();
+		this.io = new IntersectionObserver(([entry]) => {
+			this.onScreen = entry.isIntersecting;
+			this.resumeShowcase();
+		});
+		this.io.observe(this.renderer.domElement);
+		document.addEventListener('visibilitychange', this.onVisibility);
+		this.resumeShowcase();
+	}
+
+	private lastFrame = 0;
+	/**
+	 * The showcase draws at up to 30 fps, only while on screen in a visible tab, and stops once nothing
+	 * moves (reduced motion, finished preview); a drag or new progress starts it again.
+	 */
+	private resumeShowcase() {
+		if (this.disposed || !this.showcase || this.loop) return;
 		const tick = (t: number) => {
+			this.loop = 0;
+			if (this.disposed || !this.onScreen || document.hidden) return;
 			this.loop = requestAnimationFrame(tick);
-			this.advancePrint(t);
-			this.controls.update();
+			if (t - this.lastFrame < 32) return;
+			this.lastFrame = t;
+			const printing = this.advancePrint(t);
+			const moving = this.controls.update();
 			this.renderer.render(this.scene, this.camera);
+			if (!printing && !moving && !this.controls.autoRotate) {
+				cancelAnimationFrame(this.loop);
+				this.loop = 0;
+			}
 		};
 		this.loop = requestAnimationFrame(tick);
 	}
@@ -307,6 +341,7 @@ export class ModelViewer {
 		this.printTarget = progress === null ? null : Math.max(0, Math.min(1, progress));
 		this.printStart = performance.now();
 		if (this.printTarget === null) this.printShown = 0;
+		this.resumeShowcase();
 	}
 
 	/** Shows where a cut will happen (model coordinates), or hides it. */
@@ -522,12 +557,24 @@ export class ModelViewer {
 	}
 
 	dispose() {
+		this.disposed = true;
 		cancelAnimationFrame(this.frame);
 		cancelAnimationFrame(this.loop);
 		this.observer.disconnect();
+		this.io?.disconnect();
+		document.removeEventListener('visibilitychange', this.onVisibility);
 		this.controls.dispose();
 		this.clearPart();
+		// Free every GPU resource and the context itself: browsers allow only ~16 live WebGL contexts.
+		this.scene.traverse((obj) => {
+			const o = obj as THREE.Mesh;
+			o.geometry?.dispose();
+			const m = o.material as THREE.Material | THREE.Material[] | undefined;
+			for (const mat of Array.isArray(m) ? m : m ? [m] : []) mat.dispose();
+		});
+		for (const mat of [this.material, this.capMaterial, this.edgeMaterial]) mat.dispose();
 		this.renderer.dispose();
+		this.renderer.forceContextLoss();
 		this.renderer.domElement.remove();
 	}
 
@@ -544,9 +591,9 @@ export class ModelViewer {
 	private lastLayer = -1;
 	private volume = new THREE.Group();
 
-	/** One animation step of the print preview (showcase only). */
-	private advancePrint(now: number) {
-		if (!this.mesh) return;
+	/** One animation step of the print preview (showcase only); true while it is still changing. */
+	private advancePrint(now: number): boolean {
+		if (!this.mesh) return false;
 		const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 		let p: number;
 		if (this.printTarget !== null) {
@@ -567,6 +614,8 @@ export class ModelViewer {
 			this.lastLayer = layer;
 			this.onLayer?.(layer, total);
 		}
+		if (this.printTarget !== null) return Math.abs(this.printTarget - this.printShown) > 0.001;
+		return !reduced;
 	}
 	private accent = new THREE.Color('#8eeaff');
 	private warn = new THREE.Color('#ff6b7a');
@@ -621,6 +670,7 @@ export class ModelViewer {
 		this.material.vertexColors = this.overhangs && !!color;
 		this.material.color.set(this.overhangs ? 0xffffff : this.accent);
 		this.material.needsUpdate = true;
+		if (this.overhangs && !this.overhangMask) this.analysis();
 		if (!color || !this.overhangMask || !this.overhangs) return;
 		const arr = color.array as Float32Array;
 		for (let i = 0; i < this.overhangMask.length; i++) {
@@ -636,10 +686,13 @@ export class ModelViewer {
 	private pending = false;
 
 	private render() {
-		if (this.pending || this.showcase) return;
+		if (this.disposed) return;
+		if (this.showcase) return this.resumeShowcase();
+		if (this.pending) return;
 		this.pending = true;
 		requestAnimationFrame(() => {
 			this.pending = false;
+			if (this.disposed) return;
 			// Damping keeps the controls moving for a few frames after a drag.
 			if (this.controls.update()) this.render();
 			this.renderer.render(this.scene, this.camera);

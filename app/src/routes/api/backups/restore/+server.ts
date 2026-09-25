@@ -14,6 +14,7 @@ export const POST = api(async ({ request }, rt) => {
 	const { file } = parse(body, await readJson(request));
 	const result = await rt.backups.restore(file);
 	rt.models.sweep();
+	rt.printing.sweep();
 	rt.lab.touch('import', `Workspace restored from the backup of ${file.slice(9, 19)}`);
 	return { restored: result };
 });

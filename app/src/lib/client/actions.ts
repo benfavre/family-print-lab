@@ -69,6 +69,7 @@ export function actions({ lab, ui }: AppContext) {
 				to === 'Printing' && lab.ws.jobs.some((j) => j.status === 'Printing' && j.id !== job.id);
 			const res = await lab.call<{ autoDone?: boolean }>('POST', `/api/jobs/${job.id}/transition`, {
 				to,
+				from: job.status,
 				...link
 			});
 			if (!res) return;
@@ -158,7 +159,7 @@ export function actions({ lab, ui }: AppContext) {
 				);
 				const data = await r.json().catch(() => ({}));
 				if (!r.ok) throw new Error(data.error ?? `Upload failed (${r.status}).`);
-				if (data.workspace) lab.ws = data.workspace;
+				lab.adopt(data.workspace);
 				const plate = data.sliced.plates.find(
 					(p: { index: number }) => p.index === data.sliced.plate
 				);
@@ -230,7 +231,7 @@ export function actions({ lab, ui }: AppContext) {
 				});
 				const data = await r.json().catch(() => ({}));
 				if (!r.ok) throw new Error(data.error ?? `Upload failed (${r.status}).`);
-				if (data.workspace) lab.ws = data.workspace;
+				lab.adopt(data.workspace);
 				ui.toast(`Imported “${name}”.`);
 				// eslint-disable-next-line svelte/no-navigation-without-resolve -- modelHref() is built with resolve()
 				if (open) await goto(modelHref(projectId, data.id));

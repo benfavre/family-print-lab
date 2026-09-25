@@ -85,6 +85,56 @@ export function parseObj(text: string): Soup {
 
 // ---------- ZIP (for 3MF) ----------
 
+interface ZipEntry {
+	name: string;
+	method: number;
+	crc: number;
+	size: number;
+	/** The entry's stored (usually deflated) bytes. */
+	raw: Buffer;
+}
+
+const MAX_ENTRIES = 10_000;
+
+/** Lists a zip's entries without unpacking them; friendly errors for broken or unsupported files. */
+function zipEntries(buf: Buffer): ZipEntry[] {
+	const bad = (why = 'That file is not a valid 3MF (zip) archive.') => new AppError(400, why);
+	let eocd = -1;
+	for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65_557); i--)
+		if (buf.readUInt32LE(i) === 0x06054b50) {
+			eocd = i;
+			break;
+		}
+	if (eocd < 0) throw bad();
+	const count = buf.readUInt16LE(eocd + 10);
+	let p = buf.readUInt32LE(eocd + 16);
+	if (count === 0xffff || p === 0xffffffff)
+		throw bad('That archive uses the ZIP64 format, which is not supported here.');
+	if (count > MAX_ENTRIES) throw bad('That archive has too many files in it.');
+	const entries: ZipEntry[] = [];
+	for (let i = 0; i < count; i++) {
+		if (p + 46 > buf.length || buf.readUInt32LE(p) !== 0x02014b50)
+			throw bad('Corrupt 3MF archive.');
+		const method = buf.readUInt16LE(p + 10),
+			crc = buf.readUInt32LE(p + 16),
+			packed = buf.readUInt32LE(p + 20),
+			size = buf.readUInt32LE(p + 24),
+			nameLen = buf.readUInt16LE(p + 28),
+			extraLen = buf.readUInt16LE(p + 30),
+			commentLen = buf.readUInt16LE(p + 32),
+			local = buf.readUInt32LE(p + 42);
+		if (packed === 0xffffffff || size === 0xffffffff || local === 0xffffffff)
+			throw bad('That archive uses the ZIP64 format, which is not supported here.');
+		const name = buf.subarray(p + 46, p + 46 + nameLen).toString('utf8');
+		if (local + 30 > buf.length) throw bad('Corrupt 3MF archive.');
+		const dataStart = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
+		if (dataStart + packed > buf.length) throw bad('Corrupt 3MF archive.');
+		entries.push({ name, method, crc, size, raw: buf.subarray(dataStart, dataStart + packed) });
+		p += 46 + nameLen + extraLen + commentLen;
+	}
+	return entries;
+}
+
 /**
  * Reads the entries of a zip whose names match `want` (3MF meshes by default). `head` entries are only
  * partly inflated (their first bytes), for peeking at large files such as G-code.
@@ -93,88 +143,85 @@ export function readZip(
 	buf: Buffer,
 	want: (name: string) => 'all' | 'head' | false = (n) => (/\.model$/i.test(n) ? 'all' : false)
 ): Map<string, Buffer> {
-	let eocd = -1;
-	for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65_557); i--)
-		if (buf.readUInt32LE(i) === 0x06054b50) {
-			eocd = i;
-			break;
-		}
-	if (eocd < 0) throw new AppError(400, 'That file is not a valid 3MF (zip) archive.');
-	const count = buf.readUInt16LE(eocd + 10);
-	let p = buf.readUInt32LE(eocd + 16);
 	const files = new Map<string, Buffer>();
-	for (let i = 0; i < count; i++) {
-		if (buf.readUInt32LE(p) !== 0x02014b50) throw new AppError(400, 'Corrupt 3MF archive.');
-		const method = buf.readUInt16LE(p + 10),
-			size = buf.readUInt32LE(p + 20),
-			nameLen = buf.readUInt16LE(p + 28),
-			extraLen = buf.readUInt16LE(p + 30),
-			commentLen = buf.readUInt16LE(p + 32),
-			local = buf.readUInt32LE(p + 42);
-		const name = buf.subarray(p + 46, p + 46 + nameLen).toString('utf8');
-		const dataStart = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
-		const raw = buf.subarray(dataStart, dataStart + size);
-		const mode = want(name);
-		if (mode === 'head') {
+	for (const e of zipEntries(buf)) {
+		const mode = want(e.name);
+		if (!mode || (e.method !== 0 && e.method !== 8)) continue;
+		if (mode === 'head')
 			files.set(
-				name,
-				method === 0
-					? raw.subarray(0, 16_384)
-					: zlib.inflateRawSync(raw.subarray(0, 16_384), {
-							finishFlush: zlib.constants.Z_SYNC_FLUSH
+				e.name,
+				e.method === 0
+					? e.raw.subarray(0, 16_384)
+					: zlib.inflateRawSync(e.raw.subarray(0, 16_384), {
+							finishFlush: zlib.constants.Z_SYNC_FLUSH,
+							maxOutputLength: 1 << 20
 						})
 			);
-		} else if (mode) {
-			if (method === 0) files.set(name, raw);
-			else if (method === 8)
-				files.set(name, zlib.inflateRawSync(raw, { maxOutputLength: 512 * 1024 * 1024 }));
-		}
-		p += 46 + nameLen + extraLen + commentLen;
+		else
+			files.set(
+				e.name,
+				e.method === 0 ? e.raw : zlib.inflateRawSync(e.raw, { maxOutputLength: 512 * 1024 * 1024 })
+			);
 	}
 	return files;
 }
 
-const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
-	let c = n;
-	for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-	return c >>> 0;
-});
-function crc32(buf: Buffer) {
-	let c = 0xffffffff;
-	for (const b of buf) c = CRC_TABLE[(c ^ b) & 0xff] ^ (c >>> 8);
-	return (c ^ 0xffffffff) >>> 0;
-}
-
 /** Deflated zip, enough for a 3MF container. */
 export function writeZip(entries: [string, Buffer][]): Buffer {
+	return packZip(
+		entries.map(([name, data]) => ({
+			name,
+			method: 8,
+			crc: zlib.crc32(data),
+			size: data.length,
+			raw: zlib.deflateRawSync(data)
+		}))
+	);
+}
+
+/**
+ * Rewrites a zip with some entries replaced or added, copying every other entry's compressed bytes
+ * as they are (no re-compressing large G-code).
+ */
+export function rewriteZip(buf: Buffer, changes: Map<string, Buffer>): Buffer {
+	const kept = zipEntries(buf).filter((e) => !changes.has(e.name));
+	const added = [...changes].map(([name, data]) => ({
+		name,
+		method: 8,
+		crc: zlib.crc32(data),
+		size: data.length,
+		raw: zlib.deflateRawSync(data)
+	}));
+	return packZip([...kept, ...added]);
+}
+
+function packZip(entries: ZipEntry[]): Buffer {
 	const chunks: Buffer[] = [],
 		central: Buffer[] = [];
 	let offset = 0;
-	for (const [name, data] of entries) {
-		const nameBuf = Buffer.from(name, 'utf8'),
-			packed = zlib.deflateRawSync(data),
-			crc = crc32(data);
+	for (const e of entries) {
+		const nameBuf = Buffer.from(e.name, 'utf8');
 		const local = Buffer.alloc(30);
 		local.writeUInt32LE(0x04034b50, 0);
 		local.writeUInt16LE(20, 4);
-		local.writeUInt16LE(8, 8);
-		local.writeUInt32LE(crc, 14);
-		local.writeUInt32LE(packed.length, 18);
-		local.writeUInt32LE(data.length, 22);
+		local.writeUInt16LE(e.method, 8);
+		local.writeUInt32LE(e.crc, 14);
+		local.writeUInt32LE(e.raw.length, 18);
+		local.writeUInt32LE(e.size, 22);
 		local.writeUInt16LE(nameBuf.length, 26);
 		const dir = Buffer.alloc(46);
 		dir.writeUInt32LE(0x02014b50, 0);
 		dir.writeUInt16LE(20, 4);
 		dir.writeUInt16LE(20, 6);
-		dir.writeUInt16LE(8, 10);
-		dir.writeUInt32LE(crc, 16);
-		dir.writeUInt32LE(packed.length, 20);
-		dir.writeUInt32LE(data.length, 24);
+		dir.writeUInt16LE(e.method, 10);
+		dir.writeUInt32LE(e.crc, 16);
+		dir.writeUInt32LE(e.raw.length, 20);
+		dir.writeUInt32LE(e.size, 24);
 		dir.writeUInt16LE(nameBuf.length, 28);
 		dir.writeUInt32LE(offset, 42);
-		chunks.push(local, nameBuf, packed);
+		chunks.push(local, nameBuf, e.raw);
 		central.push(dir, nameBuf);
-		offset += 30 + nameBuf.length + packed.length;
+		offset += 30 + nameBuf.length + e.raw.length;
 	}
 	const dirBuf = Buffer.concat(central);
 	const end = Buffer.alloc(22);

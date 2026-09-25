@@ -45,7 +45,7 @@ export class PrintFiles {
 		if (job.status !== 'Queued') throw new AppError(409, 'Only a queued job can be sliced.');
 		if (!job.modelVersionId)
 			throw new AppError(409, 'Link the job to a model version first (Model in the job editor).');
-		const ws = this.lab.snapshot();
+		const ws = this.lab.snapshot(); // needs models and spools; slicing is rare
 		const model = ws.models.find((m) => m.versions.some((v) => v.id === job.modelVersionId));
 		const version = model?.versions.find((v) => v.id === job.modelVersionId);
 		if (!model || !version) throw new AppError(404, 'That model version no longer exists.');
@@ -87,8 +87,11 @@ export class PrintFiles {
 		);
 	}
 
+	/** One send at a time: the printer can only take one print. */
+	private sending = false;
+
 	private job(id: string): Job {
-		const job = this.lab.snapshot().jobs.find((j) => j.id === id);
+		const job = this.lab.getJob(id);
 		if (!job) throw new AppError(404, 'That print job no longer exists.');
 		return job;
 	}
@@ -168,6 +171,7 @@ export class PrintFiles {
 			warnings: string[] = [];
 		const status = this.printer?.status();
 		if (!this.printer) blocking.push('No printer is set up yet.');
+		else if (this.sending) blocking.push('Another print is being sent right now.');
 		else if (!status?.connected) blocking.push('The printer is not connected.');
 		else if (status.state && ACTIVE_PRINTER_STATES.has(status.state.gcodeState))
 			blocking.push('The printer is busy with another print.');
@@ -203,14 +207,14 @@ export class PrintFiles {
 		const job = this.job(jobId);
 		const sliced = job.sliced!;
 		const plate = sliced.plates.find((p) => p.index === (opts.plate ?? sliced.plate))!;
-		const project = this.lab.snapshot().projects.find((p) => p.id === job.projectId);
 		// The printer shows and reports this name; it links the running print back to this job.
-		const title = `${project?.title ?? 'Print'} ${job.revision}`
+		const title = `${this.lab.projectTitle(job.projectId) ?? 'Print'} ${job.revision}`
 			.replace(/[^\w .()+-]/g, '')
 			.trim()
 			.slice(0, 60);
 		const remoteName = `${title.replace(/\s+/g, '_').slice(0, 50) || 'print'}.gcode.3mf`;
-		const printer = this.printer!;
+		const sendingFile = sliced.file;
+		this.sending = true;
 		return this.tasks.start(
 			{
 				kind: 'print-send',
@@ -219,35 +223,64 @@ export class PrintFiles {
 				stage: 'Uploading to the printer…'
 			},
 			async (ctx) => {
-				const data = fs.readFileSync(this.file(sliced.file));
-				let last = -1;
-				await printer.upload(remoteName, data, (f) => {
-					const pct = Math.floor(f * 100);
-					if (pct >= last + 5) {
-						last = pct;
-						ctx.stage(`Uploading to the printer… ${pct} %`);
-					}
-				});
-				if (ctx.signal.aborted) throw new Error('Stopped');
-				ctx.stage('Starting the print…');
-				this.lab.transitionJob(jobId, { to: 'Printing', printerTask: title });
 				try {
-					const outcome = await printer.startPrint({
-						file: remoteName,
-						plate: plate.index,
-						title,
-						md5: plate.md5,
-						useAms: opts.useAms,
-						amsMapping: opts.useAms ? opts.amsMapping : [],
-						bedLeveling: opts.bedLeveling ?? true,
-						timelapse: opts.timelapse ?? false
-					});
-					return outcome;
-				} catch (error) {
-					this.lab.transitionJob(jobId, { to: 'Queued', printerTask: '' });
-					throw error;
+					return await this.deliver(ctx, jobId, sendingFile, remoteName, title, plate, opts);
+				} finally {
+					this.sending = false;
 				}
 			}
 		);
+	}
+
+	private async deliver(
+		ctx: { signal: AbortSignal; stage(text: string): void },
+		jobId: string,
+		file: string,
+		remoteName: string,
+		title: string,
+		plate: SlicedInfo['plates'][number],
+		opts: SendOptions
+	) {
+		const printer = this.printer!;
+		const data = fs.readFileSync(this.file(file));
+		let last = -1;
+		await printer.upload(
+			remoteName,
+			data,
+			(f) => {
+				const pct = Math.floor(f * 100);
+				if (pct >= last + 5) {
+					last = pct;
+					ctx.stage(`Uploading to the printer… ${pct} %`);
+				}
+			},
+			ctx.signal
+		);
+		if (ctx.signal.aborted) throw new Error('Stopped');
+		// Changed while uploading (cancelled, another file attached)? Then do not start it.
+		const now = this.lab.getJob(jobId);
+		if (!now || now.status !== 'Queued' || now.sliced?.file !== file)
+			throw new Error('The job changed while it was being sent; nothing was started.');
+		ctx.stage('Starting the print…');
+		this.lab.transitionJob(jobId, { to: 'Printing', printerTask: title, from: 'Queued' });
+		try {
+			const outcome = await printer.startPrint({
+				file: remoteName,
+				plate: plate.index,
+				title,
+				md5: plate.md5,
+				useAms: opts.useAms,
+				amsMapping: opts.useAms ? opts.amsMapping : [],
+				bedLeveling: opts.bedLeveling ?? true,
+				timelapse: opts.timelapse ?? false
+			});
+			return outcome;
+		} catch (error) {
+			// Only put it back if it is still this print (the printer may have reported in since).
+			const after = this.lab.getJob(jobId);
+			if (after?.status === 'Printing' && after.printerTask === title)
+				this.lab.transitionJob(jobId, { to: 'Queued', printerTask: '', from: 'Printing' });
+			throw error;
+		}
 	}
 }

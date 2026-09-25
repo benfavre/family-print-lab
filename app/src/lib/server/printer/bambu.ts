@@ -22,6 +22,8 @@ const color = (hex: unknown) =>
 
 function merge(target: Raw, patch: Raw) {
 	for (const [key, value] of Object.entries(patch ?? {})) {
+		// Reports come off the network: never let them reach object prototypes.
+		if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
 		const current = target[key];
 		if (
 			value &&
@@ -131,6 +133,8 @@ export class BambuPrinter extends EventEmitter {
 
 	constructor(readonly config: PrinterConfig) {
 		super();
+		// One listener per open tab (live events) plus in-flight commands.
+		this.setMaxListeners(200);
 	}
 
 	get name() {
@@ -214,7 +218,11 @@ export class BambuPrinter extends EventEmitter {
 			this.lastState = state;
 			if (ACTIVE_PRINTER_STATES.has(state) && !ACTIVE_PRINTER_STATES.has(from))
 				this.emit('started', { task });
-			if ((state === 'FINISH' || state === 'FAILED') && ACTIVE_PRINTER_STATES.has(from))
+			// A print ends as FINISH or FAILED; stopping one can also drop straight back to IDLE.
+			if (
+				(state === 'FINISH' || state === 'FAILED' || state === 'IDLE') &&
+				ACTIVE_PRINTER_STATES.has(from)
+			)
 				this.emit('finished', { task: this.lastTask || task, ok: state === 'FINISH' });
 		}
 		if (task) this.lastTask = task;
@@ -250,12 +258,16 @@ export class BambuPrinter extends EventEmitter {
 		const sequence = String(++this.sequence);
 		const command = String(print.command);
 		return new Promise((resolve, reject) => {
+			const client = this.client!;
 			const finish = (fn: () => void) => {
 				clearTimeout(timer);
 				this.off('reply', onReply);
 				this.off('update', onUpdate);
+				client.off('close', onClose);
 				fn();
 			};
+			const onClose = () =>
+				finish(() => reject(new Error('The printer disconnected before answering.')));
 			const onReply = (r: CommandReply & { sequence: string }) => {
 				if (r.command !== command || (r.sequence && r.sequence !== sequence)) return;
 				if (r.result && r.result !== 'success' && r.result !== 'ok')
@@ -269,6 +281,7 @@ export class BambuPrinter extends EventEmitter {
 			const timer = setTimeout(() => finish(() => resolve('sent')), timeoutMs);
 			this.on('reply', onReply);
 			this.on('update', onUpdate);
+			client.once('close', onClose);
 			this.client!.publish(`device/${this.config.serial}/request`, {
 				print: { sequence_id: sequence, ...print }
 			});
@@ -276,13 +289,19 @@ export class BambuPrinter extends EventEmitter {
 	}
 
 	/** Uploads a sliced file to the printer's storage, reporting progress from 0 to 1. */
-	async upload(name: string, data: Buffer, onProgress?: (fraction: number) => void) {
+	async upload(
+		name: string,
+		data: Buffer,
+		onProgress?: (fraction: number) => void,
+		signal?: AbortSignal
+	) {
 		const { host, accessCode, useTls = true } = this.config;
 		return uploadFile(
 			{ host, password: accessCode, useTls, port: this.config.ftpPort ?? (useTls ? 990 : 21) },
 			name,
 			data,
-			onProgress
+			onProgress,
+			signal
 		);
 	}
 

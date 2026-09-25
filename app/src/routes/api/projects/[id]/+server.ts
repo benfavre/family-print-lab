@@ -6,5 +6,6 @@ export const PATCH = api(async ({ request, params }, rt) =>
 export const DELETE = api(({ params }, rt) => {
 	const result = rt.lab.deleteProject(params.id!);
 	rt.models.sweep();
+	rt.printing.sweep();
 	return result;
 });
