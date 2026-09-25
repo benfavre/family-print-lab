@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+		<meta
+			name="description"
+			content="Your family's 3D printing ideas, print jobs, filament and printer in one place."
+		/>
+		<meta name="theme-color" content="#080a0f" />
+		<meta name="color-scheme" content="dark light" />
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+		<meta name="apple-mobile-web-app-title" content="Print Lab" />
+		<link rel="icon" href="%sveltekit.assets%/favicon.svg" />
+		<link rel="apple-touch-icon" href="%sveltekit.assets%/apple-touch-icon.png" />
+		<link rel="manifest" href="%sveltekit.assets%/manifest.webmanifest" />
+		<link
+			rel="preload"
+			href="%sveltekit.assets%/fonts/Geist-Variable.woff2"
+			as="font"
+			type="font/woff2"
+			crossorigin
+		/>
+		<script nonce="%sveltekit.nonce%">
+			// Apply the saved color theme before first paint. "auto" follows the system light/dark setting.
+			(() => {
+				let saved = 'auto';
+				try {
+					saved = localStorage.getItem('print-lab-theme') || 'auto';
+				} catch {}
+				const light = matchMedia('(prefers-color-scheme: light)').matches;
+				document.documentElement.dataset.theme =
+					saved === 'auto' ? (light ? 'arctic' : 'holo') : saved;
+				document.documentElement.dataset.themeChoice = saved;
+			})();
+		</script>
+		%sveltekit.head%
+	</head>
+	<body data-sveltekit-preload-data="hover">
+		<div class="app-root">%sveltekit.body%</div>
+	</body>
+</html>

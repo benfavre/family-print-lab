@@ -1,0 +1,26 @@
+# Local secrets and device access details
+.env
+.env.*
+!.env.example
+secrets/
+private/
+*.pem
+*.key
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Local family app data
+app/data/
+app/node_modules/
+
+# Archived previous app: local data and dependencies
+archive/app-legacy/data/
+archive/app-legacy/node_modules/
+
+# Tokens and one-off security work stay out of history
+*.token
+security-review-*/
