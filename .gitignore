@@ -17,10 +17,10 @@ Thumbs.db
 app/data/
 app/node_modules/
 
-# Archived previous app: local data and dependencies
-archive/app-legacy/data/
-archive/app-legacy/node_modules/
-
 # Tokens and one-off security work stay out of history
 *.token
 security-review-*/
+
+# Python bytecode (Blender scripts)
+__pycache__/
+*.pyc

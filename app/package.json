@@ -2,6 +2,8 @@
 	"name": "family-print-lab",
 	"private": true,
 	"version": "2.0.0",
+	"description": "Family Print Lab: plan, print and track family 3D-printing projects on a Bambu Lab printer.",
+	"license": "AGPL-3.0-or-later",
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
@@ -67,6 +69,5 @@
 	},
 	"engines": {
 		"node": ">=24"
-	},
-	"description": "Family Print Lab: plan, print and track family 3D-printing projects on a Bambu Lab printer."
+	}
 }
