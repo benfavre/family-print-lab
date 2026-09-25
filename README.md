@@ -12,7 +12,13 @@ A self-hosted workshop for a household's 3D printing: collect ideas for each per
 - **AI help (optional).** Uses your own Claude or ChatGPT subscription through the official Claude Code or Codex CLIs, or an Anthropic API key. It can design OpenSCAD models from a description or sketch, diagnose failed prints, suggest slicer settings, and help with writing.
 - **Safe with your data.** Automatic daily backups, JSON export and import, and live sync across open tabs.
 
-## Quick start
+## Download
+
+Get the desktop app for Windows, macOS or Linux from the [latest release](https://github.com/benfavre/family-print-lab/releases/latest). It keeps itself up to date. Your data stays on your computer, in the app's own folder (File → Open data folder), and printer or AI settings go in File → Printer and AI settings.
+
+The installers are not code-signed yet: Windows may show a SmartScreen warning (More info → Run anyway), and on macOS open the app with right-click → Open the first time. Automatic updates on macOS need signing, so Mac users download new versions by hand for now.
+
+## Run from source
 
 Requires Node.js 24. Developed and tested on Linux.
 

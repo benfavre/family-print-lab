@@ -1,0 +1,36 @@
+name: Desktop release
+
+# Push a tag like v2.1.0 (matching desktop/package.json) to build the installers and publish them as a
+# GitHub Release. The desktop app updates itself from these releases.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: app/.nvmrc
+      - name: Tag matches the desktop version
+        shell: bash
+        run: test "v$(node -p "require('./desktop/package.json').version")" = "${GITHUB_REF_NAME}"
+      - run: npm ci
+        working-directory: app
+      - run: npm ci
+        working-directory: desktop
+      - run: npm run release
+        working-directory: desktop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Unsigned for now: no Apple/Windows code-signing certificates yet.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'

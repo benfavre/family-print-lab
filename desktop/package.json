@@ -1,0 +1,90 @@
+{
+	"name": "family-print-lab",
+	"productName": "Family Print Lab",
+	"version": "2.1.0",
+	"description": "Plan, design, print and track your family’s 3D-printing projects.",
+	"author": {
+		"name": "Webdesign29",
+		"email": "contact@webdesign29.net"
+	},
+	"homepage": "https://github.com/benfavre/family-print-lab",
+	"license": "AGPL-3.0-or-later",
+	"private": true,
+	"main": "main.cjs",
+	"scripts": {
+		"postinstall": "electron-builder install-app-deps",
+		"prepare-server": "node scripts/prepare-server.mjs",
+		"start": "npm run prepare-server && electron .",
+		"dist": "npm run prepare-server && electron-builder --publish never",
+		"release": "npm run prepare-server && electron-builder --publish always"
+	},
+	"dependencies": {
+		"@anthropic-ai/sdk": "^0.128.0",
+		"@lezer/highlight": "^1.2.4",
+		"better-sqlite3": "^13.0.2",
+		"electron-updater": "^6.8.9",
+		"manifold-3d": "^3.5.4",
+		"openscad-wasm-prebuilt": "^1.2.0",
+		"three": "^0.186.1",
+		"zod": "^4.6.5"
+	},
+	"devDependencies": {
+		"electron": "^44.4.5",
+		"electron-builder": "^26.15.3"
+	},
+	"build": {
+		"appId": "net.webdesign29.familyprintlab",
+		"productName": "Family Print Lab",
+		"copyright": "© Webdesign29, AGPL-3.0-or-later",
+		"asar": false,
+		"directories": {
+			"output": "release",
+			"buildResources": "build-resources"
+		},
+		"files": [
+			"main.cjs",
+			"package.json",
+			"server/**/*",
+			"!node_modules/sharp/**",
+			"!node_modules/@img/**",
+			"!node_modules/ndarray-pixels/**"
+		],
+		"linux": {
+			"target": [
+				"AppImage",
+				"deb"
+			],
+			"category": "Graphics",
+			"maintainer": "Webdesign29 <contact@webdesign29.net>",
+			"synopsis": "Family 3D-printing projects",
+			"executableName": "family-print-lab",
+			"syncDesktopName": true
+		},
+		"win": {
+			"target": [
+				"nsis"
+			]
+		},
+		"nsis": {
+			"oneClick": true,
+			"perMachine": false
+		},
+		"mac": {
+			"target": [
+				"dmg",
+				"zip"
+			],
+			"category": "public.app-category.graphics-design"
+		},
+		"publish": [
+			{
+				"provider": "github",
+				"owner": "benfavre",
+				"repo": "family-print-lab",
+				"releaseType": "release"
+			}
+		],
+		"afterPack": "scripts/after-pack.cjs"
+	},
+	"desktopName": "family-print-lab.desktop"
+}
