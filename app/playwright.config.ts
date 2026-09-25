@@ -8,8 +8,6 @@ export default defineConfig({
 	testMatch: '**/*.e2e.ts',
 	fullyParallel: false,
 	workers: 1,
-	// The printer simulator's timing can be slow on shared CI machines; retry once there only.
-	retries: process.env.CI ? 1 : 0,
 	timeout: 60_000,
 	reporter: [['list']],
 	use: {

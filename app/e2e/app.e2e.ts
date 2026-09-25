@@ -201,6 +201,8 @@ test('a sliced file is attached, sent to the printer, printed and closed automat
 	const send = page.getByRole('dialog', { name: /^Print / });
 	await expect(send).toContainText('is ready');
 	await expect(send.getByLabel('AMS slot for filament 1')).toHaveValue('0');
+	// A calmer pace, so the print is still running when we pause it.
+	await page.request.post(`${SIM}/api/speed`, { data: { speed: 20 } });
 	await send.getByRole('button', { name: 'Send and start printing' }).click();
 	await expect
 		.poll(
@@ -215,10 +217,17 @@ test('a sliced file is attached, sent to the printer, printed and closed automat
 		'Linked to this job',
 		{ timeout: 20_000 }
 	);
-	// It pauses and resumes from the app.
+	// It pauses and resumes from the app. The printer only pauses once it is actually printing
+	// (not while heating and homing), so wait for that first.
+	await expect
+		.poll(async () => (await (await page.request.get('/api/printer')).json()).state?.gcodeState, {
+			timeout: 30_000
+		})
+		.toBe('RUNNING');
 	await page.getByRole('button', { name: '❚❚ Pause' }).click();
 	await expect(page.getByRole('button', { name: '▶ Resume' })).toBeVisible({ timeout: 10_000 });
 	await page.getByRole('button', { name: '▶ Resume' }).click();
+	await page.request.post(`${SIM}/api/speed`, { data: { speed: 300 } });
 	await expect
 		.poll(
 			async () => (await workspace(page)).jobs.find((j: { id: string }) => j.id === job.id).status,
@@ -227,6 +236,7 @@ test('a sliced file is attached, sent to the printer, printed and closed automat
 			}
 		)
 		.toBe('Succeeded');
+	await page.request.post(`${SIM}/api/speed`, { data: { speed: 120 } }); // the suite's usual pace
 });
 
 test('the command palette navigates and the backup exports', async ({ page }) => {
