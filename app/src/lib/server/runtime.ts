@@ -135,7 +135,9 @@ function boot(): Runtime {
 	);
 
 	// Print Lab Cloud is optional and does nothing until someone links this computer.
-	const cloud = env.CLOUD_URL ? new CloudLink(db, lab, models, env.CLOUD_URL, appVersion) : null;
+	const cloud = env.CLOUD_URL
+		? new CloudLink(db, lab, models, env.CLOUD_URL, appVersion, undefined, printer)
+		: null;
 	cloud?.start();
 
 	return {

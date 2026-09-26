@@ -10,7 +10,9 @@ import type { KidProfile } from '../kid/session';
 import { makeThing } from '../kid/things';
 import type { Runtime } from '../runtime';
 import { startCloudSim, type CloudSim } from '../../../../tools/cloud-sim';
-import { CloudLink } from './link';
+import { EventEmitter } from 'node:events';
+import type { PrinterStatus } from '$lib/shared/domain';
+import { CloudLink, summarizePrinter } from './link';
 
 let db: DB, lab: Lab, models: ModelStore, sim: CloudSim, links: CloudLink[];
 beforeEach(async () => {
@@ -26,8 +28,33 @@ afterEach(async () => {
 	await sim.close();
 });
 
+/** A stand-in printer: set `status` and call `update()`. */
+class FakePrinter extends EventEmitter {
+	status: () => PrinterStatus = () => ({ configured: true, connected: true, state: null });
+	update() {
+		this.emit('update');
+	}
+}
+let printer: FakePrinter;
+const printing = (gcodeState: string, percent: number) => () =>
+	({
+		configured: true,
+		connected: true,
+		state: {
+			gcodeState,
+			percent,
+			remainingMinutes: 12,
+			layer: 40,
+			totalLayers: 90,
+			task: 'Name sign',
+			nozzle: 220,
+			bed: 60
+		}
+	}) as unknown as PrinterStatus;
+
 const newLink = () => {
-	const l = new CloudLink(db, lab, models, sim.url, '2.0.0');
+	printer = new FakePrinter();
+	const l = new CloudLink(db, lab, models, sim.url, '2.0.0', undefined, printer);
 	links.push(l);
 	return l;
 };
@@ -168,5 +195,57 @@ describe('Print Lab Cloud link', () => {
 		await expect(
 			new CloudLink(db, lab, models, 'http://127.0.0.1:9', '2.0.0').link()
 		).rejects.toThrow(/Cannot reach Print Lab Cloud/);
+	});
+
+	it('shares print progress only when switched on, with only what the phone shows', async () => {
+		const link = await linked();
+		printer.status = printing('RUNNING', 40);
+		printer.update();
+		await new Promise((r) => setTimeout(r, 100));
+		expect(sim.state().printerMessages).toBe(0); // off by default: nothing sent
+
+		link.setShareProgress(true);
+		await until(() => sim.state().printer, 'printer');
+		expect(sim.state().printer).toEqual({
+			state: 'printing',
+			title: 'Name sign',
+			percent: 40,
+			remainingMinutes: 12,
+			layer: 40,
+			totalLayers: 90
+		});
+		// Progress within 30 s waits; a new state goes at once.
+		const before = sim.state().printerMessages;
+		printer.status = printing('RUNNING', 41);
+		printer.update();
+		await new Promise((r) => setTimeout(r, 100));
+		expect(sim.state().printerMessages).toBe(before);
+		printer.status = printing('FINISH', 100);
+		printer.update();
+		await until(
+			() => (sim.state().printer as { state?: string })?.state === 'finished',
+			'finished'
+		);
+		expect(sim.state().printer).toMatchObject({ title: 'Name sign', percent: null });
+
+		link.setShareProgress(false);
+		await until(() => sim.state().printer === null, 'cleared');
+		expect(link.status().shareProgress).toBe(false);
+	});
+
+	it('summarizes the printer without temperatures, trays or errors', () => {
+		expect(summarizePrinter({ configured: false })).toBeNull();
+		expect(summarizePrinter({ configured: true, connected: false })).toMatchObject({
+			state: 'offline',
+			title: ''
+		});
+		expect(Object.keys(summarizePrinter(printing('PREPARE', 0)())!)).toEqual([
+			'state',
+			'title',
+			'percent',
+			'remainingMinutes',
+			'layer',
+			'totalLayers'
+		]);
 	});
 });

@@ -15,8 +15,9 @@ used by the tests.
   print request. It cannot read the workspace, start, pause or stop prints, or change anything
   else. The app checks every command through the same code path as the Family page (including the
   request's version), and logs it.
-- **Minimal data.** Only print requests are shared (see `RequestSummary`). Models, sketches, the
-  printer, spools, ages and everything else stay on the computer.
+- **Minimal data.** Only print requests are shared (see `RequestSummary`), plus, only when a parent
+  turns on "Share print progress", the printer's progress (see `PrinterSummary`). Models, sketches,
+  temperatures, spools, ages and everything else stay on the computer.
 
 ## Linking (device authorization)
 
@@ -50,11 +51,12 @@ the cloud side. The app forgets its token whatever the answer (it may be offline
 
 App → cloud:
 
-| Message                                                                                                                 | When                                                                                                                                                                    |
-| ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `{"type": "hello", "app": "2.0.0", "protocol": 1}`                                                                      | First message after connecting                                                                                                                                          |
-| `{"type": "requests", "requests": RequestSummary[]}`                                                                    | After `welcome`, and whenever requests change. Always the full current list (waiting requests, plus those answered in the last 7 days); the cloud replaces what it had. |
-| `{"type": "result", "commandId": "…", "ok": true}` or `{"type": "result", "commandId": "…", "ok": false, "error": "…"}` | Answer to a `decide` command                                                                                                                                            |
+| Message                                                                                                                 | When                                                                                                                                                                                                                                                          |
+| ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `{"type": "hello", "app": "2.0.0", "protocol": 1}`                                                                      | First message after connecting                                                                                                                                                                                                                                |
+| `{"type": "requests", "requests": RequestSummary[]}`                                                                    | After `welcome`, and whenever requests change. Always the full current list (waiting requests, plus those answered in the last 7 days); the cloud replaces what it had.                                                                                       |
+| `{"type": "printer", "printer": PrinterSummary \| null}`                                                                | Only with "Share print progress" on: after `welcome`, at once when the printer's state changes, and at most every 30 seconds while printing. `null` when sharing is turned off; the cloud then forgets it. The cloud also forgets it on every new connection. |
+| `{"type": "result", "commandId": "…", "ok": true}` or `{"type": "result", "commandId": "…", "ok": false, "error": "…"}` | Answer to a `decide` command                                                                                                                                                                                                                                  |
 
 Cloud → app:
 
@@ -84,6 +86,23 @@ Cloud → app:
   "thumbnail": "data:image/webp;base64,…"
 }
 ```
+
+`PrinterSummary` (nothing else about the printer is sent):
+
+```json
+{
+  "state": "printing",
+  "title": "Name sign",
+  "percent": 42,
+  "remainingMinutes": 35,
+  "layer": 40,
+  "totalLayers": 90
+}
+```
+
+`state` is one of `idle`, `preparing`, `printing`, `paused`, `finished`, `failed` or `offline`.
+`percent`, `remainingMinutes` and the layers are `null` unless a print is under way. When a print
+goes from under way to `finished` or `failed`, the cloud may notify the parent's phone.
 
 `kid` is the child's profile name, or `"Your child"` when "Share kids' names" is off. `thumbnail`
 (a small WebP, at most about 40 kB) is included only while a request is waiting.

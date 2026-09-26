@@ -195,6 +195,15 @@
 							lab.call('PATCH', '/api/cloud', { shareNames: e.currentTarget.checked })}
 					/> Send kids’ first names with their requests (otherwise “Your child”)</label
 				>
+				<label class="share"
+					><input
+						type="checkbox"
+						checked={cloud.shareProgress}
+						onchange={(e) =>
+							lab.call('PATCH', '/api/cloud', { shareProgress: e.currentTarget.checked })}
+					/> Share print progress (what is printing, how far along, time left) so the phone can follow
+					it and say when it is done</label
+				>
 				<button class="link-button" onclick={unlinkCloud}>Unlink</button>
 			{/if}
 			{#if cloud.error}<p class="pin-error" role="alert">{cloud.error}</p>{/if}

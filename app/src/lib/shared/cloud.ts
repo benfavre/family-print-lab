@@ -11,6 +11,8 @@ export interface CloudStatus {
 	plan: boolean;
 	/** Send kids' first names with their requests (otherwise "Your child"). */
 	shareNames: boolean;
+	/** Send the printer's progress (state, title, percent, time left) for the phone. Off by default. */
+	shareProgress: boolean;
 	/** While linking: the code to enter and where. */
 	pairing: { userCode: string; verifyUrl: string; expiresAt: string } | null;
 	error: string | null;
@@ -24,6 +26,7 @@ export const CLOUD_OFF: CloudStatus = {
 	account: null,
 	plan: false,
 	shareNames: true,
+	shareProgress: false,
 	pairing: null,
 	error: null,
 	linkedAt: null

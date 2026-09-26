@@ -52,6 +52,9 @@ export interface CloudSim {
 		connected: boolean;
 		hello: { app?: string; protocol?: number } | null;
 		requests: Summary[];
+		/** The last `printer` message: undefined if none came, null if sharing is off. */
+		printer: unknown;
+		printerMessages: number;
 	};
 	close(): Promise<void>;
 }
@@ -70,6 +73,8 @@ export function startCloudSim(port = 0, host = '127.0.0.1'): Promise<CloudSim> {
 	let socket: Socket | null = null;
 	let hello: { app?: string; protocol?: number } | null = null;
 	let requests: Summary[] = [];
+	let printer: unknown = undefined;
+	let printerMessages = 0;
 	let plan = true;
 	const waiting = new Map<string, (r: { ok: boolean; error?: string }) => void>();
 	let url = '';
@@ -136,7 +141,9 @@ export function startCloudSim(port = 0, host = '127.0.0.1'): Promise<CloudSim> {
 			devices: devices.map(({ id, name, account }) => ({ id, name, account })),
 			connected: !!socket,
 			hello,
-			requests
+			requests,
+			printer,
+			printerMessages
 		}),
 		close: () =>
 			new Promise((resolve) => {
@@ -259,6 +266,10 @@ export function startCloudSim(port = 0, host = '127.0.0.1'): Promise<CloudSim> {
 				return ws.send(JSON.stringify({ type: 'welcome', account: device!.account, plan }));
 			}
 			if (m.type === 'requests') requests = (m.requests as Summary[]) ?? [];
+			if (m.type === 'printer') {
+				printer = m.printer;
+				printerMessages++;
+			}
 			if (m.type === 'result') {
 				waiting.get(m.commandId as string)?.({
 					ok: m.ok === true,
