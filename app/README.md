@@ -32,20 +32,20 @@ npm run dev:sim           # same, plus three simulated Bambu printers: X2D, P1S,
 
 ## Configuration (`.env`)
 
-| Setting                                           | Purpose                                                                       |
-| ------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `DATABASE_URL`                                    | SQLite file (default `data/printlab.db`)                                      |
-| `BACKUP_DIR`                                      | Automatic backups (default `data/backups`, daily, 14 kept)                    |
-| `LEGACY_IMPORT`                                   | Previous app's `family.json` to import into an empty database                 |
-| `HOST`, `PORT`                                    | Production server address (default `127.0.0.1:8765`)                          |
-| `ALLOWED_HOSTS`                                   | Extra host names accepted when deliberately exposing the app on a LAN         |
-| `BODY_SIZE_LIMIT`                                 | Largest request the server accepts; `110M` so model uploads (≤ 100 MB) fit    |
-| `CLAUDE_BIN`, `CODEX_BIN`                         | Locations of the Claude Code / Codex CLIs if not on `PATH` or `~/.local/bin`  |
-| `ANTHROPIC_API_KEY`                               | Optional API-key provider; `LAB_AI_MODEL`, `LAB_AI=off`                       |
-| `MODELS_DIR`                                      | Model files (default `data/models`; other databases get `data/<name>-models`) |
-| `BLENDER_PATH`                                    | Blender executable if not found automatically                                 |
+| Setting                                           | Purpose                                                                                |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                    | SQLite file (default `data/printlab.db`)                                               |
+| `BACKUP_DIR`                                      | Automatic backups (default `data/backups`, daily, 14 kept)                             |
+| `LEGACY_IMPORT`                                   | Previous app's `family.json` to import into an empty database                          |
+| `HOST`, `PORT`                                    | Production server address (default `127.0.0.1:8765`)                                   |
+| `ALLOWED_HOSTS`                                   | Extra host names accepted when deliberately exposing the app on a LAN                  |
+| `BODY_SIZE_LIMIT`                                 | Largest request the server accepts; `110M` so model uploads (≤ 100 MB) fit             |
+| `CLAUDE_BIN`, `CODEX_BIN`                         | Locations of the Claude Code / Codex CLIs if not on `PATH` or `~/.local/bin`           |
+| `ANTHROPIC_API_KEY`                               | Optional API-key provider; `LAB_AI_MODEL`, `LAB_AI=off`                                |
+| `MODELS_DIR`                                      | Model files (default `data/models`; other databases get `data/<name>-models`)          |
+| `BLENDER_PATH`                                    | Blender executable if not found automatically                                          |
 | `BAMBU_HOST`, `BAMBU_SERIAL`, `BAMBU_ACCESS_CODE` | Older setups: one printer, imported once into Settings → Printers (add printers there) |
-| `CLOUD_URL`                                       | Optional Print Lab Cloud, to answer kids’ requests from a phone               |
+| `CLOUD_URL`                                       | Optional Print Lab Cloud, to answer kids’ requests from a phone                        |
 
 Which AI handles each task (chat, ideas, diagnosis, slicer settings, checklists, designing models) is chosen on the **Integrations** page (the status pill in the top bar): Claude through Claude Code, ChatGPT through Codex, or the Anthropic API. Subscriptions run through the official, unmodified CLIs in a locked-down mode (no tools, no file access, no MCP servers, no saved sessions; any API key in the environment is removed so billing stays on the subscription). Keep the app single-user when using a subscription. Requests send the details the task needs (workspace details such as family names and ages, projects, jobs, spools, printer status, attached photos, or a model's code) to the chosen provider. The printer link uses the printer's local MQTT reports for status and FTPS to upload sliced `.gcode.3mf` plates; commands (start, pause, resume, stop) are only sent when you press the button. LAN-only mode turns off Bambu cloud features such as remote printing from Bambu Handy.
 
