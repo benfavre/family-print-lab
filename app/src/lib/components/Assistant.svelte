@@ -345,8 +345,10 @@
 							</p>
 						{:else}
 							<p>
-								Hi! I can see your projects, print jobs, spools{lab.printer.connected
-									? ' and the live printer'
+								Hi! I can see your projects, print jobs, spools{lab.printerList.some(
+									(p) => p.connected
+								)
+									? ' and the live printers'
 									: ''}. Ask anything, attach a photo of a print, or try:
 							</p>
 							<div class="ai-chips">

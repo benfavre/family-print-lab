@@ -14,6 +14,7 @@
 	import { actions, download } from '$lib/client/actions';
 	import EditorShell from './EditorShell.svelte';
 	import ExpandableText from './ExpandableText.svelte';
+	import { modelShort } from '$lib/shared/printers/models';
 
 	let {
 		id,
@@ -54,11 +55,18 @@
 		infill: numOr('infill', 15),
 		notes: str('notes', ''),
 		printerTask: str('printerTask', ''),
+		printerId: str('printerId', ''),
 		modelVersionId: str('modelVersionId', ''),
 		startedAt: toLocalInput(src.startedAt as string | null),
 		finishedAt: toLocalInput(src.finishedAt as string | null)
 	});
 	let busy = $state(false);
+	/** Which model slicing is for: the chosen printer's, else the first printer's. */
+	const sliceFor = $derived.by(() => {
+		const model =
+			lab.ws.printers.find((p) => p.id === f.printerId)?.model ?? lab.primaryPrinter?.model;
+		return model ? modelShort(model) : 'the printer';
+	});
 	/** New jobs linked to a model: slice right after saving (when Bambu Studio is installed). */
 	let sliceAfter = $state(true);
 	// Attaching a sliced file changes the job on the server; the form then continues from that version.
@@ -147,6 +155,7 @@
 		const body = {
 			...f,
 			spoolId: f.spoolId || null,
+			printerId: f.printerId || null,
 			modelVersionId: f.modelVersionId || null,
 			grams: num(f.grams),
 			minutes: num(f.minutes),
@@ -242,7 +251,7 @@
 							class="mini primary-mini"
 							onclick={async () => {
 								if (live && (await act.sliceJob(live))) onclose();
-							}}>▤ Slice for X2D</button
+							}}>▤ Slice for {sliceFor}</button
 						>
 					{/if}
 					<button type="button" class="mini" onclick={() => slicedInput?.click()}
@@ -298,7 +307,8 @@
 	</div>
 	{#if !existing && f.modelVersionId && act.canSlice()}
 		<label class="check slice-after"
-			><input type="checkbox" bind:checked={sliceAfter} /> Slice it for the X2D after saving (Bambu Studio)</label
+			><input type="checkbox" bind:checked={sliceAfter} /> Slice it for the {sliceFor} after saving (Bambu
+			Studio)</label
 		>
 	{/if}
 	<div class="fields-row">
@@ -312,6 +322,15 @@
 					>{/each}</select
 			></label
 		>
+		{#if lab.ws.printers.length > 1 || f.printerId}
+			<label class="field"
+				>Printer<select bind:value={f.printerId}
+					><option value="">Any printer</option>{#each lab.ws.printers as p (p.id)}<option
+							value={p.id}>{p.name}</option
+						>{/each}</select
+				></label
+			>
+		{/if}
 	</div>
 	<div class="fields-row">
 		<label class="field"

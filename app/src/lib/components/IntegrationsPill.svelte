@@ -2,7 +2,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { useApp } from '$lib/client/app.svelte';
-	import { INTEGRATION_GLYPH } from '$lib/client/integrations';
+	import { integrationGlyph } from '$lib/client/integrations';
 
 	const { lab } = useApp();
 	// The printer has its own nav entry; the always-on engine needs no light.
@@ -28,7 +28,7 @@
 	{#if items.length}
 		{#each items as i (i.id)}
 			<span class="tool" class:ok={i.available}
-				><span class="glyph" aria-hidden="true">{INTEGRATION_GLYPH[i.id]}</span><span class="name"
+				><span class="glyph" aria-hidden="true">{integrationGlyph(i.id)}</span><span class="name"
 					>{i.name}</span
 				><i></i></span
 			>

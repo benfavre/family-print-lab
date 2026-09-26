@@ -40,17 +40,20 @@ const KID_READS = new Set(['/api/events', '/api/workspace', '/api/printer']);
 
 /**
  * What a browser in kid mode may do: 'allow', or where to send it. Pages outside /kid go to /kid;
- * API calls outside the kid allow-list are refused. Non-route requests (built assets, fonts) pass.
+ * API calls outside the kid allow-list (plus the GET paths modules declare as `kidReads`) are
+ * refused. Non-route requests (built assets, fonts) pass.
  */
 export function kidAccess(
 	method: string,
 	pathname: string,
-	routeId: string | null
+	routeId: string | null,
+	moduleReads: RegExp[] = []
 ): 'allow' | 'redirect' | 'refuse' {
 	if (pathname === '/api/kid' || pathname.startsWith('/api/kid/')) return 'allow';
 	if (pathname.startsWith('/api/')) {
 		const read = method === 'GET' || method === 'HEAD';
 		if (read && (KID_READS.has(pathname) || MODEL_FILE.test(pathname))) return 'allow';
+		if (read && moduleReads.some((r) => r.test(pathname))) return 'allow';
 		if (method === 'PUT' && MODEL_FILE.test(pathname) && /\.(png|webp)$/.test(pathname))
 			return 'allow';
 		return 'refuse';

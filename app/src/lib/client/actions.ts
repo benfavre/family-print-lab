@@ -58,13 +58,16 @@ export function actions({ lab, ui }: AppContext) {
 			}
 		},
 		async transition(job: Job, to: JobStatus) {
-			const task = lab.printerActive ? lab.printer.state?.task : '';
-			const link =
-				to === 'Printing' &&
-				task &&
-				!lab.ws.jobs.some((j) => j.status === 'Printing' && j.printerTask === task)
-					? { printerTask: task }
-					: {};
+			// Starting by hand while exactly one fitting printer runs an unlinked task: link to it.
+			const running = (job.printerId ? [lab.printerById(job.printerId)] : lab.printerList).filter(
+				(p) =>
+					p?.id &&
+					lab.printerActiveFor(p.id) &&
+					p.state?.task &&
+					!lab.ws.jobs.some((j) => j.status === 'Printing' && j.printerTask === p.state?.task)
+			);
+			const task = running.length === 1 ? running[0]!.state!.task : '';
+			const link = to === 'Printing' && task ? { printerTask: task } : {};
 			const alsoPrinting =
 				to === 'Printing' && lab.ws.jobs.some((j) => j.status === 'Printing' && j.id !== job.id);
 			const res = await lab.call<{ autoDone?: boolean }>('POST', `/api/jobs/${job.id}/transition`, {
@@ -91,22 +94,29 @@ export function actions({ lab, ui }: AppContext) {
 		},
 		reprint: (job: Job, overrides: Record<string, unknown> = {}) =>
 			lab.call('POST', `/api/jobs/${job.id}/reprint`, overrides, 'Queued again.'),
-		linkRunning: (job: Job) => {
-			const task = lab.printer.state?.task;
+		/** Links a job to what a printer is printing now. */
+		linkRunning: async (job: Job, printerId: string) => {
+			const task = lab.printerById(printerId)?.state?.task;
 			if (!task) return;
-			return job.status === 'Printing'
-				? lab.call(
-						'PATCH',
-						`/api/jobs/${job.id}`,
-						{ version: job.version, printerTask: task },
-						`Linked to “${task}”.`
-					)
-				: lab.call(
-						'POST',
-						`/api/jobs/${job.id}/transition`,
-						{ to: 'Printing', printerTask: task },
-						`Linked to “${task}”. It will close itself when the printer finishes.`
-					);
+			if (job.status === 'Printing')
+				return lab.call(
+					'PATCH',
+					`/api/jobs/${job.id}`,
+					{ version: job.version, printerTask: task, printerId },
+					`Linked to “${task}”.`
+				);
+			const moved = await lab.call<{ workspace?: { jobs: Job[] } }>(
+				'PATCH',
+				`/api/jobs/${job.id}`,
+				{ version: job.version, printerId }
+			);
+			if (!moved) return;
+			return lab.call(
+				'POST',
+				`/api/jobs/${job.id}/transition`,
+				{ to: 'Printing', printerTask: task },
+				`Linked to “${task}”. It will close itself when the printer finishes.`
+			);
 		},
 		unlink: (job: Job) =>
 			lab.call(
@@ -201,18 +211,18 @@ export function actions({ lab, ui }: AppContext) {
 		sendToPrinter(job: Job) {
 			ui.openSend(job.id);
 		},
-		async printerControl(action: 'pause' | 'resume' | 'stop') {
+		async printerControl(printerId: string, action: 'pause' | 'resume' | 'stop') {
 			if (
 				action === 'stop' &&
 				!(await ui.ask(
 					'Stop this print?',
-					'The printer stops and the plate cannot be resumed. The job is marked as failed when the printer reports it.',
+					'The printer stops and the plate cannot be resumed. The job is marked as cancelled when the printer reports it.',
 					'Stop print'
 				))
 			)
 				return false;
 			const done = { pause: 'Pausing…', resume: 'Resuming…', stop: 'Stopping…' }[action];
-			return !!(await lab.call('POST', '/api/printer/control', { action }, done));
+			return !!(await lab.call('POST', `/api/printers/${printerId}/control`, { action }, done));
 		},
 		/** Uploads an STL/3MF/OBJ file as a new mesh model. */
 		async uploadModel(projectId: string, file: File, open = true) {

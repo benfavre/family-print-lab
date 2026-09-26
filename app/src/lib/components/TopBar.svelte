@@ -6,7 +6,8 @@
 	import { goto } from '$app/navigation';
 	import { THEMES, useApp } from '$lib/client/app.svelte';
 	import { actions } from '$lib/client/actions';
-	import { NAV } from '$lib/client/nav';
+	import { NAV, PRINTERS_HREF } from '$lib/client/nav';
+	import { UI } from '$lib/client/registry';
 	import Avatar from './Avatar.svelte';
 
 	const app = useApp();
@@ -20,7 +21,9 @@
 		lab.ws.jobs.filter((j) => j.status === 'Queued' || j.status === 'Printing').length
 	);
 	const kidRequests = $derived(lab.ws.printRequests.filter((r) => r.status === 'Waiting').length);
-	const printerDot = $derived(lab.printerActive ? 'p-live' : lab.printer.connected ? 'p-on' : '');
+	const printerDot = $derived(
+		lab.printerActive ? 'p-live' : lab.printerList.some((p) => p.connected) ? 'p-on' : ''
+	);
 	const saveLabel = $derived(lab.saving ? 'Saving…' : '');
 
 	function closeMenus(e: MouseEvent) {
@@ -64,7 +67,7 @@
 		{#each NAV as item (item.href)}
 			{@const active = item.match(page.url.pathname)}
 			<a
-				class="nav {item.href === resolve('/printer') ? printerDot : ''}"
+				class="nav {item.href === PRINTERS_HREF ? printerDot : ''}"
 				class:active
 				href={item.href}
 				aria-current={active ? 'page' : undefined}
@@ -88,6 +91,7 @@
 		<!-- eslint-enable svelte/no-navigation-without-resolve -->
 	</nav>
 	<div class="topbar-actions">
+		{#each UI.topBarItems as item (item.id)}<item.component />{/each}
 		{#if kidRequests}
 			<a
 				class="kid-requests"

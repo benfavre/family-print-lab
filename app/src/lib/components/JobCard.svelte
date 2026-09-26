@@ -7,6 +7,9 @@
 	import { fileUrl, modelHref } from '$lib/client/models';
 	import Avatar from './Avatar.svelte';
 	import StatusPill from './StatusPill.svelte';
+	import { resolve } from '$app/paths';
+	import { UI } from '$lib/client/registry';
+	import { modelShort } from '$lib/shared/printers/models';
 
 	let {
 		job,
@@ -82,7 +85,15 @@
 	});
 	const sliced = $derived(job.sliced);
 	const slicedPlate = $derived(sliced?.plates.find((p) => p.index === sliced.plate) ?? null);
-	const canSend = $derived(!!sliced && lab.printer.configured);
+	const canSend = $derived(!!sliced && lab.printerList.length > 0);
+	/** The printer this job is for (none: any printer). */
+	const printer = $derived(lab.printerById(job.printerId));
+	const sliceFor = $derived(
+		(printer?.model ?? lab.primaryPrinter?.model)
+			? modelShort((printer?.model ?? lab.primaryPrinter?.model)!)
+			: 'the printer'
+	);
+	const panels = $derived(UI.jobPanels.filter((p) => p.show?.(job) ?? true));
 	const slicing = $derived(
 		lab.tasks.some(
 			(t) =>
@@ -140,6 +151,9 @@
 			>{job.revision || 'Print'}{#if job.printerTask}
 				<span class="job-link" title="Linked to printer task {job.printerTask}"
 					>· linked to printer</span
+				>{/if}{#if printer && lab.printerList.length > 1}
+				<a class="job-printer" href={resolve('/printers/[id]', { id: printer.id ?? '' })}
+					>▣ {printer.name}</a
 				>{/if}</span
 		>
 		<StatusPill status={job.status} />
@@ -204,6 +218,7 @@
 		</div>
 	{/if}
 	{#if job.notes}<p class="job-notes">{job.notes}</p>{/if}
+	{#each panels as panel (panel.id)}<panel.component {job} />{/each}
 	<div class="job-actions">
 		{#if job.status === 'Queued'}
 			{#if canSend}
@@ -222,9 +237,10 @@
 				{#if !sliced && job.modelVersionId && act.canSlice()}
 					<button
 						class="mini"
-						title="Slice {model?.m.name ?? 'the model'} for the X2D with this job's settings"
+						title="Slice {model?.m.name ?? 'the model'} for the {sliceFor} with this job's settings"
 						disabled={slicing}
-						onclick={() => act.sliceJob(job)}>{slicing ? 'Slicing…' : '▤ Slice for X2D'}</button
+						onclick={() => act.sliceJob(job)}
+						>{slicing ? 'Slicing…' : `▤ Slice for ${sliceFor}`}</button
 					>
 				{:else if !sliced}
 					<button
@@ -272,6 +288,15 @@
 </article>
 
 <style>
+	.job-printer {
+		margin-left: 6px;
+		font-size: 11.5px;
+		color: var(--muted);
+		text-decoration: none;
+	}
+	.job-printer:hover {
+		color: var(--text);
+	}
 	.file-over {
 		outline: 2px dashed var(--cyan);
 		outline-offset: 2px;

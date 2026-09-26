@@ -87,3 +87,29 @@ export const temp = (now: number | null | undefined, target?: number | null) =>
 	now === null || now === undefined
 		? '—'
 		: `${Math.round(now)}°${target ? ` / ${Math.round(target)}°` : ''}`;
+
+/** gcode_state in plain words. */
+export const PRINTER_STATE_LABELS: Record<string, string> = {
+	IDLE: 'Idle',
+	PREPARE: 'Preparing',
+	RUNNING: 'Printing',
+	PAUSE: 'Paused',
+	FINISH: 'Finished',
+	FAILED: 'Failed',
+	SLICING: 'Slicing',
+	UNKNOWN: 'Waiting for data'
+};
+
+/** A printer's state in a word or two: Offline, Connecting…, Printing, Paused… */
+export function printerStateLabel(p: {
+	configured?: boolean;
+	enabled?: boolean;
+	connected?: boolean;
+	state?: { gcodeState: string } | null;
+}): string {
+	if (!p.configured) return 'Not set up';
+	if (p.enabled === false) return 'Switched off';
+	if (!p.connected) return 'Offline';
+	if (!p.state) return 'Connecting…';
+	return PRINTER_STATE_LABELS[p.state.gcodeState] ?? p.state.gcodeState;
+}

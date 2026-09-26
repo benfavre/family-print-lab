@@ -94,7 +94,11 @@
 				onclose={close}
 			/>
 		{:else if panel.kind === 'profile'}<ProfileForm id={panel.id} onclose={close} />
-		{:else if panel.kind === 'send'}<SendPanel jobId={panel.id ?? ''} onclose={close} />
+		{:else if panel.kind === 'send'}<SendPanel
+				jobId={panel.id ?? ''}
+				printerId={(panel.preset.printerId as string | undefined) ?? null}
+				onclose={close}
+			/>
 		{:else if panel.kind === 'sketch'}
 			<!-- Heavy windows (3D, drawing) load only when opened. -->
 			{#await import('./SketchEditor.svelte') then { default: SketchEditor }}<SketchEditor

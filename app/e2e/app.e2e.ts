@@ -144,7 +144,9 @@ test('the simulated printer drives a linked job to completion', async ({ page })
 	const ws = await workspace(page);
 	const printing = ws.jobs.find((j: { status: string }) => j.status === 'Printing');
 	expect(printing).toBeTruthy();
+	// The old single-printer address leads to the first printer's page.
 	await page.goto('/printer');
+	await expect(page).toHaveURL(/\/printers\/[\w-]+$/);
 	await expect(page.getByText('SIMULATED PRINTER · FOR DEVELOPMENT')).toBeVisible();
 	const started = await page.request.post(`${SIM}/api/start`, {
 		// ~6 s at 120× speed: long enough for the page to show it live (updates are throttled to ~1 s).
@@ -212,7 +214,10 @@ test('a sliced file is attached, sent to the printer, printed and closed automat
 			}
 		)
 		.toBe('Printing');
-	await page.goto('/printer');
+	// The printers overview lists it; its card opens the printer page.
+	await page.goto('/printers');
+	await page.locator('.printer-card').first().click();
+	await expect(page).toHaveURL(/\/printers\/[\w-]+$/);
 	await expect(page.locator('.panel', { hasText: 'Current print' })).toContainText(
 		'Linked to this job',
 		{ timeout: 20_000 }

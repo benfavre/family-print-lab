@@ -7,6 +7,7 @@
 	import { actions, projectHref } from '$lib/client/actions';
 	import { weight } from '$lib/client/format';
 	import Modal from './Modal.svelte';
+	import { UI } from '$lib/client/registry';
 
 	const app = useApp();
 	const { lab, ui } = app;
@@ -24,7 +25,17 @@
 		return [
 			{ label: 'Projects', hint: 'Go to', run: () => goto(resolve('/')) },
 			{ label: 'Print jobs', hint: 'Go to', run: () => goto(resolve('/jobs')) },
-			{ label: 'Printer (live)', hint: 'Go to', run: () => goto(resolve('/printer')) },
+			{ label: 'Printers (live)', hint: 'Go to', run: () => goto(resolve('/printers')) },
+			...lab.printerList.map((p) => ({
+				label: `${p.name} (printer)`,
+				hint: 'Go to',
+				run: () => goto(resolve('/printers/[id]', { id: p.id ?? '' }))
+			})),
+			...UI.paletteCommands.map((c) => ({
+				label: c.label,
+				hint: c.keywords ?? 'Action',
+				run: () => c.run(app)
+			})),
 			{ label: 'Filament shelf', hint: 'Go to', run: () => goto(resolve('/filament')) },
 			{ label: 'Family', hint: 'Go to', run: () => goto(resolve('/family')) },
 			{

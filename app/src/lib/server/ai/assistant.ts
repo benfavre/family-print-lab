@@ -26,7 +26,8 @@ const clip = (s: unknown, n: number): string =>
 	typeof s !== 'string' ? '' : s.length > n ? `${s.slice(0, n)}…` : s;
 
 // Compact, model-friendly view of the workspace. Only what helps the assistant.
-export function snapshot(state: Workspace, printer: PrinterStatus) {
+export function snapshot(state: Workspace, printers: PrinterStatus | PrinterStatus[]) {
+	const list = (Array.isArray(printers) ? printers : [printers]).filter((p) => p?.configured);
 	const people = new Map(state.profiles.map((p) => [p.id, p.name]));
 	const projects = new Map(state.projects.map((p) => [p.id, p.title]));
 	const spools = new Map(
@@ -64,26 +65,34 @@ export function snapshot(state: Workspace, printer: PrinterStatus) {
 				)
 			: ['- none recorded']),
 		'',
-		'PRINTER'
+		list.length > 1 ? 'PRINTERS' : 'PRINTER'
 	];
-	if (!printer?.configured) lines.push('- not connected to the app');
-	else if (!printer.connected)
-		lines.push(`- ${printer.name}: offline${printer.error ? ` (${printer.error})` : ''}`);
-	else {
+	if (!list.length) lines.push('- not connected to the app');
+	for (const printer of list) {
+		const who =
+			list.length > 1 ? `${printer.name} (${printer.modelName ?? printer.model})` : printer.name;
+		if (printer.enabled === false) {
+			lines.push(`- ${who}: switched off in Settings`);
+			continue;
+		}
+		if (!printer.connected) {
+			lines.push(`- ${who}: offline${printer.error ? ` (${printer.error})` : ''}`);
+			continue;
+		}
 		const s = printer.state;
 		if (!s) {
-			lines.push(`- ${printer.name}: connected, waiting for its first report`);
-			return lines.join('\n');
+			lines.push(`- ${who}: connected, waiting for its first report`);
+			continue;
 		}
 		lines.push(
-			`- ${printer.name}: ${s.gcodeState}${s.task ? `, task "${s.task}"` : ''}${s.percent !== null ? `, ${s.percent}%` : ''}${s.layer !== null ? `, layer ${s.layer}/${s.totalLayers}` : ''}${s.remainingMinutes !== null ? `, ${s.remainingMinutes} min left` : ''}`
+			`- ${who}: ${s.gcodeState}${s.task ? `, task "${s.task}"` : ''}${s.percent !== null ? `, ${s.percent}%` : ''}${s.layer !== null ? `, layer ${s.layer}/${s.totalLayers}` : ''}${s.remainingMinutes !== null ? `, ${s.remainingMinutes} min left` : ''}`
 		);
 		lines.push(
-			`- temps: nozzle ${s.nozzle ?? '?'}/${s.nozzleTarget ?? '?'} °C, bed ${s.bed ?? '?'}/${s.bedTarget ?? '?'} °C${s.chamber !== null ? `, chamber ${s.chamber} °C` : ''}${s.printError ? `, error code ${s.printError}` : ''}`
+			`  temps: nozzle ${s.nozzle ?? '?'}/${s.nozzleTarget ?? '?'} °C, bed ${s.bed ?? '?'}/${s.bedTarget ?? '?'} °C${s.chamber !== null ? `, chamber ${s.chamber} °C` : ''}${s.printError ? `, error code ${s.printError}` : ''}`
 		);
 		for (const unit of s.ams || [])
 			lines.push(
-				`- AMS ${unit.unit}: ${unit.trays.map((t) => (t.type ? `slot ${t.slot} ${t.type}${t.color ? ` ${t.color}` : ''}${t.remain !== null ? ` ${t.remain}%` : ''}${t.active ? ' (loaded)' : ''}` : `slot ${t.slot} empty`)).join('; ')}`
+				`  ${unit.model === 'Unknown' ? 'AMS' : unit.model} ${unit.unit}: ${unit.trays.map((t) => (t.type ? `slot ${t.slot} ${t.type}${t.color ? ` ${t.color}` : ''}${t.remain !== null ? ` ${t.remain}%` : ''}${t.active ? ' (loaded)' : ''}` : `slot ${t.slot} empty`)).join('; ')}`
 			);
 	}
 	return lines.join('\n');
@@ -216,7 +225,7 @@ export function createAi(resolve: ProviderResolver) {
 	async function run(
 		task: string,
 		state: Workspace,
-		printer: PrinterStatus,
+		printer: PrinterStatus | PrinterStatus[],
 		input: Input,
 		signal?: AbortSignal
 	) {
@@ -262,7 +271,7 @@ export function createAi(resolve: ProviderResolver) {
 	/** Streams the reply's text through onText; resolves when complete. */
 	async function chat(
 		state: Workspace,
-		printer: PrinterStatus,
+		printer: PrinterStatus | PrinterStatus[],
 		messages: unknown,
 		onText: (text: string) => void,
 		signal?: AbortSignal

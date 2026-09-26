@@ -4,8 +4,8 @@ import type { ChangeEvent } from '$lib/server/lab';
 import type { TaskInfo } from '$lib/shared/tasks';
 
 /**
- * Server-sent events: workspace changes, background task progress and (throttled) live printer status,
- * so every open tab stays in sync.
+ * Server-sent events: workspace changes, background task progress, live printer status (one printer per
+ * event, throttled per printer) and module live channels, so every open tab stays in sync.
  */
 export const GET: RequestHandler = ({ request }) => {
 	const rt = runtime();
@@ -21,14 +21,20 @@ export const GET: RequestHandler = ({ request }) => {
 				}
 			};
 			const onChange = (e: ChangeEvent) => send('change', e);
-			let pending: NodeJS.Timeout | null = null;
-			const onPrinter = () => {
-				if (pending) return;
-				pending = setTimeout(() => {
-					pending = null;
-					send('printer', rt.printerStatus());
-				}, 750);
+			const pending = new Map<string, NodeJS.Timeout>();
+			const onPrinter = (id: string) => {
+				if (pending.has(id)) return;
+				pending.set(
+					id,
+					setTimeout(() => {
+						pending.delete(id);
+						// Removed meanwhile: the workspace change tells the tab.
+						const status = rt.printers.statuses().find((p) => p.id === id);
+						if (status) send('printer', status);
+					}, 750)
+				);
 			};
+			const onLive = (message: { channel: string; data: unknown }) => send('live', message);
 			const onTask = (t: TaskInfo) => send('task', t);
 			const onTaskRemoved = (id: string) => send('task-removed', { id });
 			const onCloud = (status: unknown) => send('cloud', status);
@@ -36,7 +42,8 @@ export const GET: RequestHandler = ({ request }) => {
 			rt.lab.events.on('change', onChange);
 			rt.tasks.events.on('task', onTask);
 			rt.tasks.events.on('removed', onTaskRemoved);
-			rt.printer?.on('update', onPrinter);
+			rt.printers.on('update', onPrinter);
+			rt.live.on('live', onLive);
 			const keepalive = setInterval(() => {
 				try {
 					controller.enqueue(encoder.encode(': keepalive\n\n'));
@@ -46,17 +53,19 @@ export const GET: RequestHandler = ({ request }) => {
 			}, 20_000);
 			send('hello', {
 				changeId: rt.lab.changeId(),
+				printers: rt.printers.statuses(),
 				printer: rt.printerStatus(),
 				cloud: rt.cloud?.status() ?? null,
 				tasks: rt.tasks.list()
 			});
 			cleanup = () => {
 				clearInterval(keepalive);
-				if (pending) clearTimeout(pending);
+				for (const timer of pending.values()) clearTimeout(timer);
 				rt.lab.events.off('change', onChange);
 				rt.tasks.events.off('task', onTask);
 				rt.tasks.events.off('removed', onTaskRemoved);
-				rt.printer?.off('update', onPrinter);
+				rt.printers.off('update', onPrinter);
+				rt.live.off('live', onLive);
 				rt.cloud?.off('status', onCloud);
 			};
 			request.signal.addEventListener('abort', () => {

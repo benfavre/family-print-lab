@@ -23,7 +23,13 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			return json({ error: 'Unknown assistant task.' }, { status: 404 });
 		try {
 			return json(
-				await rt.ai.run(params.task!, rt.lab.snapshot(), rt.printerStatus(), input, request.signal)
+				await rt.ai.run(
+					params.task!,
+					rt.lab.snapshot(),
+					rt.printers.statuses(),
+					input,
+					request.signal
+				)
 			);
 		} catch (error) {
 			const e = asAppError(error);
@@ -40,7 +46,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			try {
 				await rt.ai.chat(
 					rt.lab.snapshot(),
-					rt.printerStatus(),
+					rt.printers.statuses(),
 					input.messages,
 					(text) => {
 						firstChunk?.(true);

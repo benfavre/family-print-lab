@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { useApp } from '$lib/client/app.svelte';
-	import { INTEGRATION_GLYPH } from '$lib/client/integrations';
+	import { INTEGRATION_GLYPH, integrationGlyph } from '$lib/client/integrations';
+	import { UI, type SettingsSection } from '$lib/client/registry';
 	import {
 		AI_PROVIDERS,
 		AI_PROVIDER_NAME,
@@ -10,12 +11,22 @@
 		type IntegrationTest
 	} from '$lib/shared/integrations';
 	import { stamp } from '$lib/client/format';
-	import BackupsSection from '$lib/components/BackupsSection.svelte';
 
 	const { lab, ui } = useApp();
 	const report = $derived(lab.integrations);
 	const ai = $derived(report?.items.filter((i) => i.kind === 'ai') ?? []);
 	const tools = $derived(report?.items.filter((i) => i.kind !== 'ai') ?? []);
+	// Settings sections from the UI registry: printers first, then the AI blocks below, then the
+	// other groups in this order, with the system ones (backups) last.
+	const GROUPS: SettingsSection['group'][] = [
+		'printing',
+		'integrations',
+		'notifications',
+		'family',
+		'privacy'
+	];
+	const sections = (group: SettingsSection['group']) =>
+		UI.settingsSections.filter((s) => s.group === group);
 	const readyCount = $derived(report?.items.filter((i) => i.available).length ?? 0);
 
 	let tests = $state<Record<string, { running: boolean; result: IntegrationTest | null }>>({});
@@ -51,7 +62,9 @@
 		ai: 'Say hello',
 		blender: 'Repair a test mesh',
 		openscad: 'Render a test part',
-		printer: 'Check the connection'
+		printer: 'Check the connections',
+		slicer: 'Slice a test cube',
+		module: 'Check'
 	};
 
 	async function test(item: IntegrationStatus) {
@@ -132,7 +145,7 @@
 	{@const t = tests[item.id]}
 	<article class="int-card" class:ready={item.available} data-integration={item.id}>
 		<header>
-			<span class="mark" aria-hidden="true">{INTEGRATION_GLYPH[item.id]}</span>
+			<span class="mark" aria-hidden="true">{integrationGlyph(item.id)}</span>
 			<div class="title">
 				<h3>{item.name}</h3>
 				<span class="via">{item.via}</span>
@@ -190,7 +203,7 @@
 			<button class="mini" disabled={t?.running} onclick={() => test(item)}
 				>{t?.running
 					? 'Testing…'
-					: `Test: ${TEST_LABEL[item.kind === 'ai' ? 'ai' : item.id]}`}</button
+					: `Test: ${TEST_LABEL[item.kind === 'ai' || item.kind === 'module' ? item.kind : item.id] ?? 'Check'}`}</button
 			>
 			{#if item.kind === 'ai' && item.available}
 				<button class="mini" onclick={() => everything(item.id as AiProviderId)}
@@ -208,8 +221,10 @@
 	</article>
 {/snippet}
 
+{#each sections('printers') as section (section.id)}<section.component />{/each}
+
 {#if !report}
-	<p class="panel-empty loading">Checking Claude Code, Codex, Blender and the printer…</p>
+	<p class="panel-empty loading">Checking Claude Code, Codex, Blender and the printers…</p>
 {:else}
 	<section class="int-section">
 		<h2>AI</h2>
@@ -267,7 +282,10 @@
 	</section>
 {/if}
 
-<BackupsSection />
+{#each GROUPS as group (group)}
+	{#each sections(group) as section (section.id)}<section.component />{/each}
+{/each}
+{#each sections('system') as section (section.id)}<section.component />{/each}
 
 <style>
 	.int-head {

@@ -9,7 +9,7 @@ export const load: LayoutServerLoad = ({ locals }) => {
 		/** Set while this browser is in kid mode. */
 		kid: kid ? { id: kid.id, name: kid.name, level: kid.kid } : null,
 		workspace: rt.lab.snapshot(),
-		printer: rt.printerStatus(),
+		printers: rt.printers.statuses(),
 		ai: rt.aiSummary(),
 		cloud: rt.cloud?.status() ?? CLOUD_OFF
 	};

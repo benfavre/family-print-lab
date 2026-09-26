@@ -4,8 +4,15 @@
 	import { duration, weight } from '$lib/client/format';
 	import { autoMapping, loadedSlots } from '$lib/shared/printing';
 	import { ACTIVE_PRINTER_STATES } from '$lib/shared/domain';
+	import { sameModel } from '$lib/shared/printers/models';
+	import { UI } from '$lib/client/registry';
+	import PrinterPicker from './printers/PrinterPicker.svelte';
 
-	let { jobId, onclose }: { jobId: string; onclose: () => void } = $props();
+	let {
+		jobId,
+		printerId: preset = null,
+		onclose
+	}: { jobId: string; printerId?: string | null; onclose: () => void } = $props();
 	const { lab, ui } = useApp();
 	const panel = usePanel();
 
@@ -15,7 +22,22 @@
 	// svelte-ignore state_referenced_locally
 	let plateNo = $state(job?.sliced?.plate ?? 1);
 	const plate = $derived(sliced?.plates.find((p) => p.index === plateNo) ?? sliced?.plates[0]);
-	const status = $derived(lab.printer);
+	/** The chosen printer: the one asked for, the job's, else the first that fits the file. */
+	// svelte-ignore state_referenced_locally
+	let printerId = $state<string | null>(
+		preset ??
+			job?.printerId ??
+			lab.printerList.find(
+				(p) =>
+					p.enabled !== false &&
+					(!job?.sliced?.printerModelId ||
+						!p.model ||
+						sameModel(job.sliced.printerModelId, p.model))
+			)?.id ??
+			lab.primaryPrinter?.id ??
+			null
+	);
+	const status = $derived(lab.printerById(printerId) ?? { configured: false });
 	const slots = $derived(loadedSlots(status.state));
 	const busy = $derived(!!status.state && ACTIVE_PRINTER_STATES.has(status.state.gcodeState));
 	// Plain values, so live printer pushes (every ~0.75 s) only re-check when something relevant moved.
@@ -33,6 +55,7 @@
 	let amsTouched = false;
 	const settings = () =>
 		JSON.stringify({
+			printerId: printerId ?? undefined,
 			plate: plateNo,
 			useAms,
 			amsMapping: useAms ? mapping : [],
@@ -90,6 +113,7 @@
 		if (body !== checkedFor) return; // settings changed since the check; wait for the new one
 		sending = true;
 		const res = await lab.call<{ task: { id: string } }>('POST', `/api/jobs/${jobId}/send`, {
+			printerId: printerId ?? undefined,
 			plate: plateNo,
 			useAms,
 			amsMapping: useAms ? mapping : [],
@@ -114,6 +138,9 @@
 	<p class="panel-empty">Attach a sliced file (.gcode.3mf) to this job first.</p>
 {:else}
 	<div class="send">
+		{#if lab.printerList.length > 1}
+			<PrinterPicker bind:value={printerId} modelId={sliced.printerModelId} />
+		{/if}
 		<div class="sp-printer" class:bad={!status.connected || busy}>
 			<span class="dot" class:on={status.connected && !busy}></span>
 			{#if !status.configured}No printer is set up yet.
@@ -210,6 +237,10 @@
 				><input type="checkbox" bind:checked={timelapse} /> Record a timelapse</label
 			>
 		</div>
+
+		{#each UI.sendPanelSections as section (section.id)}
+			<section.component {job} {printerId} plate={plate.index} />
+		{/each}
 
 		{#if check}
 			{#each check.blocking as p (p)}<p class="sp-msg block">✕ {p}</p>{/each}

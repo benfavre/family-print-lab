@@ -131,8 +131,8 @@
 			eyebrow="THE PRINT QUEUE"
 			title="Print jobs"
 			text="Queue a plate, start it, log how it went. Filament is deducted from the spool when a print finishes."
-			note={lab.printer.connected
-				? 'Preview animation — see Printer for the live print'
+			note={lab.printerList.some((p) => p.connected)
+				? 'Preview animation — see Printers for the live prints'
 				: 'Preview animation — no printer is connected'}
 		>
 			{#snippet actions()}
@@ -179,8 +179,8 @@
 					? `${weight(consumed.reduce((s, j) => s + (j.grams ?? 0), 0))} of filament used`
 					: ''}</span
 			><span
-				>{lab.printer.connected
-					? 'Linked jobs show live progress from the printer'
+				>{lab.printerList.some((p) => p.connected)
+					? 'Linked jobs show live progress from their printer'
 					: 'Progress is estimated from start time — no printer is connected'}</span
 			>
 		</div>

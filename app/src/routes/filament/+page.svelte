@@ -6,6 +6,7 @@
 	import StatTiles from '$lib/components/StatTiles.svelte';
 	import StatusPill from '$lib/components/StatusPill.svelte';
 	import type { Spool } from '$lib/shared/domain';
+	import { trayLabel } from '$lib/shared/printing';
 
 	const { lab, ui } = useApp();
 
@@ -48,8 +49,12 @@
 		return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]) < 60;
 	};
 	const trays = $derived(
-		(lab.printer.state?.ams ?? []).flatMap((u) =>
-			u.trays.filter((t) => t.type && t.color).map((t) => ({ ...t, unit: u.unit }))
+		lab.printerList.flatMap((printer) =>
+			(printer.state?.ams ?? []).flatMap((u) =>
+				u.trays
+					.filter((t) => t.type && t.color)
+					.map((t) => ({ ...t, printer: printer.name ?? 'the printer' }))
+			)
 		)
 	);
 	const inAms = (s: Spool) =>
@@ -190,8 +195,9 @@
 						<p class="spool-sub">{[s.brand, s.material].filter(Boolean).join(' · ')}</p>
 						{#if tray}
 							<p class="in-ams" title="Matched by material and colour to what the printer reports">
-								<span class="ams-dot" aria-hidden="true"></span>In AMS {Number(tray.unit) + 1} · slot
-								{Number(tray.slot) + 1}{tray.remain !== null
+								<span class="ams-dot" aria-hidden="true"></span>In {lab.printerList.length > 1
+									? `${tray.printer}, `
+									: ''}tray {trayLabel(tray.global)}{tray.remain !== null
 									? ` · printer says ${tray.remain}%`
 									: ''}{tray.active ? ' · in use' : ''}
 							</p>

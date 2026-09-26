@@ -15,11 +15,13 @@ export const AI_PROVIDER_VIA: Record<AiProviderId, string> = {
 	'anthropic-api': 'Anthropic API key, billed per use'
 };
 
-export type IntegrationId = AiProviderId | 'blender' | 'openscad' | 'slicer' | 'printer';
+/** Built-in integrations, plus any id a server module's integrations() rows use. */
+export type IntegrationId =
+	AiProviderId | 'blender' | 'openscad' | 'slicer' | 'printer' | (string & {});
 
 export interface IntegrationStatus {
 	id: IntegrationId;
-	kind: 'ai' | 'tool' | 'printer';
+	kind: 'ai' | 'tool' | 'printer' | 'module';
 	name: string;
 	via: string;
 	available: boolean;

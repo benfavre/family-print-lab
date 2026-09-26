@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { useApp } from '$lib/client/app.svelte';
+	import type { PrinterStatus } from '$lib/shared/domain';
 
 	// Nozzle, bed and chamber over the last 30 minutes, from the live printer reports seen by this tab.
+	let { printer }: { printer: PrinterStatus } = $props();
 	const { lab } = useApp();
 	const W = 300,
 		H = 90;
@@ -10,7 +12,7 @@
 		{ key: 'bed', label: 'Bed', tone: 'cyan' },
 		{ key: 'chamber', label: 'Chamber', tone: 'violet' }
 	] as const;
-	const data = $derived(lab.temps);
+	const data = $derived(lab.tempsFor(printer.id));
 	const span = $derived.by(() => {
 		const end = data.at(-1)?.t ?? Date.now();
 		const start = Math.min(data[0]?.t ?? end, end - 5 * 60_000);
@@ -20,7 +22,7 @@
 		Math.max(
 			60,
 			...data.flatMap((d) => [d.nozzle ?? 0, d.bed ?? 0]),
-			lab.printer.state?.nozzleTarget ?? 0
+			printer.state?.nozzleTarget ?? 0
 		) * 1.08
 	);
 	const x = (t: number) => ((t - span.start) / Math.max(span.end - span.start, 1)) * W;
@@ -36,8 +38,8 @@
 	}
 	const targets = $derived(
 		[
-			{ v: lab.printer.state?.nozzleTarget, tone: 'amber' },
-			{ v: lab.printer.state?.bedTarget, tone: 'cyan' }
+			{ v: printer.state?.nozzleTarget, tone: 'amber' },
+			{ v: printer.state?.bedTarget, tone: 'cyan' }
 		].filter((t): t is { v: number; tone: string } => !!t.v)
 	);
 	const minutes = $derived(Math.round((span.end - span.start) / 60_000));

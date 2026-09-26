@@ -18,6 +18,7 @@
 	import KidShell from '$lib/components/kid/KidShell.svelte';
 	import { goto } from '$app/navigation';
 	import { INTEGRATIONS_NAV, NAV } from '$lib/client/nav';
+	import { UI } from '$lib/client/registry';
 
 	let { data, children } = $props();
 	const ui = new UiState();
@@ -241,7 +242,7 @@
 			e.preventDefault();
 			const route = page.route.id ?? '/';
 			if (route.startsWith('/projects/')) ui.openEditor('job', null, { projectId: page.params.id });
-			else if (route === '/jobs' || route === '/printer') ui.openEditor('job');
+			else if (route === '/jobs' || route?.startsWith('/printers')) ui.openEditor('job');
 			else if (route === '/filament') ui.openEditor('spool');
 			else if (route === '/family') ui.openEditor('profile');
 			else ui.openEditor('project');
@@ -291,5 +292,6 @@
 		<Toasts />
 		<Assistant />
 		<BottomNav />
+		{#each UI.globalOverlays as overlay (overlay.id)}<overlay.component />{/each}
 	</div>
 {/if}

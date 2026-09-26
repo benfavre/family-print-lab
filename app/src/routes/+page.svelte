@@ -65,8 +65,8 @@
 			eyebrow={who ? `${who.name.toUpperCase()}'S WORKBENCH` : 'IDEAS → REAL THINGS'}
 			title="What shall we make?"
 			text="A little practical. A little playful. Something for everyone."
-			note={lab.printer.connected
-				? 'Preview animation — see Printer for the live print'
+			note={lab.printerList.some((p) => p.connected)
+				? 'Preview animation — see Printers for the live prints'
 				: 'Preview animation — no printer is connected'}
 		>
 			{#snippet actions()}

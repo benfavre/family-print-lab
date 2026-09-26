@@ -17,6 +17,8 @@ import {
 import type { IntegrationsReport } from '$lib/shared/integrations';
 import { CLOUD_OFF, type CloudStatus } from '$lib/shared/cloud';
 import type { TaskInfo } from '$lib/shared/tasks';
+import type { PrinterSnapshot } from '$lib/shared/printers/status';
+import { live } from './live';
 
 export class ApiError extends Error {
 	constructor(
@@ -193,11 +195,11 @@ export class UiState {
 		this.addPanel({ kind: 'sketch', id: options.sketchId ?? null, preset: { ...options } }, true);
 	}
 
-	/** The send-to-printer window for a queued job. */
-	openSend(jobId: string) {
+	/** The send-to-printer window for a queued job (optionally with a printer chosen). */
+	openSend(jobId: string, printerId?: string | null) {
 		const existing = this.panels.find((p) => p.kind === 'send' && p.id === jobId);
 		if (existing) return this.focusPanel(existing.key);
-		this.addPanel({ kind: 'send', id: jobId, preset: {} });
+		this.addPanel({ kind: 'send', id: jobId, preset: printerId ? { printerId } : {} });
 	}
 
 	/** The AI design window, optionally starting from a picture (e.g. a sketch) and a prompt. */
@@ -257,9 +259,12 @@ export class UiState {
 	}
 }
 
+const NO_PRINTER: PrinterStatus = { configured: false };
+
 export class LabStore {
 	ws = $state<Workspace>() as Workspace;
-	printer = $state<PrinterStatus>({ configured: false });
+	/** Live status of every saved printer, by id (kept current by the event stream). */
+	printers = $state<Record<string, PrinterStatus>>({});
 	/** The optional Print Lab Cloud link, kept live by the event stream. */
 	cloud = $state<CloudStatus>(CLOUD_OFF);
 	ai = $state({ configured: false, provider: 'claude-code', label: '' });
@@ -306,7 +311,7 @@ export class LabStore {
 	constructor(
 		initial: {
 			workspace: Workspace;
-			printer: PrinterStatus;
+			printers?: PrinterStatus[];
 			ai: { configured: boolean; provider: string; label: string };
 			cloud?: CloudStatus;
 		},
@@ -314,8 +319,13 @@ export class LabStore {
 	) {
 		if (initial.cloud) this.cloud = initial.cloud;
 		this.ws = initial.workspace;
-		this.printer = initial.printer;
+		this.setPrinters(initial.printers ?? []);
 		this.ai = initial.ai;
+	}
+
+	private setPrinters(list: PrinterStatus[]) {
+		this.printers = Object.fromEntries(list.filter((p) => p.id).map((p) => [p.id!, p]));
+		for (const p of list) this.sampleTemps(p);
 	}
 
 	// ---------- Live sync ----------
@@ -328,9 +338,8 @@ export class LabStore {
 			this.online = true;
 			this.retryMs = 1000;
 			const data = JSON.parse((e as MessageEvent).data);
-			this.printer = data.printer;
+			this.setPrinters(data.printers ?? []);
 			if (data.cloud) this.cloud = data.cloud;
-			this.sampleTemps();
 			if (data.tasks) {
 				this.tasks = data.tasks;
 				for (const t of data.tasks as TaskInfo[]) if (t.status !== 'running') this.settle(t);
@@ -349,9 +358,12 @@ export class LabStore {
 			this.cloud = JSON.parse((e as MessageEvent).data);
 		});
 		source.addEventListener('printer', (e) => {
-			this.printer = JSON.parse((e as MessageEvent).data);
-			this.sampleTemps();
+			const status: PrinterStatus = JSON.parse((e as MessageEvent).data);
+			if (!status.id) return;
+			this.printers = { ...this.printers, [status.id]: status };
+			this.sampleTemps(status);
 		});
+		source.addEventListener('live', (e) => live.dispatch(JSON.parse((e as MessageEvent).data)));
 		source.onerror = () => {
 			this.online = false;
 			// The browser retries dropped connections itself, but gives up for good after an HTTP error.
@@ -434,19 +446,32 @@ export class LabStore {
 		}
 	}
 
-	// ---------- Printer temperature history (kept in the browser, last 30 minutes) ----------
+	// ---------- Printer temperature history (kept in the browser, last 30 minutes, per printer) ----------
 
-	temps = $state<
-		{ t: number; nozzle: number | null; bed: number | null; chamber: number | null }[]
-	>([]);
-	private sampleTemps() {
-		const s = this.printer.state;
-		if (!s || (s.nozzle === null && s.bed === null)) return;
+	private temps = $state<
+		Record<
+			string,
+			{ t: number; nozzle: number | null; bed: number | null; chamber: number | null }[]
+		>
+	>({});
+	tempsFor = (id: string | null | undefined) => (id ? (this.temps[id] ?? []) : []);
+	private sampleTemps(p: PrinterStatus) {
+		const s = p.state;
+		if (!p.id || !s || (s.nozzle === null && s.bed === null)) return;
 		const t = Date.now();
-		const last = this.temps.at(-1);
+		const list = this.temps[p.id] ?? [];
+		const last = list.at(-1);
 		if (last && t - last.t < 2000) return;
-		const keep = this.temps.filter((x) => t - x.t < 30 * 60_000);
-		this.temps = [...keep, { t, nozzle: s.nozzle, bed: s.bed, chamber: s.chamber }];
+		const keep = list.filter((x) => t - x.t < 30 * 60_000);
+		this.temps = {
+			...this.temps,
+			[p.id]: [...keep, { t, nozzle: s.nozzle, bed: s.bed, chamber: s.chamber }]
+		};
+	}
+
+	/** Subscribes to a live channel from a server module (see client/live.ts). */
+	onLive<T>(channel: string, fn: (data: T) => void): () => void {
+		return live.on(channel, fn);
 	}
 
 	// ---------- Background tasks ----------
@@ -558,20 +583,53 @@ export class LabStore {
 		return [...sorted.filter((p) => p.pinned), ...sorted.filter((p) => !p.pinned)];
 	}
 
-	// ---------- Printer-derived ----------
+	// ---------- Printers ----------
 
-	get printerActive() {
-		return (
-			!!this.printer.connected &&
-			!!this.printer.state &&
-			ACTIVE_PRINTER_STATES.has(this.printer.state.gcodeState)
+	/** Saved printers' live status, in their Settings order. */
+	get printerList(): PrinterStatus[] {
+		return (this.ws.printers ?? []).map(
+			(info) =>
+				this.printers[info.id] ?? {
+					configured: true,
+					id: info.id,
+					name: info.name,
+					model: info.model,
+					enabled: info.enabled,
+					simulated: info.simulated,
+					connected: false,
+					state: null
+				}
 		);
 	}
 
-	/** Live printer data when this job is linked to the print that is running now. */
-	liveFor(job: Job) {
-		const s = this.printer.state;
-		return this.printerActive && job.printerTask && s?.task === job.printerTask ? s : null;
+	/** The first switched-on printer: what single-printer views show. */
+	get primaryPrinter(): PrinterStatus | null {
+		return this.printerList.find((p) => p.enabled !== false) ?? null;
+	}
+
+	printerById = (id: string | null | undefined): PrinterStatus | null =>
+		id ? (this.printerList.find((p) => p.id === id) ?? null) : null;
+
+	printerActiveFor = (id: string): boolean => isActive(this.printerById(id));
+
+	/** @deprecated Single-printer callers: the first printer, or { configured: false }. */
+	get printer(): PrinterStatus {
+		return this.primaryPrinter ?? NO_PRINTER;
+	}
+
+	/** Whether any printer is printing. */
+	get printerActive() {
+		return this.printerList.some(isActive);
+	}
+
+	/** Live printer data when this job is linked to a print that is running now. */
+	liveFor(job: Job): PrinterSnapshot | null {
+		if (!job.printerTask) return null;
+		const candidates = job.printerId
+			? [this.printerById(job.printerId)]
+			: this.printerList.filter((p) => p.state?.task === job.printerTask);
+		const p = candidates.find((c) => isActive(c) && c!.state?.task === job.printerTask);
+		return p?.state ?? null;
 	}
 
 	/** 0..1 progress: live from the printer when linked, else estimated from start time and estimate. */
@@ -645,6 +703,9 @@ export class LabStore {
 		return s && s.cost !== null && job.grams !== null ? (job.grams * s.cost) / s.totalGrams : null;
 	}
 }
+
+const isActive = (p: PrinterStatus | null | undefined) =>
+	!!p?.connected && !!p.state && ACTIVE_PRINTER_STATES.has(p.state.gcodeState);
 
 const KEY = Symbol('family-print-lab');
 export interface AppContext {

@@ -19,21 +19,22 @@ export default defineConfig({
 	webServer: [
 		{
 			// No random failures in tests: the simulator otherwise fails ~15% of prints on purpose.
+			// One simulated X2D, registered by the BAMBU_* variables below (the one-time env import).
 			command:
-				'npx tsx tools/printer-sim.ts --port 18831 --ftp-port 18991 --control 18661 --speed 120 --fail-rate 0',
+				'node --import tsx tools/printer-sim.ts --fleet N6 --port 18831 --ftp-port 18991 --control 18661 --speed 120 --fail-rate 0',
 			url: 'http://127.0.0.1:18661',
 			reuseExistingServer: false,
 			stdout: 'ignore'
 		},
 		{
 			// A stand-in for Print Lab Cloud (docs/cloud-protocol.md).
-			command: 'npx tsx tools/cloud-sim.ts --port 18881',
+			command: 'node --import tsx tools/cloud-sim.ts --port 18881',
 			url: 'http://127.0.0.1:18881/sim/state',
 			reuseExistingServer: false,
 			stdout: 'ignore'
 		},
 		{
-			command: `rm -rf .e2e && mkdir -p .e2e && BUILD_DIR=.e2e/build npm run build && node .e2e/build`,
+			command: `rm -rf .e2e && mkdir -p .e2e && BUILD_DIR=.e2e/build node node_modules/vite/bin/vite.js build && node .e2e/build`,
 			url: `http://127.0.0.1:${PORT}`,
 			reuseExistingServer: false,
 			timeout: 240_000,

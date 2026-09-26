@@ -1,5 +1,7 @@
-// The app's sections, shared by the top bar, the mobile tab bar and the "G then …" shortcuts.
+// The app's sections, shared by the top bar, the mobile tab bar and the "G then …" shortcuts. Packages
+// add sections through the UI registry (client/modules/<key>/ui.ts `nav`), placed by `order`.
 import { resolve } from '$app/paths';
+import { UI, mergeUi, type SlotEntry } from './registry';
 
 export interface NavItem {
 	href: string;
@@ -11,8 +13,10 @@ export interface NavItem {
 	match: (path: string) => boolean;
 }
 
-export const NAV: NavItem[] = [
+const BASE: (NavItem & SlotEntry)[] = [
 	{
+		id: 'projects',
+		order: 10,
 		href: resolve('/'),
 		label: 'Projects',
 		key: 'p',
@@ -20,6 +24,8 @@ export const NAV: NavItem[] = [
 		match: (p) => p === '/' || p.startsWith('/projects')
 	},
 	{
+		id: 'jobs',
+		order: 20,
 		href: resolve('/jobs'),
 		label: 'Print jobs',
 		key: 'j',
@@ -27,13 +33,17 @@ export const NAV: NavItem[] = [
 		match: (p) => p.startsWith('/jobs')
 	},
 	{
-		href: resolve('/printer'),
-		label: 'Printer',
+		id: 'printers',
+		order: 30,
+		href: resolve('/printers'),
+		label: 'Printers',
 		key: 'r',
 		icon: 'M2.5 2.5h11v11h-11zM2.5 5.5h11M6 9.5h4M8 5.5v4',
 		match: (p) => p.startsWith('/printer')
 	},
 	{
+		id: 'filament',
+		order: 40,
 		href: resolve('/filament'),
 		label: 'Filament',
 		key: 'f',
@@ -41,6 +51,8 @@ export const NAV: NavItem[] = [
 		match: (p) => p.startsWith('/filament')
 	},
 	{
+		id: 'family',
+		order: 50,
 		href: resolve('/family'),
 		label: 'Family',
 		key: 'm',
@@ -48,6 +60,8 @@ export const NAV: NavItem[] = [
 		match: (p) => p.startsWith('/family')
 	},
 	{
+		id: 'shop',
+		order: 60,
 		href: resolve('/shop'),
 		label: 'Shop',
 		key: 's',
@@ -55,6 +69,18 @@ export const NAV: NavItem[] = [
 		match: (p) => p.startsWith('/shop')
 	}
 ];
+
+/** Every section in order: the base ones plus what packages register (they may replace a base one). */
+export const NAV: NavItem[] = mergeUi(
+	[
+		{ key: 'core', nav: BASE },
+		{ key: 'modules', nav: UI.nav }
+	],
+	(message) => console.error(message)
+).nav;
+
+/** The printers section (its tab shows a dot while something prints). */
+export const PRINTERS_HREF = resolve('/printers');
 
 export const INTEGRATIONS_NAV: NavItem = {
 	href: resolve('/integrations'),

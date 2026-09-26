@@ -4,6 +4,7 @@
 	import { useApp } from '$lib/client/app.svelte';
 	import EditorShell from './EditorShell.svelte';
 	import ExpandableText from './ExpandableText.svelte';
+	import { UI } from '$lib/client/registry';
 
 	let {
 		id,
@@ -133,4 +134,7 @@
 			context: () => ({ Spool: `${f.colorName} ${f.material} ${f.brand}`.trim() })
 		}}
 	/>
+	{#each UI.spoolFormFields as field (field.id)}
+		<field.component spool={existing ?? null} draft={f as Record<string, unknown>} />
+	{/each}
 </EditorShell>

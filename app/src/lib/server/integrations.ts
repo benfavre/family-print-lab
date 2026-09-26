@@ -1,5 +1,6 @@
 // Status and self-tests for everything the lab connects to: the AI providers, Blender, the OpenSCAD
-// engine and the printer. Statuses run the CLIs, so they are cached briefly.
+// engine, the slicer, the printers, and whatever server modules add. Statuses run the CLIs, so they
+// are cached briefly.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -59,8 +60,29 @@ export async function integrations(rt: Runtime, refresh = false): Promise<Integr
 	]);
 	const powers = (id: AiProviderId) =>
 		AI_TASKS.filter((t) => settings.ai.routing[t] === id).map((t) => AI_TASK_LABEL[t]);
-	const printer = rt.printerStatus();
+	const printers = rt.printers.statuses();
+	const enabled = printers.filter((p) => p.enabled !== false);
+	const connected = enabled.filter((p) => p.connected);
+	const simulated = printers.length > 0 && printers.every((p) => p.simulated);
+	const sliceModel = rt.printers.primary()?.model.short ?? 'X2D';
 	const slicer = findSlicer();
+	const moduleRows = (
+		await Promise.all(
+			rt
+				.loadedModules()
+				.filter((m) => m.state === 'started' && m.module.integrations)
+				.map(async (m) => {
+					try {
+						return (await m.module.integrations!()).map((row) => ({
+							...row,
+							kind: 'module' as const
+						}));
+					} catch {
+						return [];
+					}
+				})
+		)
+	).flat();
 	const items: IntegrationStatus[] = [
 		...ai.map((s) => ({
 			id: s.id,
@@ -99,14 +121,14 @@ export async function integrations(rt: Runtime, refresh = false): Promise<Integr
 			id: 'slicer',
 			kind: 'tool',
 			name: 'Bambu Studio',
-			via: 'Local install, sliced headless for the X2D',
+			via: `Local install, sliced headless for your printer (${sliceModel})`,
 			available: slicer.available,
 			detail: slicer.available ? slicer.path! : 'Not found on this computer.',
 			version: slicer.version,
 			powers: [
 				'Slices model versions with the job’s settings',
 				'Real print time and filament',
-				'X2D profiles for every material'
+				'Bambu Lab profiles for every printer and material'
 			],
 			setup: slicer.available
 				? []
@@ -125,16 +147,24 @@ export async function integrations(rt: Runtime, refresh = false): Promise<Integr
 		{
 			id: 'printer',
 			kind: 'printer',
-			name: printer.name ?? 'Bambu Lab printer',
-			via: printer.simulated
-				? 'Simulator (until the X2D arrives)'
+			name:
+				printers.length === 1
+					? (printers[0].name ?? 'Bambu Lab printer')
+					: printers.length
+						? `${printers.length} printers`
+						: 'Bambu Lab printers',
+			via: simulated
+				? 'Simulator (until the real printer arrives)'
 				: 'Local network (LAN-only mode + Developer Mode)',
-			available: !!printer.configured && !!printer.connected,
-			detail: !printer.configured
+			available: enabled.length > 0 && connected.length === enabled.length,
+			detail: !printers.length
 				? 'Not set up.'
-				: printer.connected
-					? `Connected${printer.state?.gcodeState ? ` · ${printer.state.gcodeState.toLowerCase()}` : ''}`
-					: printer.error || 'Waiting for the printer…',
+				: enabled
+						.map(
+							(p) =>
+								`${p.name}: ${p.connected ? `connected${p.state?.gcodeState ? ` · ${p.state.gcodeState.toLowerCase()}` : ''}` : p.error || 'waiting for the printer…'}`
+						)
+						.join(' · ') || 'Every printer is switched off.',
 			version: null,
 			powers: [
 				'Live status',
@@ -142,16 +172,14 @@ export async function integrations(rt: Runtime, refresh = false): Promise<Integr
 				'Pause, resume, stop',
 				'Closes jobs when prints finish'
 			],
-			setup: printer.configured
+			setup: printers.length
 				? []
 				: [
 						{ text: 'On the printer: Settings → Network → LAN Only, then turn on Developer Mode' },
-						{
-							text: 'Add its address, serial number and access code to app/.env, then restart',
-							command: 'BAMBU_HOST=192.168.1.x\nBAMBU_SERIAL=…\nBAMBU_ACCESS_CODE=…'
-						}
+						{ text: 'Then add it under Printers at the top of this page (or press Find printers)' }
 					]
-		}
+		},
+		...moduleRows
 	];
 	cache = {
 		at: Date.now(),
@@ -257,20 +285,28 @@ export async function testIntegration(
 			return {
 				ok: true,
 				ms: ms(),
-				detail: `Sliced a test cube for the X2D: ${out.minutes} min, ${out.grams} g (${out.choice.process}).`
+				detail: `Sliced a test cube for the ${rt.printers.primary()?.model.short ?? 'X2D'}: ${out.minutes} min, ${out.grams} g (${out.choice.process}).`
 			};
 		}
 		if (id === 'printer') {
-			const s = rt.printerStatus();
-			if (!s.configured) return { ok: false, ms: ms(), detail: 'No printer is set up.' };
-			return s.connected
+			const all = rt.printers.statuses().filter((p) => p.enabled !== false);
+			if (!all.length) return { ok: false, ms: ms(), detail: 'No printer is set up.' };
+			const offline = all.filter((p) => !p.connected);
+			return offline.length
 				? {
+						ok: false,
+						ms: ms(),
+						detail: offline.map((p) => `${p.name}: ${p.error || 'not connected yet'}`).join(' · ')
+					}
+				: {
 						ok: true,
 						ms: ms(),
-						detail: `Receiving live reports${s.lastSeen ? `, last one at ${new Date(s.lastSeen).toLocaleTimeString()}` : ''}.`
-					}
-				: { ok: false, ms: ms(), detail: s.error || 'Not connected yet.' };
+						detail: `Receiving live reports from ${all.length === 1 ? all[0].name : `all ${all.length} printers`}.`
+					};
 		}
+		// Rows from modules report their own state; there is nothing more to run.
+		const row = (await integrations(rt)).items.find((i) => i.id === id && i.kind === 'module');
+		if (row) return { ok: row.available, ms: ms(), detail: row.detail };
 		throw new AppError(404, 'Unknown integration.');
 	} catch (error) {
 		if (error instanceof AppError && error.status === 404) throw error;
