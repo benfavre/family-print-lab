@@ -29,7 +29,8 @@ export default defineConfig({
 			},
 			typescript: {
 				config: (config) => {
-					config.include.push('../drizzle.config.ts');
+					// Also the build tools and end-to-end tests, which nothing else type-checks.
+					config.include.push('../drizzle.config.ts', '../tools/**/*.ts', '../e2e/**/*.ts');
 				}
 			}
 		})

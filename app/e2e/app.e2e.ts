@@ -610,7 +610,7 @@ test.describe('on a phone', () => {
 		const box = (await card.boundingBox())!;
 		const at = { x: box.x + box.width / 2, y: box.y + 20 };
 		const cdp = await page.context().newCDPSession(page);
-		const touch = (type: string) =>
+		const touch = (type: 'touchStart' | 'touchEnd') =>
 			cdp.send('Input.dispatchTouchEvent', {
 				type,
 				touchPoints: type === 'touchEnd' ? [] : [at]
