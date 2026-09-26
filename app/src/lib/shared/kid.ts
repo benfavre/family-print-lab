@@ -37,8 +37,8 @@ export interface KidTemplate {
 	blurb: string;
 	icon: string;
 	levels: KidLevel[];
-	/** 'free' templates ship with the app; packs can add more later. */
-	pack: 'free';
+	/** 'free' templates ship with the app; others come from a template pack (Family plan). */
+	pack: string;
 	controls: KidControl[];
 	/** Starting values; numbers are clamped to the level's range. */
 	defaults: Record<string, string | number>;
@@ -227,10 +227,12 @@ export const KID_TEMPLATES: KidTemplate[] = [
 	}
 ];
 
-export const kidTemplate = (id: string) => KID_TEMPLATES.find((t) => t.id === id);
+/** `packs`: templates from installed packs (the kid layout's `packTemplates`), after the free ones. */
+export const kidTemplate = (id: string, packs: KidTemplate[] = []) =>
+	KID_TEMPLATES.find((t) => t.id === id) ?? packs.find((t) => t.id === id);
 
-export const templatesFor = (level: KidLevel) =>
-	KID_TEMPLATES.filter((t) => t.levels.includes(level));
+export const templatesFor = (level: KidLevel, packs: KidTemplate[] = []) =>
+	[...KID_TEMPLATES, ...packs].filter((t) => t.levels.includes(level));
 
 /** Grams of PLA for a mesh volume in mm³ (1.24 g/cm³), for time and filament hints. */
 export const plaGrams = (volumeMm3: number) => Math.round((volumeMm3 / 1000) * 1.24);

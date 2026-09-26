@@ -11,7 +11,7 @@
 	const { lab, ui } = useApp();
 	const kid = $derived(page.data.kid!);
 	const little = $derived(kid.level === 'little');
-	const template = $derived(kidTemplate(page.params.template ?? ''));
+	const template = $derived(kidTemplate(page.params.template ?? '', page.data.packTemplates));
 	const usable = $derived(!!template?.levels.includes(kid.level));
 	/** Colours on the shelf with enough left for a small print. */
 	const colours = $derived(lab.ws.spools.filter((s) => s.remainingGrams >= 30));

@@ -8,6 +8,7 @@ import type { ParamValues } from '$lib/shared/cad';
 import { renderScad } from '../cad/openscad';
 import { stats, type Soup } from '../cad/mesh';
 import { AppError } from '../validation';
+import { packSource, packTemplates } from './packs';
 
 /** 2D shapes shared by the templates, each about `s` mm across, with rounded corners. */
 const SHAPES = `
@@ -167,14 +168,15 @@ export function cleanKidText(value: unknown, max: number) {
 }
 
 export function templateSource(id: string) {
-	const source = SOURCES[id];
+	const source = SOURCES[id] ?? packSource(id);
 	if (!source) throw new AppError(404, 'That template does not exist.');
 	return source;
 }
 
 export function usableTemplate(id: string, level: KidLevel): KidTemplate {
-	const template = kidTemplate(id);
-	if (!template || !SOURCES[id]) throw new AppError(404, 'That template does not exist.');
+	const template = kidTemplate(id, packTemplates());
+	if (!template || !(SOURCES[id] ?? packSource(id)))
+		throw new AppError(404, 'That template does not exist.');
 	if (!template.levels.includes(level))
 		throw new AppError(403, 'That one is for older makers. Pick another!');
 	return template;

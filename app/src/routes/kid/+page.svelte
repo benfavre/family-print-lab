@@ -10,13 +10,13 @@
 	const { lab, ui } = useApp();
 	const kid = $derived(page.data.kid!);
 	const little = $derived(kid.level === 'little');
-	const templates = $derived(templatesFor(kid.level));
+	const templates = $derived(templatesFor(kid.level, page.data.packTemplates));
 	const things = $derived(
 		lab.ws.projects
 			.filter((p) => p.profileId === kid.id)
 			.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 			.map((p) => {
-				const { model, template } = thingTemplate(lab, p);
+				const { model, template } = thingTemplate(lab, p, page.data.packTemplates);
 				const version = model?.versions.find((v) => v.id === model.currentVersionId);
 				return { p, model, version, template, status: thingStatus(lab, p.id, ui.now) };
 			})

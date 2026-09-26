@@ -204,6 +204,14 @@
 					/> Share print progress (what is printing, how far along, time left) so the phone can follow
 					it and say when it is done</label
 				>
+				{#if cloud.packs.length}
+					<p class="packs">
+						Template packs from your Family plan: {#each cloud.packs as p, i (p.id)}{i
+								? ', '
+								: ''}{p.icon}
+							{p.title} ({p.templates}){/each}. Kids find them with the others.
+					</p>
+				{/if}
 				<button class="link-button" onclick={unlinkCloud}>Unlink</button>
 			{/if}
 			{#if cloud.error}<p class="pin-error" role="alert">{cloud.error}</p>{/if}

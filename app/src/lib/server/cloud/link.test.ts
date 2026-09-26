@@ -14,6 +14,8 @@ import { EventEmitter } from 'node:events';
 import type { PrinterStatus } from '$lib/shared/domain';
 import { CloudLink, summarizePrinter } from './link';
 import { open, unpack } from './vault';
+import { packTemplates } from '../kid/packs';
+import { TEST_PACK } from '../__fixtures__/pack';
 
 let db: DB, lab: Lab, models: ModelStore, sim: CloudSim, links: CloudLink[];
 beforeEach(async () => {
@@ -279,5 +281,18 @@ describe('Print Lab Cloud link', () => {
 		expect(link.status().backup.error).toMatch(/Family plan/);
 		link.disableBackup();
 		expect(link.backupEnabled()).toBe(false);
+	});
+
+	it('installs template packs with the Family plan, and removes them without it', async () => {
+		sim.setPacks([TEST_PACK]);
+		const link = await linked();
+		await until(() => link.status().packs.length === 1, 'packs');
+		expect(link.status().packs).toEqual([
+			{ id: 'test-pack', title: 'Test pack', icon: '🧪', templates: 1 }
+		]);
+		expect(packTemplates().map((t) => t.id)).toEqual(['test-block']);
+		sim.setPlan(false);
+		await until(() => link.status().packs.length === 0, 'removed');
+		expect(packTemplates()).toEqual([]);
 	});
 });

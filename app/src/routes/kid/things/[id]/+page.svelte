@@ -12,7 +12,7 @@
 	const project = $derived(
 		lab.ws.projects.find((p) => p.id === page.params.id && p.profileId === kid.id)
 	);
-	const made = $derived(project ? thingTemplate(lab, project) : null);
+	const made = $derived(project ? thingTemplate(lab, project, page.data.packTemplates) : null);
 	const status = $derived(project ? thingStatus(lab, project.id, ui.now) : null);
 	const colours = $derived(lab.ws.spools.filter((s) => s.remainingGrams >= 30));
 	const QUICK = ['Please! 🙏', 'It’s a present 🎁', 'For school 🎒', 'For my room 🛏️'];

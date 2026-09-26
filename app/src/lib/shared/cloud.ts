@@ -19,6 +19,8 @@ export interface CloudStatus {
 		last: { at: string; size: number } | null;
 		error: string | null;
 	};
+	/** Kid mode template packs installed from the cloud (Family plan). */
+	packs: { id: string; title: string; icon: string; templates: number }[];
 	/** While linking: the code to enter and where. */
 	pairing: { userCode: string; verifyUrl: string; expiresAt: string } | null;
 	error: string | null;
@@ -44,6 +46,7 @@ export const CLOUD_OFF: CloudStatus = {
 	shareNames: true,
 	shareProgress: false,
 	backup: { enabled: false, last: null, error: null },
+	packs: [],
 	pairing: null,
 	error: null,
 	linkedAt: null

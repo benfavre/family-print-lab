@@ -12,7 +12,8 @@ used by the tests.
 - **Outbound only.** The app opens one WebSocket to the cloud. It never listens for connections
   from the internet, so it still binds only to `127.0.0.1` (or the LAN it was configured for).
 - **One command.** The cloud can ask the app to do exactly one thing: approve or decline a waiting
-  print request. It cannot read the workspace, start, pause or stop prints, or change anything
+  print request. (It can also offer template packs, which are data the app checks and renders in its
+  sandbox, never instructions.) It cannot read the workspace, start, pause or stop prints, or change anything
   else. The app checks every command through the same code path as the Family page (including the
   request's version), and logs it.
 - **Minimal data.** Only print requests are shared (see `RequestSummary`), plus, only when a parent
@@ -63,6 +64,16 @@ bytes of SHA-256 of the AES key) only tells whether a key fits; the cloud never 
   `{"backups": [{"id", "device", "createdAt", "size", "keyId"}]}`.
 - `GET {cloud}/device/backups/{id}` returns a sealed file, which the app opens with the recovery
   key and restores like any local backup (after taking a safety snapshot).
+
+## Template packs (Family plan)
+
+`GET {cloud}/device/packs` with the bearer token returns `{"plan": true, "packs": Pack[]}` (an empty
+list without the plan). The app fetches it after each `welcome` and `plan` message. A pack is data:
+kid mode template descriptions (the same shape as the built-in ones in `app/src/lib/shared/kid.ts`)
+each with a self-contained OpenSCAD `source`. The app validates them strictly (sizes at most 240 mm,
+known control kinds, no replacing a built-in template), renders them in its OpenSCAD sandbox with a
+time limit, and applies the kid mode rules to every value. Without the plan, installed packs are
+removed; things already made from them are kept.
 
 ## Messages
 

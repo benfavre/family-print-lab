@@ -46,6 +46,8 @@ export interface CloudSim {
 		version?: number
 	): Promise<{ ok: boolean; error?: string }>;
 	setPlan(active: boolean): void;
+	/** Template packs served to Family plan accounts. */
+	setPacks(packs: unknown[]): void;
 	unlink(): void;
 	state(): {
 		devices: { id: string; name: string; account: string }[];
@@ -84,6 +86,7 @@ export function startCloudSim(port = 0, host = '127.0.0.1'): Promise<CloudSim> {
 		createdAt: string;
 	}[] = [];
 	let printerMessages = 0;
+	let packs: unknown[] = [];
 	let plan = true;
 	const waiting = new Map<string, (r: { ok: boolean; error?: string }) => void>();
 	let url = '';
@@ -137,6 +140,9 @@ export function startCloudSim(port = 0, host = '127.0.0.1'): Promise<CloudSim> {
 			);
 			return result;
 		},
+		setPacks(next) {
+			packs = next;
+		},
 		setPlan(active) {
 			plan = active;
 			socket?.send(JSON.stringify({ type: 'plan', plan }));
@@ -165,6 +171,10 @@ export function startCloudSim(port = 0, host = '127.0.0.1'): Promise<CloudSim> {
 
 	const server = http.createServer(async (req, res) => {
 		const path = new URL(req.url ?? '/', 'http://x').pathname;
+		if (path === '/device/packs') {
+			if (!bearer(req)) return json(res, 401, { error: 'This device is not linked.' });
+			return json(res, 200, { plan, packs: plan ? packs : [] });
+		}
 		// Encrypted backups: stored as sent (the simulator, like the cloud, cannot open them).
 		if (path === '/device/backups' || path.startsWith('/device/backups/')) {
 			const d = bearer(req);

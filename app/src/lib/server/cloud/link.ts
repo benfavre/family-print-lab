@@ -14,6 +14,7 @@ import { AppError } from '../validation';
 import { plaGrams } from '$lib/shared/kid';
 import type { CloudBackup, CloudStatus } from '$lib/shared/cloud';
 import { keyFrom, MAX_BACKUP, newRecoveryKey, pack, seal } from './vault';
+import { installedPacks, parsePacks, savePacks } from '../kid/packs';
 import type { PrinterStatus } from '$lib/shared/domain';
 
 const KEY = 'cloud';
@@ -158,6 +159,12 @@ export class CloudLink extends EventEmitter {
 				last: this.stored.backup?.last ?? null,
 				error: this.stored.backup?.error ?? null
 			},
+			packs: installedPacks().map((p) => ({
+				id: p.id,
+				title: p.title,
+				icon: p.icon,
+				templates: p.templates.length
+			})),
 			pairing: this.pairing,
 			error: this.error,
 			linkedAt: this.stored.link?.linkedAt ?? null
@@ -258,6 +265,34 @@ export class CloudLink extends EventEmitter {
 		this.lastPrinter = '';
 		this.sendPrinter();
 		this.emit('status', this.status());
+	}
+
+	// ---------- Template packs (Family plan) ----------
+
+	/** Fetches the packs the account may use; without the plan, installed packs are removed. */
+	async syncPacks() {
+		try {
+			let packs: ReturnType<typeof parsePacks> = [];
+			if (this.plan) {
+				const response = await this.device('/device/packs', {
+					signal: AbortSignal.timeout(30_000)
+				});
+				if (!response.ok) return;
+				packs = parsePacks(((await response.json()) as { packs?: unknown }).packs);
+			}
+			const before = JSON.stringify(installedPacks());
+			if (JSON.stringify(packs) === before) return;
+			savePacks(this.db, packs);
+			this.lab.touch(
+				'cloud',
+				packs.length
+					? `Template packs: ${packs.map((p) => p.title).join(', ')}`
+					: 'Template packs removed (no Family plan)'
+			);
+			this.emit('status', this.status());
+		} catch {
+			// Offline or a hiccup: keep what is installed and try again on the next connection.
+		}
 	}
 
 	// ---------- Encrypted backups (Family plan) ----------
@@ -420,9 +455,11 @@ export class CloudLink extends EventEmitter {
 			// Always, so the cloud catches a print that ended while offline, and forgets the printer
 			// if sharing was turned off meanwhile (then it is just `null`: nothing about the printer).
 			this.sendPrinter();
+			void this.syncPacks();
 		} else if (m.type === 'plan') {
 			this.plan = m.plan === true;
 			this.emit('status', this.status());
+			void this.syncPacks();
 		} else if (m.type === 'decide') {
 			ws.send(JSON.stringify({ type: 'result', commandId: m.commandId, ...this.decide(m) }));
 		} else if (m.type === 'unlinked') {

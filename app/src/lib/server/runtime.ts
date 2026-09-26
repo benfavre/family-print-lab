@@ -24,6 +24,7 @@ import { SketchStore } from './sketches';
 import { parseImport, replaceWorkspace } from './portability';
 import { ParentPin } from './kid/pin';
 import { CloudLink } from './cloud/link';
+import { loadPacks } from './kid/packs';
 import { version as appVersion } from '../../../package.json';
 import type { PrinterStatus } from '$lib/shared/domain';
 
@@ -134,6 +135,7 @@ function boot(): Runtime {
 		`Database ${file} · printer ${printer ? `${printer.name}${printer.config.simulated ? ' (SIMULATOR)' : ''} at ${printer.config.host}:${printer.config.port}` : 'not configured'} · AI via ${getSettings(db).ai.routing.chat}`
 	);
 
+	loadPacks(db);
 	// Print Lab Cloud is optional and does nothing until someone links this computer.
 	const cloud = env.CLOUD_URL
 		? new CloudLink(db, lab, models, env.CLOUD_URL, appVersion, undefined, printer)

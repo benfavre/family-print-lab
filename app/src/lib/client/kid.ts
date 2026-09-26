@@ -1,6 +1,6 @@
 // Kid mode on the client: where each thing a child made stands, in words a child understands.
 import type { PrintRequest, Project } from '$lib/shared/domain';
-import { kidTemplate } from '$lib/shared/kid';
+import { kidTemplate, type KidTemplate } from '$lib/shared/kid';
 import type { LabStore } from './app.svelte';
 
 export type ThingState =
@@ -54,10 +54,13 @@ export function thingStatus(lab: LabStore, projectId: string, now = Date.now()):
 }
 
 /** The template a kid thing was made from (its model's origin is `kid:<template>`). */
-export function thingTemplate(lab: LabStore, project: Project) {
+export function thingTemplate(lab: LabStore, project: Project, packs: KidTemplate[] = []) {
 	const model = lab.ws.models.find((m) => m.projectId === project.id);
 	const origin = model?.versions.find((v) => v.id === model.currentVersionId)?.origin ?? '';
-	return { model, template: origin.startsWith('kid:') ? kidTemplate(origin.slice(4)) : undefined };
+	return {
+		model,
+		template: origin.startsWith('kid:') ? kidTemplate(origin.slice(4), packs) : undefined
+	};
 }
 
 /**
