@@ -1,10 +1,11 @@
 // Matching a sliced file's filaments to what is loaded in the printer's AMS, used by the send dialog
 // and checked again on the server.
 import type { PrinterSnapshot, SlicedFilament } from './domain';
+import { EXT_DEPUTY, EXT_MAIN, type GlobalTray } from './printers/status';
 
 export interface LoadedSlot {
-	/** Global slot number: AMS unit × 4 + tray (0-3 for the first AMS). */
-	index: number;
+	/** Global tray number (GlobalTray): AMS unit × 4 + tray, 128+ AMS HT, 24–27 A2L, 254/255 external. */
+	index: GlobalTray;
 	label: string;
 	type: string;
 	name: string;
@@ -12,23 +13,30 @@ export interface LoadedSlot {
 	remain: number | null;
 }
 
-/** Every loaded AMS slot, labelled like the printer does (A1-A4, B1-B4…). */
+/** A tray's label as the printer shows it: A1–D4 for AMS units, HT1… for AMS HT, Ext for external spools. */
+export function trayLabel(global: GlobalTray, dual = false): string {
+	if (global === EXT_MAIN) return dual ? 'Ext R' : 'Ext';
+	if (global === EXT_DEPUTY) return dual ? 'Ext L' : 'Ext 2';
+	if (global >= 128 && global <= 135) return `HT${global - 127}`;
+	if (global >= 24 && global <= 27) return `A${global - 23}`;
+	return `${String.fromCharCode(65 + (global >> 2))}${(global & 3) + 1}`;
+}
+
+/** Every loaded tray (AMS units and external spools), labelled like the printer does. */
 export function loadedSlots(state: PrinterSnapshot | null | undefined): LoadedSlot[] {
 	const out: LoadedSlot[] = [];
-	for (const unit of state?.ams ?? []) {
-		const u = Number(unit.unit) || 0;
-		for (const tray of unit.trays) {
-			if (!tray.type) continue;
-			const t = Number(tray.slot) || 0;
-			out.push({
-				index: u * 4 + t,
-				label: `${String.fromCharCode(65 + u)}${t + 1}`,
-				type: tray.type,
-				name: tray.name,
-				color: tray.color,
-				remain: tray.remain
-			});
-		}
+	const dual = (state?.nozzles?.length ?? 1) > 1;
+	const trays = [...(state?.ams ?? []).flatMap((u) => u.trays), ...(state?.externalSpools ?? [])];
+	for (const tray of trays) {
+		if (!tray.type) continue;
+		out.push({
+			index: tray.global,
+			label: trayLabel(tray.global, dual),
+			type: tray.type,
+			name: tray.name,
+			color: tray.color,
+			remain: tray.remain
+		});
 	}
 	return out;
 }
@@ -56,7 +64,14 @@ export function autoMapping(filaments: SlicedFilament[], slots: LoadedSlot[]): n
 	return filaments.map((f) => {
 		const same = slots.filter((s) => family(s.type) === family(f.type));
 		const ranked = same
-			.map((s) => ({ s, score: colorDistance(f.color, s.color) + (used.has(s.index) ? 1000 : 0) }))
+			.map((s) => ({
+				s,
+				// AMS trays first; an external spool when nothing else fits as well.
+				score:
+					colorDistance(f.color, s.color) +
+					(used.has(s.index) ? 1000 : 0) +
+					(s.index === EXT_MAIN || s.index === EXT_DEPUTY ? 100 : 0)
+			}))
 			.sort((a, b) => a.score - b.score);
 		const pick = ranked[0]?.s;
 		if (!pick) return -1;

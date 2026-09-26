@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { openDatabase, type DB } from './db';
+import { printers } from './db/schema';
 import { Lab } from './lab';
 import { exportWorkspace, parseImport, replaceWorkspace } from './portability';
 import { AppError } from './validation';
@@ -302,14 +303,44 @@ describe('jobs and filament', () => {
 
 	it('links a printer task to the single unlinked running job and closes it on the outcome', () => {
 		const { projectId, spoolId } = setup();
+		for (const id of ['p1', 'p2'])
+			lab.db
+				.insert(printers)
+				.values({
+					id,
+					name: id,
+					model: 'N6',
+					host: '127.0.0.1',
+					serial: `S-${id}`,
+					accessCode: '12345678'
+				})
+				.run();
 		const id = lab.createJob({ projectId, spoolId, grams: 40 });
 		lab.transitionJob(id, { to: 'Printing' });
-		expect(lab.linkStartedTask('dock_v01')).toBe(id);
-		expect(lab.linkStartedTask('dock_v01')).toBeNull();
-		expect(lab.closePrinterTask('other_task', true)).toBeNull();
-		expect(lab.closePrinterTask('dock_v01', false)).toBe(id);
+		expect(lab.linkStartedTask('p1', 'dock_v01')).toBe(id);
+		expect(lab.linkStartedTask('p1', 'dock_v01')).toBeNull();
+		// A job for any printer now belongs to the one that printed it.
+		expect(job(id).printerId).toBe('p1');
+		expect(lab.jobIdForTask('p1', 'dock_v01')).toBe(id);
+		expect(lab.jobIdForTask('p2', 'dock_v01')).toBeNull();
+		expect(lab.closePrinterTask('p1', 'other_task', 'succeeded')).toBeNull();
+		expect(lab.closePrinterTask('p2', 'dock_v01', 'failed')).toBeNull();
+		expect(lab.closePrinterTask('p1', 'dock_v01', 'failed')).toBe(id);
 		expect(job(id)).toMatchObject({ status: 'Failed', chargeGrams: 40 });
 		expect(job(id).notes).toMatch(/failed/);
+		// Jobs meant for another printer are left alone; stopping a print cancels its job.
+		const other = lab.createJob({ projectId, printerId: 'p2' });
+		lab.transitionJob(other, { to: 'Printing' });
+		expect(lab.linkStartedTask('p1', 'x')).toBeNull();
+		expect(lab.linkStartedTask('p2', 'x')).toBe(other);
+		expect(lab.closePrinterTask('p2', 'x', 'cancelled')).toBe(other);
+		expect(job(other)).toMatchObject({ status: 'Cancelled', chargeGrams: 0 });
+		expectError(() => lab.createJob({ projectId, printerId: 'nope' }), 404);
+		expect(lab.snapshot().printers.map((p) => [p.id, p.hasAccessCode])).toEqual([
+			['p1', true],
+			['p2', true]
+		]);
+		expect(JSON.stringify(lab.snapshot().printers)).not.toContain('12345678');
 	});
 
 	it('announces every committed change to live listeners', () => {

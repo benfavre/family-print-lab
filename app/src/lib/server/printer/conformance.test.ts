@@ -375,3 +375,73 @@ describe('model catalogue', () => {
 		expect(stageName(999)).toBe('Working');
 	});
 });
+
+describe('simulator conformance', () => {
+	// Which fixture each simulated model starts from (sim/states/*.json).
+	const SIMULATED: [ModelCode, string][] = [
+		['BL-P001', 'x1c-multi-ams'],
+		['C11', 'p1p-no-ams'],
+		['C12', 'p1s'],
+		['N1', 'a1-mini'],
+		['N2S', 'a1'],
+		['N9', 'a2l'],
+		['N7', 'p2s'],
+		['N6', 'x2d'],
+		['O1D', 'h2d'],
+		['O1E', 'h2d-pro'],
+		['O1S', 'h2s'],
+		['O1C2', 'h2c']
+	];
+	/** Which parts of a snapshot are there at all, whatever their values. */
+	const shape = (s: PrinterSnapshot) => {
+		const set = (o: object) =>
+			Object.entries(o)
+				.filter(([, v]) => v !== null && v !== undefined)
+				.map(([k]) => k)
+				.sort();
+		return {
+			nozzles: s.nozzles.map((n) => set({ ...n, activeTray: null, temp: 0, target: 0 })),
+			ams: s.ams.map((u) => [u.id, u.model, u.trays.map((t) => t.global)]),
+			externalSpools: s.externalSpools.map((t) => t.global),
+			fans: set(s.fans),
+			lights: set(s.lights),
+			camera: set({ ...s.camera, rtspUrl: null, lanLiveview: null }),
+			chamberTarget: s.chamberTarget !== null,
+			airductMode: s.airductMode !== null,
+			doorOpen: s.doorOpen !== null,
+			developerMode: s.developerMode !== null,
+			firmwareSupport: Object.keys(s.firmwareSupport).sort(),
+			firmware: s.firmware.version
+		};
+	};
+
+	it.each(SIMULATED)('the simulated %s reports like the real one (%s)', async (model, fixture) => {
+		const { createSimulator } = await import('./sim/core');
+		const { BambuPrinter } = await import('./bambu');
+		const sim = createSimulator({ model, speed: 1, failRate: 0, log: () => {} });
+		const port = await sim.listen(0);
+		const printer = new BambuPrinter({
+			id: model,
+			model,
+			host: '127.0.0.1',
+			port,
+			serial: sim.serial,
+			accessCode: sim.accessCode,
+			useTls: false,
+			simulated: true
+		}).start();
+		try {
+			for (let i = 0; i < 250 && !(printer.snapshot && printer.versions.length); i++)
+				await new Promise((r) => setTimeout(r, 20));
+			const f = load(fixture);
+			const expected = parse(f, fresh(f));
+			expect(shape(printer.snapshot!)).toEqual(shape(expected));
+			// Idle, with Developer Mode on, so the app may send it commands.
+			expect(printer.snapshot!.gcodeState).toBe('IDLE');
+			if (expected.developerMode !== null) expect(printer.snapshot!.developerMode).toBe(true);
+		} finally {
+			printer.stop();
+			await sim.close();
+		}
+	});
+});

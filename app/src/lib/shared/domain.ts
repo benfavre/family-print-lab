@@ -171,6 +171,17 @@ export interface SlicedInfo {
 	at: string;
 }
 
+/** What was sent to a printer for this job (set when it is sent; read by AMS usage accounting). */
+export interface JobDispatch {
+	printerId: string;
+	plate: number;
+	useAms: boolean;
+	/** Global tray per filament in the file, as sent (see GlobalTray for the numbering). */
+	amsMapping: number[];
+	remoteName: string;
+	at: string;
+}
+
 export interface Job {
 	id: string;
 	projectId: string;
@@ -193,6 +204,10 @@ export interface Job {
 	sliced: SlicedInfo | null;
 	chargeSpoolId: string | null;
 	chargeGrams: number;
+	/** The printer this job prints on; null means any printer. */
+	printerId: string | null;
+	/** What was sent to the printer, once it was sent from the app. */
+	dispatch: JobDispatch | null;
 	version: number;
 	createdAt: string;
 	startedAt: string | null;
@@ -256,11 +271,16 @@ export interface Workspace {
 	models: ModelSummary[];
 	sketches: SketchSummary[];
 	printRequests: PrintRequest[];
+	/** Saved printers, in their order (never the access codes). */
+	printers: PrinterInfo[];
 	/** Whether a parent PIN is set (kid mode needs one). */
 	parentPin: boolean;
 	/** Monotonic change counter; bumps on every committed write. */
 	changeId: number;
 }
+
+import type { PrinterInfo } from './printers/info';
+export type { DiscoveredPrinter, PrinterInfo } from './printers/info';
 
 // Printer status types live in shared/printers/ (one file per concern); re-exported so existing imports work.
 export {

@@ -244,6 +244,7 @@ export async function testIntegration(
 				stl: writeStl(r.soup!),
 				name: 'Test cube',
 				settings: {
+					model: rt.printers.primary()?.model.code ?? 'N6',
 					nozzle: '0.4',
 					layerHeight: '0.20',
 					material: 'PLA',

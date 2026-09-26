@@ -118,7 +118,8 @@ const importFile = z.object({
 export type ImportData = z.infer<typeof importFile>;
 
 export function exportWorkspace(lab: Lab) {
-	const { changeId: _changeId, ...data } = lab.snapshot();
+	// Printers belong to this computer and its network (and their access codes never leave it).
+	const { changeId: _changeId, printers: _printers, ...data } = lab.snapshot();
 	return {
 		format: EXPORT_FORMAT,
 		version: EXPORT_VERSION,

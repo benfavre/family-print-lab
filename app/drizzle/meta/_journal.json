@@ -36,6 +36,13 @@
       "when": 1790363534567,
       "tag": "0004_kid_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1790400300000,
+      "tag": "0005_printers",
+      "breakpoints": true
     }
   ]
 }

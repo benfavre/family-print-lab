@@ -1,18 +1,25 @@
-// Sliced print files attached to jobs, and sending them to the printer as a background task:
-// upload over the printer's file service, mark the job as printing (linked to the printer's task
-// name), then start it. If the printer refuses, the job goes back to the queue.
+// Sliced print files attached to jobs, and sending them to a printer as a background task: upload over
+// the printer's file service, mark the job as printing on that printer (linked to its task name, with
+// what was sent), then start it. If the printer refuses, the job goes back to the queue. One send at a
+// time per printer.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Lab } from './lab';
 import type { TaskCenter } from './tasks';
-import type { BambuPrinter } from './printer/bambu';
+import { DEVELOPER_MODE_OFF, type BambuPrinter } from './printer/bambu';
+import type { PrinterManager } from './printer/manager';
+import type { Hooks } from './modules';
 import { readSliced } from './printer/sliced';
 import type { ModelStore } from './models';
 import { slice } from './slicer';
 import { AppError } from './validation';
 import { loadedSlots, mappingProblems } from '$lib/shared/printing';
 import { ACTIVE_PRINTER_STATES, type Job, type SlicedInfo } from '$lib/shared/domain';
+import { PRINTER_MODELS, modelShort, sameModel, type ModelCode } from '$lib/shared/printers/models';
+
+/** "a P1S", "an X2D". */
+const withArticle = (name: string) => `${/^[AEFHILMNORSX]/i.test(name) ? 'an' : 'a'} ${name}`;
 
 // Matches BODY_SIZE_LIMIT (110M); sliced plates are usually 2-40 MB.
 export const MAX_SLICED_BYTES = 110 * 1000 * 1000;
@@ -25,6 +32,13 @@ export interface SendOptions {
 	timelapse?: boolean;
 	/** Send even though the check found problems (the person confirmed). */
 	force?: boolean;
+	/** The printer to send to (default: the job's printer, else the first one). */
+	printerId?: string;
+	/**
+	 * Wake the printer first: with beforeDispatch hooks registered (home-automation), an offline printer
+	 * is not a problem yet; the send task runs the hooks, then checks again before uploading.
+	 */
+	wake?: boolean;
 }
 
 export class PrintFiles {
@@ -32,13 +46,23 @@ export class PrintFiles {
 		private lab: Lab,
 		readonly dir: string,
 		private tasks: TaskCenter,
-		private printer: BambuPrinter | null,
-		private models: ModelStore
+		private printers: PrinterManager,
+		private models: ModelStore,
+		private hooks: Hooks
 	) {}
 
+	/** The printer model a job slices for: its printer's, else the first printer's, else the X2D. */
+	private modelFor(job: Job): ModelCode {
+		if (job.printerId) {
+			const saved = this.printers.info().find((p) => p.id === job.printerId);
+			if (saved) return saved.model;
+		}
+		return this.printers.primary()?.model.code ?? 'N6';
+	}
+
 	/**
-	 * Slices the job's model version for the X2D with the job's settings (Bambu Studio, headless) and
-	 * attaches the result, as a background task.
+	 * Slices the job's model version for its printer's model with the job's settings (Bambu Studio,
+	 * headless) and attaches the result, as a background task.
 	 */
 	sliceJob(jobId: string) {
 		const job = this.job(jobId);
@@ -50,6 +74,7 @@ export class PrintFiles {
 		const version = model?.versions.find((v) => v.id === job.modelVersionId);
 		if (!model || !version) throw new AppError(404, 'That model version no longer exists.');
 		const spool = ws.spools.find((sp) => sp.id === job.spoolId);
+		const printerModel = this.modelFor(job);
 		const stlPath = this.models.path(model.id, version.id);
 		const pngPath = this.models.path(model.id, version.id, 'png');
 		return this.tasks.start(
@@ -66,6 +91,7 @@ export class PrintFiles {
 					name: model.name,
 					thumbnail: fs.existsSync(pngPath) ? fs.readFileSync(pngPath) : null,
 					settings: {
+						model: printerModel,
 						nozzle: job.nozzle || '0.4',
 						layerHeight: job.layerHeight || '0.20',
 						material: job.material || spool?.material || 'PLA',
@@ -87,8 +113,8 @@ export class PrintFiles {
 		);
 	}
 
-	/** One send at a time: the printer can only take one print. */
-	private sending = false;
+	/** One send at a time per printer: a printer can only take one print. */
+	private sending = new Set<string>();
 
 	private job(id: string): Job {
 		const job = this.lab.getJob(id);
@@ -164,33 +190,49 @@ export class PrintFiles {
 		}
 	}
 
+	/** Which printer a send goes to: the one asked for, the job's, else the first. */
+	private target(job: Job, opts: SendOptions): { id: string | null; printer: BambuPrinter | null } {
+		const id = opts.printerId ?? job.printerId ?? this.printers.primary()?.id ?? null;
+		return { id, printer: id ? (this.printers.get(id) ?? null) : null };
+	}
+
 	/** Checks everything that can be checked before sending; returns problems in plain words. */
 	check(jobId: string, opts: SendOptions): { blocking: string[]; warnings: string[] } {
 		const job = this.job(jobId);
 		const blocking: string[] = [],
 			warnings: string[] = [];
-		const status = this.printer?.status();
-		if (!this.printer) blocking.push('No printer is set up yet.');
-		else if (this.sending) blocking.push('Another print is being sent right now.');
-		else if (!status?.connected) blocking.push('The printer is not connected.');
-		else if (status.state && ACTIVE_PRINTER_STATES.has(status.state.gcodeState))
+		const { id, printer } = this.target(job, opts);
+		const saved = id ? this.printers.info().find((p) => p.id === id) : undefined;
+		const status = printer?.status();
+		const canWake = !!opts.wake && this.hooks.beforeDispatch.size > 0;
+		if (!id) blocking.push('No printer is set up yet.');
+		else if (!saved) blocking.push('That printer no longer exists.');
+		else if (!printer) blocking.push('That printer is switched off in Settings.');
+		else if (this.sending.has(id))
+			blocking.push('Another print is being sent to this printer right now.');
+		else if (!status?.connected) {
+			// With wake-up hooks the send task switches the printer on and checks again then.
+			if (!canWake) blocking.push('The printer is not connected.');
+		} else if (status.state && ACTIVE_PRINTER_STATES.has(status.state.gcodeState))
 			blocking.push('The printer is busy with another print.');
+		else if (status.state?.developerMode === false) blocking.push(DEVELOPER_MODE_OFF);
 		if (job.status !== 'Queued') blocking.push('Only a queued job can be sent.');
 		const sliced = job.sliced;
 		if (!sliced) blocking.push('Attach a sliced file first.');
 		else {
 			if (!fs.existsSync(this.file(sliced.file)))
 				blocking.push('The sliced file is missing (restored from a backup?). Attach it again.');
-			if (sliced.printerModelId && sliced.printerModelId !== 'N6')
+			const model = saved?.model;
+			if (model && sliced.printerModelId && !sameModel(sliced.printerModelId, model))
 				blocking.push(
-					'This file was sliced for another printer model. Slice it for the Bambu Lab X2D.'
+					`This file was sliced for the ${modelShort(sliced.printerModelId)}. This printer is ${withArticle(PRINTER_MODELS[model].short)}.`
 				);
 			const plate = sliced.plates.find((p) => p.index === (opts.plate ?? sliced.plate));
 			if (!plate) blocking.push('That plate is not in the file.');
 			else if (opts.useAms) {
 				if (opts.amsMapping.length !== plate.filaments.length)
 					blocking.push('Choose an AMS slot for every filament.');
-				else
+				else if (status?.connected)
 					warnings.push(
 						...mappingProblems(plate.filaments, opts.amsMapping, loadedSlots(status?.state))
 					);
@@ -199,12 +241,13 @@ export class PrintFiles {
 		return { blocking, warnings };
 	}
 
-	/** Sends a queued job's sliced file to the printer and starts it, as a background task. */
+	/** Sends a queued job's sliced file to a printer and starts it, as a background task. */
 	send(jobId: string, opts: SendOptions) {
 		const { blocking, warnings } = this.check(jobId, opts);
 		if (blocking.length) throw new AppError(409, blocking[0]);
 		if (warnings.length && !opts.force) throw new AppError(409, warnings.join(' '));
 		const job = this.job(jobId);
+		const printerId = this.target(job, opts).id!;
 		const sliced = job.sliced!;
 		const plate = sliced.plates.find((p) => p.index === (opts.plate ?? sliced.plate))!;
 		// The printer shows and reports this name; it links the running print back to this job.
@@ -214,19 +257,28 @@ export class PrintFiles {
 			.slice(0, 60);
 		const remoteName = `${title.replace(/\s+/g, '_').slice(0, 50) || 'print'}.gcode.3mf`;
 		const sendingFile = sliced.file;
-		this.sending = true;
+		this.sending.add(printerId);
 		return this.tasks.start(
 			{
 				kind: 'print-send',
 				title: `Print ${title}`,
 				projectId: job.projectId,
-				stage: 'Uploading to the printer…'
+				stage: opts.wake ? 'Waking the printer…' : 'Uploading to the printer…'
 			},
 			async (ctx) => {
 				try {
-					return await this.deliver(ctx, jobId, sendingFile, remoteName, title, plate, opts);
+					return await this.deliver(
+						ctx,
+						jobId,
+						printerId,
+						sendingFile,
+						remoteName,
+						title,
+						plate,
+						opts
+					);
 				} finally {
-					this.sending = false;
+					this.sending.delete(printerId);
 				}
 			}
 		);
@@ -235,13 +287,24 @@ export class PrintFiles {
 	private async deliver(
 		ctx: { signal: AbortSignal; stage(text: string): void },
 		jobId: string,
+		printerId: string,
 		file: string,
 		remoteName: string,
 		title: string,
 		plate: SlicedInfo['plates'][number],
 		opts: SendOptions
 	) {
-		const printer = this.printer!;
+		if (opts.wake && this.hooks.beforeDispatch.size) {
+			for (const hook of this.hooks.beforeDispatch.list())
+				await hook({ printerId, jobId, signal: ctx.signal });
+			if (ctx.signal.aborted) throw new Error('Stopped');
+			// Awake now? Everything is checked again, as nothing was checked while it slept.
+			const { blocking } = this.check(jobId, { ...opts, printerId, wake: false });
+			const others = blocking.filter((b) => !b.startsWith('Another print is being sent'));
+			if (others.length) throw new Error(others[0]);
+			ctx.stage('Uploading to the printer…');
+		}
+		const printer = this.printers.require(printerId);
 		const data = fs.readFileSync(this.file(file));
 		let last = -1;
 		await printer.upload(
@@ -262,19 +325,30 @@ export class PrintFiles {
 		if (!now || now.status !== 'Queued' || now.sliced?.file !== file)
 			throw new Error('The job changed while it was being sent; nothing was started.');
 		ctx.stage('Starting the print…');
-		this.lab.transitionJob(jobId, { to: 'Printing', printerTask: title, from: 'Queued' });
+		const amsMapping = opts.useAms ? opts.amsMapping : [];
+		this.lab.startSentJob(jobId, {
+			printerTask: title,
+			printerId,
+			dispatch: {
+				printerId,
+				plate: plate.index,
+				useAms: opts.useAms,
+				amsMapping,
+				remoteName,
+				at: new Date().toISOString()
+			}
+		});
 		try {
-			const outcome = await printer.startPrint({
+			return await printer.startPrint({
 				file: remoteName,
 				plate: plate.index,
 				title,
 				md5: plate.md5,
 				useAms: opts.useAms,
-				amsMapping: opts.useAms ? opts.amsMapping : [],
+				amsMapping,
 				bedLeveling: opts.bedLeveling ?? true,
 				timelapse: opts.timelapse ?? false
 			});
-			return outcome;
 		} catch (error) {
 			// Only put it back if it is still this print (the printer may have reported in since).
 			const after = this.lab.getJob(jobId);

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { EventEmitter } from 'node:events';
 import type { DB } from './db';
 import {
@@ -8,6 +8,7 @@ import {
 	meta,
 	modelVersions,
 	printRequests,
+	printers,
 	sketches,
 	models,
 	profiles,
@@ -24,10 +25,12 @@ import {
 	type Activity,
 	type ChecklistItem,
 	type Job,
+	type JobDispatch,
 	type ModelSummary,
 	type ModelVersionSummary,
 	type JobStatus,
 	type PrintRequest,
+	type PrinterInfo,
 	type Profile,
 	type Project,
 	type ProjectStatus,
@@ -53,6 +56,7 @@ import {
 	spoolInput,
 	spoolPatch
 } from './validation';
+import type { EventBus } from './events';
 
 type Tx = Parameters<Parameters<DB['transaction']>[0]>[0];
 const nowIso = () => new Date().toISOString();
@@ -79,8 +83,14 @@ export interface ChangeEvent {
  */
 export class Lab {
 	readonly events = new EventEmitter();
+	/** How each printer's certificate is trusted right now (set by the PrinterManager). */
+	printerTrust: (id: string) => PrinterInfo['trust'] = () => null;
 
-	constructor(readonly db: DB) {
+	/** `bus` (optional, so tests can build `new Lab(db)`) receives request.* events after commit. */
+	constructor(
+		readonly db: DB,
+		private bus?: EventBus
+	) {
 		this.events.setMaxListeners(100);
 	}
 
@@ -139,9 +149,24 @@ export class Lab {
 				.from(printRequests)
 				.orderBy(desc(printRequests.createdAt))
 				.all() as PrintRequest[],
+			printers: this.printers(),
 			parentPin: this.hasParentPin(),
 			changeId: this.changeId()
 		};
+	}
+
+	/** Saved printers as the browser sees them: in their order, never the access code. */
+	printers(): PrinterInfo[] {
+		return this.db
+			.select()
+			.from(printers)
+			.orderBy(asc(printers.sortOrder), asc(printers.createdAt))
+			.all()
+			.map(({ accessCode, tlsPin, ...p }) => ({
+				...p,
+				hasAccessCode: !!accessCode,
+				trust: this.printerTrust(p.id) ?? (tlsPin ? 'pinned' : null)
+			}));
 	}
 
 	/** Model metadata for the live workspace (sources and parameters are loaded by the editor on demand). */
@@ -247,6 +272,9 @@ export class Lab {
 	}
 	private project(tx: Tx, id: string) {
 		return this.need(tx.select().from(projects).where(eq(projects.id, id)).get(), 'project');
+	}
+	private printer(tx: Tx, id: string) {
+		return this.need(tx.select().from(printers).where(eq(printers.id, id)).get(), 'printer');
 	}
 
 	// ---------- Profiles ----------
@@ -663,6 +691,7 @@ export class Lab {
 			this.project(tx, data.projectId);
 			if (data.spoolId)
 				this.need(tx.select().from(spools).where(eq(spools.id, data.spoolId)).get(), 'spool');
+			if (data.printerId) this.printer(tx, data.printerId);
 			// Next free vNN, so deleting a job never makes two plates share a label.
 			const count = tx
 				.select({ revision: jobs.revision })
@@ -697,6 +726,7 @@ export class Lab {
 			if (data.projectId) this.project(tx, data.projectId);
 			if (data.spoolId)
 				this.need(tx.select().from(spools).where(eq(spools.id, data.spoolId)).get(), 'spool');
+			if (data.printerId) this.printer(tx, data.printerId);
 			const before = this.job(tx, id);
 			const status = data.status ?? before.status;
 			const at = nowIso();
@@ -744,10 +774,16 @@ export class Lab {
 			?.title;
 	}
 
-	private applyTransition(tx: Tx, id: string, to: JobStatus, printerTask?: string) {
+	private applyTransition(
+		tx: Tx,
+		id: string,
+		to: JobStatus,
+		printerTask?: string,
+		extra: Partial<Pick<Job, 'printerId' | 'dispatch'>> = {}
+	) {
 		const job = this.job(tx, id);
 		const at = nowIso();
-		const patch: Partial<Job> = { status: to };
+		const patch: Partial<Job> = { status: to, ...extra };
 		if (printerTask !== undefined) patch.printerTask = printerTask;
 		if (to === 'Printing') {
 			patch.startedAt = at;
@@ -798,9 +834,11 @@ export class Lab {
 			plate,
 			supports,
 			infill,
-			sliced
+			sliced,
+			printerId
 		} = source;
 		const id2 = this.createJob({
+			printerId,
 			projectId,
 			spoolId,
 			material,
@@ -869,17 +907,54 @@ export class Lab {
 
 	// ---------- Printer automation ----------
 
-	/** When the printer starts a task and exactly one Printing job is unlinked, link them. */
-	linkStartedTask(task: string) {
+	/**
+	 * A job sent from the app starts: Queued → Printing, linked to the printer's task name, with the
+	 * printer and what was sent recorded on it (only while it is still queued).
+	 */
+	startSentJob(id: string, o: { printerTask: string; printerId: string; dispatch: JobDispatch }) {
+		return this.write('job', (tx) => {
+			const job = this.job(tx, id);
+			if (job.status !== 'Queued')
+				throw new AppError(409, `This job is already ${job.status.toLowerCase()}.`);
+			this.printer(tx, o.printerId);
+			return this.applyTransition(tx, id, 'Printing', o.printerTask, {
+				printerId: o.printerId,
+				dispatch: o.dispatch
+			});
+		});
+	}
+
+	/** Printing jobs a printer's task can belong to: that printer's, or ones for any printer. */
+	private printingOn(printerId: string) {
+		return this.db
+			.select()
+			.from(jobs)
+			.where(
+				and(eq(jobs.status, 'Printing'), or(eq(jobs.printerId, printerId), isNull(jobs.printerId)))
+			)
+			.all() as Job[];
+	}
+
+	/** The job linked to a printer's running task, if any. */
+	jobIdForTask(printerId: string, task: string): string | null {
 		if (!task) return null;
-		const running = this.db.select().from(jobs).where(eq(jobs.status, 'Printing')).all();
+		return this.printingOn(printerId).find((j) => j.printerTask === task)?.id ?? null;
+	}
+
+	/**
+	 * When a printer starts a task and exactly one Printing job (for that printer or for any printer)
+	 * is unlinked, link them; a job for any printer then belongs to this one.
+	 */
+	linkStartedTask(printerId: string, task: string) {
+		if (!task) return null;
+		const running = this.printingOn(printerId);
 		if (running.some((j) => j.printerTask === task)) return null;
 		const unlinked = running.filter((j) => !j.printerTask);
 		if (unlinked.length !== 1) return null;
 		const job = unlinked[0];
 		this.write('job', (tx) => {
 			tx.update(jobs)
-				.set({ printerTask: task, version: sql`${jobs.version} + 1` })
+				.set({ printerTask: task, printerId, version: sql`${jobs.version} + 1` })
 				.where(eq(jobs.id, job.id))
 				.run();
 			this.log(tx, 'printer', `Linked to printer task “${task}”`, job.projectId, job.id);
@@ -888,18 +963,22 @@ export class Lab {
 	}
 
 	/** Closes the job linked to a printer task when the printer reports the outcome. */
-	closePrinterTask(task: string, ok: boolean) {
-		const job = this.db
-			.select()
-			.from(jobs)
-			.where(and(eq(jobs.status, 'Printing'), eq(jobs.printerTask, task)))
-			.get();
-		if (!task || !job) return null;
+	closePrinterTask(printerId: string, task: string, outcome: 'succeeded' | 'failed' | 'cancelled') {
+		if (!task) return null;
+		const job = this.printingOn(printerId).find((j) => j.printerTask === task);
+		if (!job) return null;
+		const to: JobStatus =
+			outcome === 'succeeded' ? 'Succeeded' : outcome === 'failed' ? 'Failed' : 'Cancelled';
 		this.write('job', (tx) => {
-			this.applyTransition(tx, job.id, ok ? 'Succeeded' : 'Failed');
-			if (!ok && !job.notes)
+			this.applyTransition(tx, job.id, to, undefined, job.printerId ? {} : { printerId });
+			if (!job.notes && outcome !== 'succeeded')
 				tx.update(jobs)
-					.set({ notes: 'The printer reported this print as failed.' })
+					.set({
+						notes:
+							outcome === 'failed'
+								? 'The printer reported this print as failed.'
+								: 'The print was stopped on the printer.'
+					})
 					.where(eq(jobs.id, job.id))
 					.run();
 		});
@@ -911,7 +990,7 @@ export class Lab {
 	/** A child asks a grown-up to print the current version of something they made. */
 	requestPrint(profileId: string, projectId: string, input: unknown) {
 		const data = parse(printRequestInput, input);
-		return this.write('request', (tx) => {
+		const requestId = this.write('request', (tx) => {
 			const project = this.project(tx, projectId);
 			if (project.profileId !== profileId)
 				throw new AppError(404, 'That project no longer exists.');
@@ -943,6 +1022,8 @@ export class Lab {
 			);
 			return id;
 		});
+		this.bus?.emit('request.created', { requestId, profileId, projectId });
+		return requestId;
 	}
 
 	/**
@@ -951,7 +1032,7 @@ export class Lab {
 	 */
 	decideRequest(id: string, input: unknown, via?: string) {
 		const { decision, reply, version } = parse(requestDecision, input);
-		return this.write('request', (tx) => {
+		const decided = this.write('request', (tx) => {
 			const request = this.need(
 				tx.select().from(printRequests).where(eq(printRequests.id, id)).get(),
 				'print request'
@@ -1015,5 +1096,7 @@ export class Lab {
 			);
 			return jobId;
 		});
+		this.bus?.emit('request.decided', { requestId: id, decision, jobId: decided });
+		return decided;
 	}
 }

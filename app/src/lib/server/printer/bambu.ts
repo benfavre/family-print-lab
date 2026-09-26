@@ -541,27 +541,3 @@ function friendly(error: NodeJS.ErrnoException) {
 		return 'Printer not reachable. Check its IP address and that it is on the same network.';
 	return error.message || 'Printer connection failed.';
 }
-
-/** @deprecated Replaced by the printers registry (PrinterManager); kept for the env-configured printer. */
-export function printerFromEnv(env: Record<string, string | undefined>): BambuPrinter | null {
-	const { BAMBU_HOST: host, BAMBU_SERIAL: serial, BAMBU_ACCESS_CODE: accessCode } = env;
-	if (!host || !serial || !accessCode) return null;
-	const model = (
-		env.BAMBU_MODEL && env.BAMBU_MODEL in PRINTER_MODELS ? env.BAMBU_MODEL : 'N6'
-	) as ModelCode;
-	return new BambuPrinter(
-		{
-			id: 'env',
-			model,
-			host,
-			serial,
-			accessCode,
-			name: env.BAMBU_NAME || PRINTER_MODELS[model].name,
-			port: Number(env.BAMBU_PORT || 8883),
-			ftpPort: env.BAMBU_FTP_PORT ? Number(env.BAMBU_FTP_PORT) : undefined,
-			useTls: env.BAMBU_TLS !== 'off',
-			simulated: env.BAMBU_SIMULATED === '1'
-		},
-		{ mayPin: true }
-	);
-}

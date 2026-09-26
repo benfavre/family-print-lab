@@ -1,6 +1,6 @@
 // Slicing inside the app with Bambu Studio's command line: the model version's STL plus the job's
-// settings (layer height, material, supports, infill, build plate) become a printable .gcode.3mf for
-// the X2D. Bambu Studio's system profiles inherit from each other and the command line only accepts
+// settings (printer model, layer height, material, supports, infill, build plate) become a printable
+// .gcode.3mf for that printer. Bambu Studio's system profiles inherit from each other and the command line only accepts
 // complete ones, so they are flattened here first. The CLI cannot render the plate picture without a
 // GPU and leaves the printer model code blank; both are added afterwards, as the printer checks them.
 import { spawn } from 'node:child_process';
@@ -9,6 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { readZip, rewriteZip } from './cad/mesh';
 import { AppError } from './validation';
+import { PRINTER_MODELS, type ModelCode } from '$lib/shared/printers/models';
 
 type Profile = Record<string, unknown> & { name: string; inherits?: string };
 type Kind = 'machine' | 'process' | 'filament';
@@ -102,6 +103,8 @@ function book(bin: string) {
 }
 
 export interface SliceSettings {
+	/** The printer model to slice for (its Bambu Studio machine preset). */
+	model: ModelCode;
 	/** Nozzle size, e.g. "0.4". */
 	nozzle: string;
 	/** Layer height in mm, e.g. "0.20". */
@@ -136,7 +139,9 @@ const BED_TYPES: Record<string, string> = {
 /** Picks the Bambu Studio profiles closest to a job's settings. */
 export function chooseProfiles(bin: string, s: SliceSettings): SliceChoice {
 	const b = book(bin);
-	const machine = `Bambu Lab X2D ${s.nozzle || '0.4'} nozzle`;
+	const printer = PRINTER_MODELS[s.model] ?? PRINTER_MODELS.N6;
+	// Bambu Studio's machine presets are "<model name> <nozzle> nozzle".
+	const machine = `${printer.name} ${s.nozzle || '0.4'} nozzle`;
 	b.flat('machine', machine); // throws a clear error for a nozzle Bambu Studio does not know
 	const processes = b.compatible('process', machine);
 	const layer = Number(s.layerHeight) || 0.2;
@@ -172,7 +177,10 @@ export function chooseProfiles(bin: string, s: SliceSettings): SliceChoice {
 			: 0);
 	const filament = ofType.sort((a, c) => score(c) - score(a))[0];
 	if (!filament)
-		throw new AppError(422, `Bambu Studio has no ${type} filament profile for the X2D.`);
+		throw new AppError(
+			422,
+			`Bambu Studio has no ${type} filament profile for the ${printer.short}.`
+		);
 
 	const plateKey = Object.keys(BED_TYPES).find((k) => (s.plate || '').toLowerCase().includes(k));
 	return {
@@ -192,7 +200,7 @@ export interface SliceResult {
 }
 
 /**
- * Slices an STL for the X2D. `thumbnail` (a PNG of the part) becomes the plate picture shown on the
+ * Slices an STL for a printer model. `thumbnail` (a PNG of the part) becomes the plate picture shown on the
  * printer. Runs Bambu Studio headless in a scratch folder; typical parts take a second or two.
  */
 export async function slice(opts: {
@@ -279,10 +287,11 @@ export async function slice(opts: {
 				`Bambu Studio could not slice this part: ${result?.error_string || lastLine(log) || 'no result'}.`
 			);
 		const plate = result.sliced_plates?.[0];
-		opts.onStage?.('Preparing the file for the X2D…');
+		const printer = PRINTER_MODELS[s.model] ?? PRINTER_MODELS.N6;
+		opts.onStage?.(`Preparing the file for the ${printer.short}…`);
 		const data = finish(
 			fs.readFileSync(out),
-			b.modelIds.get('Bambu Lab X2D') ?? 'N6',
+			b.modelIds.get(printer.name) ?? printer.code,
 			opts.thumbnail ?? null
 		);
 		return {

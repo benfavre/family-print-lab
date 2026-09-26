@@ -11,6 +11,7 @@ describe.runIf(slicer.available)('slicing with Bambu Studio', () => {
 	it('picks X2D profiles from the job’s settings', () => {
 		const pick = (material: string, layerHeight = '0.20', plate = 'Textured PEI') =>
 			chooseProfiles(slicer.path!, {
+				model: 'N6',
 				nozzle: '0.4',
 				layerHeight,
 				material,
@@ -40,6 +41,7 @@ describe.runIf(slicer.available)('slicing with Bambu Studio', () => {
 			name: 'Test cube',
 			thumbnail: png,
 			settings: {
+				model: 'N6',
 				nozzle: '0.4',
 				layerHeight: '0.20',
 				material: 'PLA',

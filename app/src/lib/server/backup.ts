@@ -26,6 +26,8 @@ export interface RestoreResult {
  */
 /** Meta rows a restore keeps from the running computer instead of taking them from the backup. */
 const OWN_META = ['cloud'];
+/** Tables a restore keeps from the running computer: its printers (addresses, access codes) belong to this network. */
+const OWN_TABLES = new Set(['printers']);
 
 export class Backups {
 	private timer?: NodeJS.Timeout;
@@ -149,6 +151,7 @@ export class Backups {
 			client.pragma('foreign_keys = OFF');
 			client.transaction(() => {
 				for (const table of tablesOf('main')) {
+					if (OWN_TABLES.has(table)) continue;
 					client.prepare(`DELETE FROM main.${q(table)}`).run();
 					if (!inSnapshot.has(table)) continue;
 					const theirs = new Set(columnsOf('snap', table));
@@ -172,6 +175,13 @@ export class Backups {
 						`INSERT INTO meta (key, value) VALUES ('change_id', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`
 					)
 					.run(String(before + 1));
+				// Jobs from the backup may name printers this computer does not have: any printer then.
+				if (tablesOf('main').includes('printers'))
+					client
+						.prepare(
+							'UPDATE jobs SET printer_id = NULL WHERE printer_id IS NOT NULL AND printer_id NOT IN (SELECT id FROM printers)'
+						)
+						.run();
 				const broken = client.pragma('foreign_key_check') as unknown[];
 				if (broken.length)
 					throw new AppError(409, 'That backup does not fit together; nothing was changed.');

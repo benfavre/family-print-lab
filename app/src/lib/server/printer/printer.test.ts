@@ -7,6 +7,7 @@ import { createSimulator, type Simulator } from './simulator';
 import { fakeSliced } from './sliced';
 import { openDatabase } from '../db';
 import { Lab } from '../lab';
+import { printers } from '../db/schema';
 
 async function until(check: () => unknown, ms = 5000) {
 	const end = Date.now() + ms;
@@ -193,9 +194,20 @@ describe('printer link against the simulator', () => {
 	it('drives the workspace: links the running job, then closes it and charges filament', async () => {
 		const { sim, printer } = await connect();
 		const lab = new Lab(openDatabase(':memory:'));
+		lab.db
+			.insert(printers)
+			.values({
+				id: 'p1',
+				name: 'X2D',
+				model: 'N6',
+				host: '127.0.0.1',
+				serial: sim.serial,
+				accessCode: '12345678'
+			})
+			.run();
 		follow(printer, (name, task) => {
-			if (name === 'print.started') lab.linkStartedTask(task);
-			if (name === 'print.finished') lab.closePrinterTask(task, true);
+			if (name === 'print.started') lab.linkStartedTask('p1', task);
+			if (name === 'print.finished') lab.closePrinterTask('p1', task, 'succeeded');
 		});
 		const profileId = lab.createProfile({ name: 'Alex', color: 'blue' });
 		const projectId = lab.createProject({ profileId, title: 'Dock' });
