@@ -30,3 +30,6 @@ test-results
 /data
 /.e2e
 /playwright-report
+
+# Upstream Bambu Studio resources (slicer/scripts/upstream.sh resources)
+/resources/bambu/

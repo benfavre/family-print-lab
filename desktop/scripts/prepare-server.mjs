@@ -25,7 +25,9 @@ execFileSync('npm', ['run', 'build'], {
 for (const dir of ['drizzle', 'resources']) {
 	fs.cpSync(path.join(app, dir), path.join(server, dir), {
 		recursive: true,
-		filter: (src) => !src.includes('__pycache__')
+		// No bytecode and no download caches (an older generator cached raw upstream files under
+		// resources/bambu/.cache; they are commit-specific and do not belong in a release).
+		filter: (src) => !src.split(path.sep).some((part) => part === '__pycache__' || part === '.cache')
 	});
 }
 // The settings template the desktop app offers as printlab.env.

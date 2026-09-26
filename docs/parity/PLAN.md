@@ -2680,10 +2680,15 @@ slicer/
 9. Profiles come from the same pinned tag: the engine bundle ships them and reports
    `profiles.dir`/`vendorVersion`; slicer-profiles prefers them.
 10. One pin, one helper: `slicer/upstream.lock` is the only place the Bambu Studio version is written.
-    `app/tools/lib/upstream.ts` (foundation) reads it and serves files from `slicer/.upstream` when
-    present, else `raw.githubusercontent.com/bambulab/BambuStudio/<commit>/<path>` into a cache under
-    `app/resources/bambu/.cache/` (git-ignored). The model catalogue, HMS builder, profile fetcher and
-    engine build all use it, so bumping the lock moves everything together.
+    `app/tools/lib/upstream.ts` (foundation) reads it (and throws when it is missing: there is no
+    second copy of the pin) and serves files from a git checkout (`slicer/.upstream`, or `--from`)
+    read at exactly the locked commit (`git show <commit>:<path>`, so a stale or mid-rebase checkout
+    cannot label one version's data as another's; a checkout without that commit is refused), else
+    from `raw.githubusercontent.com/<owner>/<repo>/<commit>/<path>` (owner/repo from the lock's `url`)
+    into a cache under `slicer/.build/upstream-cache/<commit>/` (git-ignored, outside `app/resources`
+    so it never ships in the desktop bundle). The model catalogue, HMS builder, profile fetcher and
+    engine build all use it, so bumping the lock moves everything together. A test asserts that
+    `UPSTREAM_PRINTERS` in `models.generated.ts` equals the lock's tag and commit.
 11. Ports are tracked: any file adapted from Bambu Studio or OrcaSlicer (calibration generators, paint
     codec, 3MF constants) records `origin: <repo> <path> @ <commit>` in a header comment and a row in
     `slicer/ports/ORIGINS.md`; `upstream.sh ports` lists which origins changed between the recorded

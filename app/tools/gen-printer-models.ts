@@ -1,6 +1,8 @@
 // Regenerates src/lib/shared/printers/models.generated.ts from Bambu Studio's per-model capability
 // files (resources/printers/<model_id>.json) at the tag pinned in slicer/upstream.lock.
-//   bunx tsx tools/gen-printer-models.ts [--from <bambu studio checkout>] [--strict]
+//   bunx tsx tools/gen-printer-models.ts [--from <bambu studio checkout>] [--allow-unpinned] [--strict]
+// A checkout is read at the locked commit (see tools/lib/upstream.ts); --allow-unpinned also accepts a
+// --from directory that is not a git checkout, whose version cannot be checked.
 // --strict exits non-zero when upstream has a model code the catalogue (MODEL_CODES) lacks, so a new
 // Bambu printer is noticed instead of silently dropped (the slicer update workflow runs it that way).
 import fs from 'node:fs';
@@ -16,6 +18,7 @@ const opt = (name: string) => {
 };
 const from = opt('from');
 const strict = args.includes('--strict');
+const allowUnpinned = args.includes('--allow-unpinned');
 const root = repoRoot(path.dirname(new URL(import.meta.url).pathname));
 if (!root) throw new Error('Run this inside the Family Print Lab repository.');
 const modelsFile = path.join(root, 'app', 'src', 'lib', 'shared', 'printers', 'models.ts');
@@ -74,14 +77,16 @@ const range = (v: unknown, i: number) =>
 
 async function main() {
 	const lock = readUpstreamLock(root);
-	const files = (await upstreamList('resources/printers', { from, root })).filter((f) =>
-		/^[\w-]+\.json$/.test(f)
+	const files = (await upstreamList('resources/printers', { from, root, allowUnpinned })).filter(
+		(f) => /^[\w-]+\.json$/.test(f)
 	);
 	const upstreamCodes: string[] = [];
 	const models: Record<string, unknown> = {};
 	for (const file of files) {
 		const data = JSON.parse(
-			(await upstreamFile(`resources/printers/${file}`, { from, root })).toString('utf8')
+			(await upstreamFile(`resources/printers/${file}`, { from, root, allowUnpinned })).toString(
+				'utf8'
+			)
 		) as Record<string, Json>;
 		const base = data['00.00.00.00'];
 		if (!base || typeof base.model_id !== 'string') continue;

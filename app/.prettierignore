@@ -11,3 +11,6 @@ bun.lockb
 drizzle/
 src/lib/server/__fixtures__/
 **/__fixtures__/
+
+# Upstream Bambu Studio resources copied by slicer/scripts/upstream.sh resources (git-ignored)
+resources/bambu/

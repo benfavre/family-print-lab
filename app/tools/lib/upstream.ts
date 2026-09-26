@@ -1,7 +1,9 @@
 // The one pinned Bambu Studio source for every generator (printer models, HMS texts, profiles):
-// slicer/upstream.lock names the tag and commit; files come from a local checkout (slicer/.upstream,
-// or --from <dir>) when there is one, else from GitHub at that commit, cached under
-// app/resources/bambu/.cache/<commit>/ (git-ignored). Bumping the lock moves all derived data together.
+// slicer/upstream.lock names the tag and commit and is the only place they are written. Files come
+// from a local git checkout (slicer/.upstream, or --from <dir>) read at exactly that commit, else from
+// GitHub at that commit, cached under slicer/.build/upstream-cache/<commit>/ (git-ignored, and outside
+// app/resources so it never ships in the desktop bundle). Bumping the lock moves all derived data together.
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -16,16 +18,6 @@ export interface UpstreamLock {
 	queueHash: string;
 }
 
-/** Used when the lock does not exist yet (it always does in this repository). */
-export const DEFAULT_LOCK: UpstreamLock = {
-	name: 'BambuStudio',
-	url: 'https://github.com/bambulab/BambuStudio.git',
-	tag: 'v02.08.02.61',
-	commit: '926a7192574bcb9b3a732e1ec59a46d79cb45466',
-	queue: 0,
-	queueHash: ''
-};
-
 /** Walks up from `from` to the repository root (the directory holding slicer/upstream.lock). */
 export function repoRoot(from = process.cwd()): string | null {
 	let dir = path.resolve(from);
@@ -37,11 +29,14 @@ export function repoRoot(from = process.cwd()): string | null {
 	}
 }
 
-/** Parses the key=value lock format (`#` starts a comment). */
+/**
+ * Parses the key=value lock format. `#` starts a comment at the start of a line or after whitespace
+ * (the same rule as slicer/scripts/upstream.sh), so a URL fragment such as `repo.git#main` survives.
+ */
 export function parseLock(text: string): UpstreamLock {
 	const values: Record<string, string> = {};
 	for (const raw of text.split(/\r?\n/)) {
-		const line = raw.replace(/#.*$/, '').trim();
+		const line = raw.replace(/(^|\s)#.*$/, '').trim();
 		const m = line.match(/^([a-z_]+)\s*=\s*(.*)$/);
 		if (m) values[m[1]] = m[2].trim();
 	}
@@ -61,7 +56,21 @@ export function parseLock(text: string): UpstreamLock {
 
 export function readUpstreamLock(root = repoRoot()): UpstreamLock {
 	const file = root && path.join(root, 'slicer', 'upstream.lock');
-	return file && fs.existsSync(file) ? parseLock(fs.readFileSync(file, 'utf8')) : DEFAULT_LOCK;
+	if (!file || !fs.existsSync(file))
+		throw new Error(
+			'slicer/upstream.lock not found: run this inside the Family Print Lab repository.'
+		);
+	return parseLock(fs.readFileSync(file, 'utf8'));
+}
+
+/** owner/repo of the lock's GitHub URL; the download fallback only knows GitHub. */
+export function githubRepo(url: string): { owner: string; repo: string } {
+	const m = url.match(/^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/);
+	if (!m)
+		throw new Error(
+			`slicer/upstream.lock url ${url} is not a GitHub repository: use a local checkout (slicer/scripts/upstream.sh fetch) instead.`
+		);
+	return { owner: m[1], repo: m[2] };
 }
 
 export interface UpstreamOptions {
@@ -70,33 +79,100 @@ export interface UpstreamOptions {
 	root?: string | null;
 	/** Ignore the download cache. */
 	refresh?: boolean;
+	/** Read a --from directory that is not a git checkout (its version cannot be checked). */
+	allowUnpinned?: boolean;
 	fetch?: typeof fetch;
 }
 
-function checkout(o: UpstreamOptions): string | null {
-	if (o.from) return path.resolve(o.from);
+type Source =
+	| { kind: 'git'; dir: string; commit: string }
+	| { kind: 'dir'; dir: string }
+	| { kind: 'github'; lock: UpstreamLock; root: string | null };
+
+const git = (dir: string, args: string[]) =>
+	execFileSync('git', ['-C', dir, ...args], {
+		stdio: ['ignore', 'pipe', 'pipe'],
+		maxBuffer: 256 * 1024 * 1024
+	});
+
+function isGitCheckout(dir: string) {
+	try {
+		return git(dir, ['rev-parse', '--show-toplevel']).toString().trim() === fs.realpathSync(dir);
+	} catch {
+		return false;
+	}
+}
+
+function hasCommit(dir: string, commit: string) {
+	try {
+		git(dir, ['cat-file', '-e', `${commit}^{commit}`]);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/** What a checkout is at: printlab-base (upstream.sh's tag under the patch queue), else HEAD. */
+function checkoutCommit(dir: string) {
+	for (const ref of ['printlab-base^{commit}', 'HEAD'])
+		try {
+			return git(dir, ['rev-parse', '--verify', '--quiet', ref]).toString().trim();
+		} catch {
+			// next
+		}
+	return 'nothing';
+}
+
+/**
+ * Where the pinned files come from. A local checkout is read at the locked commit, never its working
+ * tree, so a stale slicer/.upstream (after the lock moved) or a checkout mid-rebase cannot label one
+ * Bambu Studio version's data as another's.
+ */
+function source(o: UpstreamOptions): Source {
 	const root = o.root === undefined ? repoRoot() : o.root;
+	const lock = readUpstreamLock(root);
 	const local = root && path.join(root, 'slicer', '.upstream');
-	return local && fs.existsSync(path.join(local, 'resources')) ? local : null;
+	const dir = o.from
+		? path.resolve(o.from)
+		: local && fs.existsSync(path.join(local, '.git'))
+			? local
+			: null;
+	if (!dir) return { kind: 'github', lock, root };
+	const label = o.from ? dir : 'slicer/.upstream';
+	if (isGitCheckout(dir)) {
+		if (hasCommit(dir, lock.commit)) return { kind: 'git', dir, commit: lock.commit };
+		throw new Error(
+			`${label} is at ${checkoutCommit(dir).slice(0, 12)}, but slicer/upstream.lock pins ${lock.tag} (${lock.commit.slice(0, 12)}): run slicer/scripts/upstream.sh fetch.`
+		);
+	}
+	if (!o.allowUnpinned)
+		throw new Error(
+			`${label} is not a git checkout, so its Bambu Studio version cannot be checked against slicer/upstream.lock (${lock.tag}). Pass --allow-unpinned to use it anyway.`
+		);
+	console.warn(
+		`Warning: reading ${label} without checking its version; the output will claim ${lock.tag}.`
+	);
+	return { kind: 'dir', dir };
 }
 
 function safe(rel: string) {
 	const clean = path.posix.normalize(rel.replace(/\\/g, '/'));
 	if (clean.startsWith('..') || path.posix.isAbsolute(clean))
 		throw new Error(`Not an upstream path: ${rel}`);
-	return clean;
+	return clean.replace(/\/$/, '');
 }
 
 /** One file of the pinned Bambu Studio source, e.g. "resources/printers/C12.json". */
 export async function upstreamFile(rel: string, o: UpstreamOptions = {}): Promise<Buffer> {
 	const file = safe(rel);
-	const dir = checkout(o);
-	if (dir) return fs.readFileSync(path.join(dir, file));
-	const root = o.root === undefined ? repoRoot() : o.root;
-	const lock = readUpstreamLock(root);
-	const cache = root && path.join(root, 'app', 'resources', 'bambu', '.cache', lock.commit, file);
+	const src = source(o);
+	if (src.kind === 'git') return git(src.dir, ['show', `${src.commit}:${file}`]);
+	if (src.kind === 'dir') return fs.readFileSync(path.join(src.dir, file));
+	const { lock, root } = src;
+	const cache = root && path.join(root, 'slicer', '.build', 'upstream-cache', lock.commit, file);
 	if (cache && !o.refresh && fs.existsSync(cache)) return fs.readFileSync(cache);
-	const url = `https://raw.githubusercontent.com/bambulab/BambuStudio/${lock.commit}/${file}`;
+	const { owner, repo } = githubRepo(lock.url);
+	const url = `https://raw.githubusercontent.com/${owner}/${repo}/${lock.commit}/${file}`;
 	const res = await (o.fetch ?? fetch)(url, { headers: { 'user-agent': 'family-print-lab' } });
 	if (!res.ok) throw new Error(`Could not download ${url}: HTTP ${res.status}`);
 	const data = Buffer.from(await res.arrayBuffer());
@@ -110,10 +186,22 @@ export async function upstreamFile(rel: string, o: UpstreamOptions = {}): Promis
 /** File names in one upstream directory (GitHub's contents API when there is no checkout). */
 export async function upstreamList(rel: string, o: UpstreamOptions = {}): Promise<string[]> {
 	const dirRel = safe(rel);
-	const dir = checkout(o);
-	if (dir) return fs.readdirSync(path.join(dir, dirRel)).sort();
-	const lock = readUpstreamLock(o.root === undefined ? repoRoot() : o.root);
-	const url = `https://api.github.com/repos/bambulab/BambuStudio/contents/${dirRel}?ref=${lock.commit}`;
+	const src = source(o);
+	if (src.kind === 'git')
+		return git(src.dir, ['ls-tree', `${src.commit}:${dirRel}`])
+			.toString()
+			.split('\n')
+			.map((line) => line.match(/^\d+ blob [0-9a-f]+\t(.+)$/)?.[1])
+			.filter((name): name is string => !!name)
+			.sort();
+	if (src.kind === 'dir')
+		return fs
+			.readdirSync(path.join(src.dir, dirRel), { withFileTypes: true })
+			.filter((e) => e.isFile())
+			.map((e) => e.name)
+			.sort();
+	const { owner, repo } = githubRepo(src.lock.url);
+	const url = `https://api.github.com/repos/${owner}/${repo}/contents/${dirRel}?ref=${src.lock.commit}`;
 	const res = await (o.fetch ?? fetch)(url, {
 		headers: { 'user-agent': 'family-print-lab', accept: 'application/vnd.github+json' }
 	});
