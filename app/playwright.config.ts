@@ -27,6 +27,14 @@ export default defineConfig({
 			stdout: 'ignore'
 		},
 		{
+			// A second printer (P1S) that announces itself over SSDP, for Settings → Printers → Find printers.
+			command:
+				'node --import tsx tools/printer-sim.ts --fleet C12 --port 18841 --ftp-port 19001 --control 18671 --speed 120 --fail-rate 0 --ssdp 2021',
+			url: 'http://127.0.0.1:18671',
+			reuseExistingServer: false,
+			stdout: 'ignore'
+		},
+		{
 			// A stand-in for Print Lab Cloud (docs/cloud-protocol.md).
 			command: 'node --import tsx tools/cloud-sim.ts --port 18881',
 			url: 'http://127.0.0.1:18881/sim/state',

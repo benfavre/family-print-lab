@@ -86,9 +86,10 @@ export function discoverPrinters(
 			if (p) found.set(p.serial, p);
 		});
 		socket.bind(port, () => {
+			// A failed broadcast (no network, not allowed) is not fatal: printers announce themselves too.
 			try {
 				socket.setBroadcast(true);
-				socket.send(M_SEARCH, port, o.port ? '127.0.0.1' : '255.255.255.255');
+				socket.send(M_SEARCH, port, o.port ? '127.0.0.1' : '255.255.255.255', () => {});
 			} catch {
 				/* listening still finds printers announcing themselves */
 			}

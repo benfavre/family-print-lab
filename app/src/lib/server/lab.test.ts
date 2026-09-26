@@ -336,6 +336,8 @@ describe('jobs and filament', () => {
 		expect(lab.closePrinterTask('p2', 'x', 'cancelled')).toBe(other);
 		expect(job(other)).toMatchObject({ status: 'Cancelled', chargeGrams: 0 });
 		expectError(() => lab.createJob({ projectId, printerId: 'nope' }), 404);
+		// Printing again keeps the printer it was meant for.
+		expect(job(lab.reprintJob(other)).printerId).toBe('p2');
 		expect(lab.snapshot().printers.map((p) => [p.id, p.hasAccessCode])).toEqual([
 			['p1', true],
 			['p2', true]

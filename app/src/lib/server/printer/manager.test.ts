@@ -134,6 +134,38 @@ describe('test lab with a simulated fleet', () => {
 	});
 });
 
+describe('waking a printer before a send (beforeDispatch hooks)', () => {
+	it('lets an offline printer be woken inside the send task, then prints', async () => {
+		const t = await lab({ fleet: ['C12'] });
+		const p1s = t.printer('C12');
+		const entry = t.fleet.printers[0];
+		const { jobId } = queuedJob(t, 'C12');
+		await entry.sim.close();
+		await until(() => !t.rt.printers.get(p1s.info.id)!.connected);
+		const opts = { printerId: p1s.info.id, useAms: true, amsMapping: [0] };
+		expect(t.rt.printing.check(jobId, opts).blocking).toContain('The printer is not connected.');
+		// Waking only helps when something can wake it.
+		expect(t.rt.printing.check(jobId, { ...opts, wake: true }).blocking).toContain(
+			'The printer is not connected.'
+		);
+		const calls: string[] = [];
+		const off = t.rt.hooks.beforeDispatch.add(async ({ printerId, signal }) => {
+			calls.push(printerId);
+			// "Switch the plug on": the printer comes back and reconnects.
+			await entry.sim.listen(entry.port, '127.0.0.1', entry.ftpPort);
+			while (!t.rt.printers.get(printerId)!.connected && !signal.aborted)
+				await new Promise((r) => setTimeout(r, 50));
+		});
+		expect(t.rt.printing.check(jobId, { ...opts, wake: true }).blocking).toEqual([]);
+		const finished = t.nextEvent('print.finished', undefined, 25_000);
+		t.rt.printing.send(jobId, { ...opts, wake: true });
+		await finished;
+		expect(calls).toEqual([p1s.info.id]);
+		expect(job(t, jobId).status).toBe('Succeeded');
+		off();
+	}, 40_000);
+});
+
 describe('printer registry', () => {
 	it('imports the BAMBU_* printer once, and upserts PRINTLAB_PRINTERS on every boot', async () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'print-lab-registry-'));
@@ -339,5 +371,32 @@ describe('printer registry', () => {
 		await until(() => !manager.primary()!.connected);
 		expect(events).not.toContain('printer.offline');
 		await until(() => events.includes('printer.offline'), 3000);
+	});
+});
+
+describe('printer details', () => {
+	it('validates what people type', async () => {
+		const { parse, printerInput } = await import('../validation');
+		const base = {
+			name: 'P1S',
+			model: 'C12',
+			host: '192.168.1.20',
+			serial: '01p00a1b2c3',
+			accessCode: 'ab12CD34'
+		};
+		expect(parse(printerInput, base)).toMatchObject({
+			serial: '01P00A1B2C3',
+			port: 8883,
+			ftpPort: 990,
+			tls: true
+		});
+		for (const host of ['printer.local', 'fe80::1', '[fe80::1]', '10.0.0.5'])
+			expect(parse(printerInput, { ...base, host }).host).toBe(host);
+		expect(() => parse(printerInput, { ...base, host: '999.1.1.1' })).toThrow(/IP address/);
+		expect(() => parse(printerInput, { ...base, host: 'bad host!' })).toThrow(/IP address/);
+		expect(() => parse(printerInput, { ...base, accessCode: 'short' })).toThrow(/8 letters/);
+		expect(() => parse(printerInput, { ...base, serial: 'x' })).toThrow(/serial/);
+		expect(() => parse(printerInput, { ...base, model: 'Z9' })).toThrow();
+		expect(() => parse(printerInput, { ...base, port: 70000 })).toThrow();
 	});
 });

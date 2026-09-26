@@ -154,9 +154,10 @@
 							<span
 								><b>{d.name || d.serial}</b>
 								<small
-									>{d.model ? PRINTER_MODELS[d.model].short : d.ssdpModel || 'Unknown model'} · {d.host}{d.firmware
-										? ` · firmware ${d.firmware}`
-										: ''}{d.lanOnly ? ' · LAN only' : ' · LAN Only Mode is off'}</small
+									>{d.model ? PRINTER_MODELS[d.model].short : d.ssdpModel || 'Unknown model'} · {d.host}
+									· {d.serial}{d.firmware ? ` · firmware ${d.firmware}` : ''}{d.lanOnly
+										? ' · LAN only'
+										: ' · LAN Only Mode is off'}</small
 								></span
 							>
 							{#if d.known}<span class="known">Already added</span>{:else}<button
