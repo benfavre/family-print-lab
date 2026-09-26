@@ -9,7 +9,7 @@ test.beforeEach(async ({ context }) => {
 	await context.addInitScript(() => sessionStorage.setItem('print-lab-profile', 'all'));
 });
 
-test('Settings → Printers: find, test, add, edit, reorder, switch off, diagnostics and remove', async ({
+test('Integrations → Printers: find, test, add, edit, reorder, switch off, diagnostics and remove', async ({
 	page
 }) => {
 	await page.goto('/integrations');
