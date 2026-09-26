@@ -351,6 +351,17 @@ export class PrinterManager extends EventEmitter {
 		const moved = otherPrinter || (data.host !== undefined && data.host !== before.host);
 		const pendingKey = `${data.serial ?? before.serial}@${data.host ?? before.host}`;
 		const tested = this.pendingPins.get(pendingKey);
+		// The saved access code stays with the connection it was checked on. Another serial, a plain or
+		// simulated connection (no certificate check), or a new address with nothing pinned (it would be
+		// trusted on first use) needs the code typed again.
+		if (
+			!data.accessCode &&
+			(otherPrinter ||
+				(data.tls === false && before.tls) ||
+				(data.simulated === true && !before.simulated) ||
+				(moved && !before.tlsPin && tested === undefined && before.tls && !before.simulated))
+		)
+			throw new AppError(400, 'Enter the access code shown on this printer.');
 		this.pendingPins.delete(pendingKey);
 		const result = this.db
 			.update(printers)
@@ -434,9 +445,22 @@ export class PrinterManager extends EventEmitter {
 		const { id, ...data } = parse(printerTest, input);
 		const saved = id ? this.row(id) : undefined;
 		if (id && !saved) throw new AppError(404, 'That printer no longer exists.');
-		// The saved access code only ever goes to the printer it belongs to (the same serial number,
-		// which the certificate check holds the other end to).
-		if (saved && !data.accessCode && saved.serial !== data.serial)
+		// The saved access code only ever goes to the printer it belongs to: the same serial number,
+		// over a verified connection (which the certificate check holds to that serial) at the saved
+		// address or with a pinned certificate; or over exactly the saved connection (simulated and
+		// plain printers). Never to a new address over plain MQTT or unchecked TLS.
+		const verified = data.tls && !data.simulated;
+		const sameConnection =
+			saved &&
+			data.host === saved.host &&
+			data.tls === saved.tls &&
+			data.simulated === saved.simulated;
+		if (
+			saved &&
+			!data.accessCode &&
+			(saved.serial !== data.serial ||
+				!(sameConnection || (verified && (data.host === saved.host || !!saved.tlsPin))))
+		)
 			throw new AppError(400, 'Enter the access code shown on this printer.');
 		const accessCode = data.accessCode || saved?.accessCode;
 		if (!accessCode) throw new AppError(400, 'Enter the access code shown on the printer.');

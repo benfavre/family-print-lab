@@ -227,11 +227,17 @@ export class BambuPrinter extends EventEmitter {
 			return result.error;
 		}
 		this.trust = result.trust;
+		// One accepted certificate ends trust on first use for this printer (PLAN 4.2.3), including
+		// after a CA-verified one, whose leaf is pinned as well (tls.ts).
+		this.options.mayPin = false;
 		if (result.pin) {
 			this.config.tlsPin = result.pin;
-			this.options.mayPin = false;
 			this.options.onPin?.(result.pin);
-			this.log('certificate trusted on first use');
+			this.log(
+				result.trust === 'ca'
+					? 'certificate verified by the Bambu CA and remembered'
+					: 'certificate trusted on first use'
+			);
 		}
 		return null;
 	}

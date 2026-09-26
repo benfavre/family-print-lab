@@ -7,7 +7,10 @@
 // - Node's hostname check is replaced by our own: the leaf CN must equal the configured serial;
 // - when the chain does not verify (device CAs are often missing from bundles), trust on first use:
 //   a connection the person started (Test, Add, the env import) pins the leaf's SHA-256 fingerprint,
-//   later connections must match it.
+//   later connections must match it;
+// - a chain the CA check accepts is pinned too, so trust on first use is over for that printer: a
+//   later peer whose chain does not verify (a LAN impostor with a self-signed CN=serial leaf) gets
+//   CERT_CHANGED instead of a fresh pin, and the access code stays home.
 // Clients connect with rejectUnauthorized: false and call verifyPrinterCert in the secureConnect
 // handler before writing anything, so the access code is never sent to an unverified peer.
 import type tls from 'node:tls';
@@ -63,7 +66,9 @@ export function verifyPrinterCert(
 			error: `The printer’s certificate names “${String(cn ?? '').slice(0, 40)}”, not the serial number set for it. Check the serial number and the IP address.`,
 			fingerprint
 		};
-	if (socket.authorized) return { ok: true, trust: 'ca', fingerprint };
+	// CA-verified: remember the leaf when nothing is pinned yet (see the header).
+	if (socket.authorized)
+		return { ok: true, trust: 'ca', fingerprint, ...(o.pin ? {} : { pin: fingerprint }) };
 	if (o.pin) {
 		return normalizeFingerprint(o.pin) === fingerprint
 			? { ok: true, trust: 'pinned', fingerprint }

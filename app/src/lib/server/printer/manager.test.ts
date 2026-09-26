@@ -481,9 +481,57 @@ describe('printer certificates and access codes', () => {
 		// DHCP gave it a new address: same printer, same certificate.
 		const moved = manager.update(saved.id, { version: saved.version, host: '127.0.0.2' });
 		expect(pin()).toBe('ab'.repeat(32));
-		// Another printer: its certificate is trusted afresh.
-		manager.update(saved.id, { version: moved.version, serial: 'SIM-PIN-0002' });
+		// Another printer: its certificate is trusted afresh (and it needs its own access code).
+		expect(() =>
+			manager.update(saved.id, { version: moved.version, serial: 'SIM-PIN-0002' })
+		).toThrow(/access code/);
+		manager.update(saved.id, {
+			version: moved.version,
+			serial: 'SIM-PIN-0002',
+			accessCode: '87654321'
+		});
 		expect(pin()).toBeNull();
+	});
+
+	it('never sends the saved access code over a connection without the certificate check', async () => {
+		const db = openDatabase(':memory:');
+		const bus = new EventBus();
+		const manager = new PrinterManager(db, new Lab(db, bus), bus, { env: {}, log: () => {} });
+		cleanups.push(() => manager.stop());
+		const saved = manager.create({
+			name: 'P1S',
+			model: 'C12',
+			host: '127.0.0.1',
+			port: 1,
+			serial: 'SIM-CODE-0001',
+			accessCode: 'SECRET12',
+			enabled: false
+		});
+		const same = { id: saved.id, name: 'P1S', model: 'C12', serial: 'SIM-CODE-0001', port: 1 };
+		// Plain MQTT or a "simulated" peer skip the certificate check: the code would go to anyone.
+		for (const over of [
+			{ host: '127.0.0.1', tls: false },
+			{ host: '127.0.0.1', simulated: true },
+			{ host: '10.0.0.66', tls: false },
+			// A new address with nothing pinned would be trusted on first use.
+			{ host: '10.0.0.66' }
+		])
+			await expect(manager.test({ ...same, ...over })).rejects.toThrow(/access code/);
+		for (const patch of [{ tls: false }, { simulated: true }, { host: '10.0.0.66' }])
+			expect(() => manager.update(saved.id, { version: saved.version, ...patch })).toThrow(
+				/access code/
+			);
+		// With the code typed in, all of these are fine.
+		const edited = manager.update(saved.id, {
+			version: saved.version,
+			host: '10.0.0.66',
+			accessCode: 'NEWCODE1'
+		});
+		expect(edited.host).toBe('10.0.0.66');
+		// The same saved connection can still be tested without typing the code (it fails to connect).
+		await expect(manager.test({ ...same, host: '10.0.0.66', port: 1 })).resolves.toMatchObject({
+			ok: false
+		});
 	});
 });
 

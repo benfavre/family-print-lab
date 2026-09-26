@@ -74,6 +74,27 @@ run('printer TLS policy', () => {
 		await server.close();
 	});
 
+	it('pins a CA-verified certificate too, so a later self-signed one is refused', async () => {
+		const server = await recorder(good);
+		const first = await check(server.port, ca.ca, { pin: null, mayPin: true });
+		expect(first).toMatchObject({ ok: true, trust: 'ca' });
+		const pin = first.ok ? first.pin! : '';
+		expect(pin).toMatch(/^[0-9a-f]{64}$/);
+		// Once pinned, a verified chain needs no new pin.
+		expect(await check(server.port, ca.ca, { pin })).toEqual({
+			ok: true,
+			trust: 'ca',
+			fingerprint: pin
+		});
+		await server.close();
+		const imposter = await recorder(selfSigned);
+		expect(await check(imposter.port, ca.ca, { pin, mayPin: true })).toMatchObject({
+			ok: false,
+			error: CERT_CHANGED
+		});
+		await imposter.close();
+	});
+
 	it('refuses a CA-signed certificate for another serial', async () => {
 		const server = await recorder(wrongCn);
 		const r = await check(server.port, ca.ca, { pin: null, mayPin: true });
@@ -144,6 +165,42 @@ run('printer TLS policy', () => {
 		).rejects.toThrow(/SOMEONE-ELSE/);
 		expect(logs.join('\n')).not.toMatch(/access code/);
 		await ftp.close();
+	});
+
+	it('after a CA-verified connection, a reconnect to a self-signed impostor gets nothing', async () => {
+		const pins: string[] = [];
+		const sockets: tls.TLSSocket[] = [];
+		const real = tls.createServer({ ...good, maxVersion: 'TLSv1.2' }, (s) => {
+			sockets.push(s);
+			s.on('error', () => {});
+		});
+		await new Promise<void>((r) => real.listen(0, '127.0.0.1', () => r()));
+		const imposter = await recorder(selfSigned);
+		const printer = new BambuPrinter(
+			{
+				id: 'p',
+				model: 'C12',
+				host: '127.0.0.1',
+				port: (real.address() as net.AddressInfo).port,
+				serial: SERIAL,
+				accessCode: 'SECRET12'
+			},
+			{ ca: [ca.ca], mayPin: true, onPin: (p) => pins.push(p) }
+		).start();
+		for (let i = 0; i < 100 && !sockets.length; i++) await new Promise((r) => setTimeout(r, 20));
+		expect(printer.trust).toBe('ca');
+		expect(pins).toHaveLength(1);
+		// Someone else answers at the printer's address when it reconnects.
+		printer.config.port = imposter.port;
+		for (const s of sockets) s.destroy();
+		await new Promise<void>((r) => real.close(() => r()));
+		for (let i = 0; i < 200 && printer.error !== CERT_CHANGED; i++)
+			await new Promise((r) => setTimeout(r, 20));
+		printer.stop();
+		expect(printer.error).toBe(CERT_CHANGED);
+		expect(pins).toHaveLength(1);
+		expect(imposter.received).toHaveLength(0);
+		await imposter.close();
 	});
 
 	it('connects to a printer with a trusted certificate and pins on first use', async () => {
