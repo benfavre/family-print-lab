@@ -1,0 +1,176 @@
+# Keeps Print Lab Slicer's Bambu Studio fork current. Weekly (and on demand) it compares the latest
+# Bambu Studio release with slicer/upstream.lock; when there is a newer one it replays our patch queue
+# onto it (slicer/scripts/upstream.sh), builds and tests the engine when its sources exist, regenerates
+# everything derived from the pin, and opens a pull request. When the queue does not apply it opens or
+# updates an issue listing the patches that fail. slicer/UPSTREAM.md has the same steps by hand.
+name: Slicer upstream
+
+on:
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Bambu Studio tag to move to (default: the latest release that is not a pre-release)'
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: slicer-upstream
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-22.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find the newest release
+        id: latest
+        run: |
+          current="$(sed -n 's/^tag=//p' slicer/upstream.lock | sed 's/[[:space:]].*//')"
+          # releases/latest skips pre-releases (newer tags such as v02.08.04.57 exist that are not "latest").
+          latest="${{ inputs.tag }}"
+          [ -n "$latest" ] || latest="$(gh api repos/bambulab/BambuStudio/releases/latest --jq .tag_name)"
+          newest="$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -n 1)"
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          if [ "$latest" != "$current" ] && { [ "$newest" = "$latest" ] || [ -n "${{ inputs.tag }}" ]; }; then
+            echo "update=true" >> "$GITHUB_OUTPUT"
+            echo "Bambu Studio $latest is newer than the pinned $current."
+          else
+            echo "update=false" >> "$GITHUB_OUTPUT"
+            echo "The pinned Bambu Studio $current is current."
+          fi
+
+      - name: Replay the patch queue
+        id: rebase
+        if: steps.latest.outputs.update == 'true'
+        run: |
+          git config --global user.name "Print Lab patch queue"
+          git config --global user.email "patch-queue@printlab.invalid"
+          slicer/scripts/upstream.sh fetch
+          slicer/scripts/upstream.sh rebase "${{ steps.latest.outputs.latest }}" --report "$RUNNER_TEMP/rebase.json"
+
+      # Each of the following steps runs only when what it needs exists, since packages merge in any order.
+      - name: Build and test the engine
+        id: engine
+        if: steps.latest.outputs.update == 'true' && hashFiles('slicer/engine/CMakeLists.txt') != ''
+        run: |
+          sudo apt-get update && sudo apt-get install -y build-essential cmake git libgl-dev libgtk-3-dev
+          slicer/scripts/upstream.sh build -j 4
+          bin=slicer/.build/engine/printlab-slicer
+          if grep -q -a -E 'bambu_networking|NetworkAgent' "$bin"; then
+            echo "The engine must not reference Bambu's proprietary network plugin." >&2
+            exit 1
+          fi
+          ctest --test-dir slicer/.build/engine --output-on-failure
+          echo "PRINTLAB_SLICER_PATH=$PWD/$bin" >> "$GITHUB_ENV"
+
+      - name: Write the new pin
+        if: steps.latest.outputs.update == 'true'
+        run: slicer/scripts/upstream.sh export
+
+      - uses: actions/setup-node@v4
+        if: steps.latest.outputs.update == 'true'
+        with:
+          node-version-file: app/.nvmrc
+      - uses: oven-sh/setup-bun@v2
+        if: steps.latest.outputs.update == 'true'
+
+      - name: Regenerate data derived from the pin
+        id: data
+        if: steps.latest.outputs.update == 'true'
+        working-directory: app
+        run: |
+          bun install
+          ../slicer/scripts/upstream.sh resources
+          # --strict fails on model codes the catalogue lacks; list them in the pull request instead.
+          if bunx tsx tools/gen-printer-models.ts --from ../slicer/.upstream --strict > "$RUNNER_TEMP/models.txt" 2>&1; then
+            echo "new_models=" >> "$GITHUB_OUTPUT"
+          else
+            cat "$RUNNER_TEMP/models.txt"
+            grep -q 'missing from MODEL_CODES' "$RUNNER_TEMP/models.txt" || exit 1
+            echo "new_models=$(sed -n 's/^Upstream model codes missing from MODEL_CODES: //p' "$RUNNER_TEMP/models.txt")" >> "$GITHUB_OUTPUT"
+          fi
+          has() { node -e "process.exit(require('./package.json').scripts?.['$1'] ? 0 : 1)"; }
+          if has hms:build; then bun run hms:build; fi
+          if has profiles:fetch; then bun run profiles:fetch; fi
+
+      # PRs opened with GITHUB_TOKEN do not start other workflows, so every check runs here (with the
+      # engine built above, PRINTLAB_SLICER_PATH is set and the engine's golden tests run too).
+      - name: Check the app against the new pin
+        if: steps.latest.outputs.update == 'true'
+        working-directory: app
+        run: |
+          bun run check
+          bunx vitest --run
+          bash ../slicer/tests/upstream.test.sh
+
+      - name: Open the pull request
+        if: steps.latest.outputs.update == 'true'
+        env:
+          TAG: ${{ steps.latest.outputs.latest }}
+          FROM: ${{ steps.latest.outputs.current }}
+          NEW_MODELS: ${{ steps.data.outputs.new_models }}
+        run: |
+          branch="slicer/bambu-studio-$TAG"
+          git switch -c "$branch"
+          git add -A slicer app/src
+          git commit -m "Slicer: Bambu Studio $TAG" -m "Moves the pin from $FROM to $TAG and regenerates the data derived from it."
+          git push --force origin "$branch"
+          {
+            echo "Moves Print Lab Slicer from Bambu Studio \`$FROM\` to \`$TAG\` (release notes: https://github.com/bambulab/BambuStudio/releases/tag/$TAG)."
+            echo
+            echo "### Patch queue"
+            echo '```'
+            git diff --stat "origin/${{ github.event.repository.default_branch }}" -- slicer/patches slicer/upstream.lock
+            echo '```'
+            echo "### Derived data"
+            echo '```'
+            git diff --stat "origin/${{ github.event.repository.default_branch }}" -- app/src
+            echo '```'
+            if [ -n "$NEW_MODELS" ]; then
+              echo "### New printer models"
+              echo "Bambu Studio knows model codes the catalogue does not: **$NEW_MODELS**. Add them to MODEL_CODES in app/src/lib/shared/printers/models.ts."
+            fi
+            echo
+            echo "This workflow already ran the patch replay, the engine build and golden tests (when slicer/engine exists), \`bun run check\` and the unit tests. Pull requests opened by GitHub Actions do not start CI; push a commit to run it."
+          } > "$RUNNER_TEMP/body.md"
+          existing="$(gh pr list --head "$branch" --json number --jq '.[0].number')"
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing" --body-file "$RUNNER_TEMP/body.md"
+          else
+            gh pr create --title "Slicer: Bambu Studio $TAG" --body-file "$RUNNER_TEMP/body.md"
+          fi
+
+      - name: Report what failed
+        if: failure() && steps.latest.outputs.update == 'true'
+        env:
+          TAG: ${{ steps.latest.outputs.latest }}
+        run: |
+          title="Slicer: Bambu Studio $TAG needs a hand"
+          {
+            echo "The weekly update to Bambu Studio \`$TAG\` stopped: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo
+            if [ -f "$RUNNER_TEMP/rebase.json" ]; then
+              echo "### Patches that no longer apply"
+              node -e "const r=require(process.argv[1]); console.log(r.failed.length ? r.failed.map(p=>'- '+p).join('\n') : 'None: a later step failed.')" "$RUNNER_TEMP/rebase.json"
+            fi
+            echo
+            echo "Follow slicer/UPSTREAM.md (Resolving a patch that stopped applying)."
+          } > "$RUNNER_TEMP/issue.md"
+          existing="$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file "$RUNNER_TEMP/issue.md"
+          else
+            gh issue create --title "$title" --body-file "$RUNNER_TEMP/issue.md"
+          fi

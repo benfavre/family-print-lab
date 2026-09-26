@@ -30,3 +30,10 @@ jobs:
           name: playwright-traces
           path: app/test-results
           retention-days: 7
+
+  # The tooling that keeps the Bambu Studio fork current (slicer/UPSTREAM.md).
+  slicer-upstream:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash slicer/tests/upstream.test.sh
