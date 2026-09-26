@@ -55,6 +55,7 @@ export interface CloudSim {
 		/** The last `printer` message: undefined if none came, null if sharing is off. */
 		printer: unknown;
 		printerMessages: number;
+		backups: { id: string; size: number; keyId: string }[];
 	};
 	close(): Promise<void>;
 }
@@ -74,6 +75,14 @@ export function startCloudSim(port = 0, host = '127.0.0.1'): Promise<CloudSim> {
 	let hello: { app?: string; protocol?: number } | null = null;
 	let requests: Summary[] = [];
 	let printer: unknown = undefined;
+	const backups: {
+		id: string;
+		account: string;
+		device: string;
+		keyId: string;
+		data: Buffer;
+		createdAt: string;
+	}[] = [];
 	let printerMessages = 0;
 	let plan = true;
 	const waiting = new Map<string, (r: { ok: boolean; error?: string }) => void>();
@@ -143,7 +152,8 @@ export function startCloudSim(port = 0, host = '127.0.0.1'): Promise<CloudSim> {
 			hello,
 			requests,
 			printer,
-			printerMessages
+			printerMessages,
+			backups: backups.map((b) => ({ id: b.id, size: b.data.length, keyId: b.keyId }))
 		}),
 		close: () =>
 			new Promise((resolve) => {
@@ -155,6 +165,41 @@ export function startCloudSim(port = 0, host = '127.0.0.1'): Promise<CloudSim> {
 
 	const server = http.createServer(async (req, res) => {
 		const path = new URL(req.url ?? '/', 'http://x').pathname;
+		// Encrypted backups: stored as sent (the simulator, like the cloud, cannot open them).
+		if (path === '/device/backups' || path.startsWith('/device/backups/')) {
+			const d = bearer(req);
+			if (!d) return json(res, 401, { error: 'This device is not linked.' });
+			if (req.method === 'PUT') {
+				if (!plan) return json(res, 402, { error: 'Cloud backup is part of the Family plan.' });
+				const chunks: Buffer[] = [];
+				for await (const c of req) chunks.push(c as Buffer);
+				const id = `${Date.now()}-${backups.length}_${d.id}.plb`;
+				backups.unshift({
+					id,
+					account: d.account,
+					device: d.name,
+					keyId: String(req.headers['x-backup-key'] ?? ''),
+					data: Buffer.concat(chunks),
+					createdAt: new Date().toISOString()
+				});
+				return json(res, 200, { ok: true, id });
+			}
+			const mine = backups.filter((b) => b.account === d.account);
+			if (path === '/device/backups')
+				return json(res, 200, {
+					backups: mine.map((b) => ({
+						id: b.id,
+						device: b.device,
+						createdAt: b.createdAt,
+						size: b.data.length,
+						keyId: b.keyId
+					}))
+				});
+			const found = mine.find((b) => b.id === decodeURIComponent(path.slice(16)));
+			if (!found) return json(res, 404, { error: 'Not found.' });
+			res.writeHead(200, { 'content-type': 'application/octet-stream' });
+			return res.end(found.data);
+		}
 		const body = req.method === 'POST' ? await readBody(req) : {};
 		if (path === '/device/pair') {
 			const p: Pairing = {

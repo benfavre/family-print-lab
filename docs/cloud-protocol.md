@@ -47,6 +47,23 @@ User codes use 8 characters from `BCDFGHJKLMNPQRSTVWXZ23456789` and expire after
 Unlinking from the app: `POST {cloud}/device/unlink` with the bearer token removes the device on
 the cloud side. The app forgets its token whatever the answer (it may be offline).
 
+## Encrypted backups (Family plan)
+
+Only when a parent turns on Cloud backup (Integrations → Backups). The app makes a recovery key
+(32 characters from `ABCDEFGHJKMNPQRSTVWXYZ23456789`, shown once to write down, kept on the
+computer) and derives an AES-256 key from it with HKDF-SHA256. About once a day it packs the newest
+snapshot (the database and model files), compresses it, and seals it with AES-256-GCM:
+`"PLB1" | key id (8 bytes) | IV (12 bytes) | ciphertext | tag (16 bytes)`. The key id (the first 8
+bytes of SHA-256 of the AES key) only tells whether a key fits; the cloud never gets the key.
+
+- `PUT {cloud}/device/backups` with the bearer token, `x-backup-key: <key id hex>` and the sealed
+  file as the body (at most 95 MB). `402` without the Family plan. The cloud keeps the last 7 per
+  computer and deletes any backup after 90 days.
+- `GET {cloud}/device/backups` lists the account's backups (from all its computers):
+  `{"backups": [{"id", "device", "createdAt", "size", "keyId"}]}`.
+- `GET {cloud}/device/backups/{id}` returns a sealed file, which the app opens with the recovery
+  key and restores like any local backup (after taking a safety snapshot).
+
 ## Messages
 
 App → cloud:

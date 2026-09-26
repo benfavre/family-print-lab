@@ -13,6 +13,7 @@ import { startCloudSim, type CloudSim } from '../../../../tools/cloud-sim';
 import { EventEmitter } from 'node:events';
 import type { PrinterStatus } from '$lib/shared/domain';
 import { CloudLink, summarizePrinter } from './link';
+import { open, unpack } from './vault';
 
 let db: DB, lab: Lab, models: ModelStore, sim: CloudSim, links: CloudLink[];
 beforeEach(async () => {
@@ -249,5 +250,34 @@ describe('Print Lab Cloud link', () => {
 			'layer',
 			'totalLayers'
 		]);
+	});
+
+	it('backs up encrypted with a key only this computer has, and restores it', async () => {
+		const link = await linked();
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'snap-'));
+		fs.writeFileSync(path.join(dir, 'printlab.db'), 'the whole workspace');
+		await expect(link.uploadBackup(dir)).rejects.toThrow(/off/);
+
+		const key = link.enableBackup();
+		expect(link.enableBackup()).toBe(key); // the same key every time
+		expect(link.status().backup).toMatchObject({ enabled: true, last: null });
+		await link.uploadBackup(dir);
+		expect(link.status().backup.last?.size).toBeGreaterThan(40);
+		expect(sim.state().backups).toHaveLength(1);
+
+		const [stored] = await link.listBackups();
+		expect(stored).toMatchObject({ ours: true, device: 'Family Print Lab' });
+		const sealed = await link.downloadBackup(stored.id);
+		expect(sealed.includes(Buffer.from('the whole workspace'))).toBe(false);
+		const to = fs.mkdtempSync(path.join(os.tmpdir(), 'restored-'));
+		unpack(open(sealed, key), to);
+		expect(fs.readFileSync(path.join(to, 'printlab.db'), 'utf8')).toBe('the whole workspace');
+
+		// Without the plan the cloud refuses, and the app says why.
+		sim.setPlan(false);
+		await expect(link.uploadBackup(dir)).rejects.toThrow(/Family plan/);
+		expect(link.status().backup.error).toMatch(/Family plan/);
+		link.disableBackup();
+		expect(link.backupEnabled()).toBe(false);
 	});
 });

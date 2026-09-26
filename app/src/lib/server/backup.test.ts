@@ -52,6 +52,28 @@ describe('backups', () => {
 		}
 	});
 
+	it("keeps this computer's cloud link through a restore (a backup may come from another computer)", async () => {
+		const { root, db, backups } = workspace();
+		try {
+			const setLink = (value: string) =>
+				db.$client
+					.prepare(
+						"INSERT INTO meta (key, value) VALUES ('cloud', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+					)
+					.run(value);
+			setLink('{"link":"the other computer"}');
+			const snap = await backups.create('manual');
+			setLink('{"link":"this computer"}');
+			await backups.restore(snap.file);
+			expect(db.$client.prepare("SELECT value FROM meta WHERE key = 'cloud'").get()).toEqual({
+				value: '{"link":"this computer"}'
+			});
+		} finally {
+			db.$client.close();
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it('restores the oldest kept snapshot even when the safety copy pushes it past the limit', async () => {
 		const { root, db, lab, backups, profileId } = workspace();
 		try {

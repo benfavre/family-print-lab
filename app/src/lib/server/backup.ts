@@ -24,6 +24,9 @@ export interface RestoreResult {
  * files. Model version files never change after they are written, so they are hard-linked (no extra
  * space) when the file system allows it, and copied otherwise. Newest first; `keep` are retained.
  */
+/** Meta rows a restore keeps from the running computer instead of taking them from the backup. */
+const OWN_META = ['cloud'];
+
 export class Backups {
 	private timer?: NodeJS.Timeout;
 
@@ -138,6 +141,11 @@ export class Backups {
 				)?.value ?? 0
 			);
 			const inSnapshot = new Set(tablesOf('snap'));
+			// Settings that belong to this computer, not to the workspace: its Print Lab Cloud link
+			// (device token, recovery key) stays even when the backup came from another computer.
+			const own = client
+				.prepare(`SELECT key, value FROM meta WHERE key IN (${OWN_META.map(() => '?').join(', ')})`)
+				.all(...OWN_META) as { key: string; value: string }[];
 			client.pragma('foreign_keys = OFF');
 			client.transaction(() => {
 				for (const table of tablesOf('main')) {
@@ -153,6 +161,11 @@ export class Backups {
 						.run().changes;
 					tables++;
 				}
+				client
+					.prepare(`DELETE FROM meta WHERE key IN (${OWN_META.map(() => '?').join(', ')})`)
+					.run(...OWN_META);
+				for (const row of own)
+					client.prepare('INSERT INTO meta (key, value) VALUES (?, ?)').run(row.key, row.value);
 				// Clients follow the change counter, so it must move forward, never back.
 				client
 					.prepare(
@@ -195,6 +208,12 @@ export class Backups {
 
 	stop() {
 		clearInterval(this.timer);
+	}
+
+	/** The folder of the newest snapshot, if any. */
+	newestDir(): string | null {
+		const newest = this.list()[0];
+		return newest ? path.join(this.dir, newest.file) : null;
 	}
 }
 

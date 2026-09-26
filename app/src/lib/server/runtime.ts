@@ -139,6 +139,22 @@ function boot(): Runtime {
 		? new CloudLink(db, lab, models, env.CLOUD_URL, appVersion, undefined, printer)
 		: null;
 	cloud?.start();
+	// With cloud backup on, the newest snapshot goes to the cloud, encrypted, about once a day.
+	const cloudBackup = setInterval(() => void sendCloudBackup(), 6 * 3600_000);
+	cloudBackup.unref();
+	setTimeout(() => void sendCloudBackup(), 60_000).unref();
+	async function sendCloudBackup() {
+		const last = cloud?.status().backup.last;
+		const dir = backups.newestDir();
+		if (!cloud?.backupEnabled() || !dir) return;
+		if (last && Date.now() - Date.parse(last.at) < 23 * 3600_000) return;
+		try {
+			const { size } = await cloud.uploadBackup(dir);
+			log(`Cloud backup sent (${Math.round(size / 1e5) / 10} MB)`);
+		} catch (error) {
+			log(`Cloud backup failed: ${(error as Error).message}`);
+		}
+	}
 
 	return {
 		db,
@@ -171,6 +187,7 @@ function boot(): Runtime {
 			cloud?.stop();
 			tasks.flush();
 			printer?.stop();
+			clearInterval(cloudBackup);
 			backups.stop();
 			db.$client.close();
 		}

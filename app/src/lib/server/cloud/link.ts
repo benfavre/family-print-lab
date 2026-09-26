@@ -12,7 +12,8 @@ import type { Lab } from '../lab';
 import type { ModelStore } from '../models';
 import { AppError } from '../validation';
 import { plaGrams } from '$lib/shared/kid';
-import type { CloudStatus } from '$lib/shared/cloud';
+import type { CloudBackup, CloudStatus } from '$lib/shared/cloud';
+import { keyFrom, MAX_BACKUP, newRecoveryKey, pack, seal } from './vault';
 import type { PrinterStatus } from '$lib/shared/domain';
 
 const KEY = 'cloud';
@@ -25,6 +26,12 @@ const PROGRESS_EVERY = 30_000;
 interface Stored {
 	shareNames: boolean;
 	shareProgress?: boolean;
+	backup?: {
+		recoveryKey: string;
+		enabled: boolean;
+		last: { at: string; size: number } | null;
+		error: string | null;
+	};
 	link: { deviceToken: string; deviceId: string; account: string; linkedAt: string } | null;
 }
 
@@ -146,6 +153,11 @@ export class CloudLink extends EventEmitter {
 			plan: this.plan,
 			shareNames: this.stored.shareNames,
 			shareProgress: this.stored.shareProgress === true,
+			backup: {
+				enabled: this.stored.backup?.enabled === true,
+				last: this.stored.backup?.last ?? null,
+				error: this.stored.backup?.error ?? null
+			},
 			pairing: this.pairing,
 			error: this.error,
 			linkedAt: this.stored.link?.linkedAt ?? null
@@ -246,6 +258,102 @@ export class CloudLink extends EventEmitter {
 		this.lastPrinter = '';
 		this.sendPrinter();
 		this.emit('status', this.status());
+	}
+
+	// ---------- Encrypted backups (Family plan) ----------
+
+	/** Turns cloud backups on; returns the recovery key (made once, kept on this computer). */
+	enableBackup() {
+		if (!this.stored.link) throw new AppError(409, 'Link this computer to Print Lab Cloud first.');
+		const recoveryKey = this.stored.backup?.recoveryKey ?? newRecoveryKey();
+		this.save({
+			...this.stored,
+			backup: { last: null, error: null, ...this.stored.backup, recoveryKey, enabled: true }
+		});
+		this.emit('status', this.status());
+		return recoveryKey;
+	}
+
+	disableBackup() {
+		if (this.stored.backup)
+			this.save({ ...this.stored, backup: { ...this.stored.backup, enabled: false } });
+		this.emit('status', this.status());
+	}
+
+	/** For "Show recovery key" (the Family page is behind the parent PIN). */
+	recoveryKey() {
+		return this.stored.backup?.recoveryKey ?? null;
+	}
+
+	backupEnabled() {
+		return !!this.stored.link && this.stored.backup?.enabled === true;
+	}
+
+	/** Seals a snapshot folder with the recovery key and sends it; the cloud keeps the last 7. */
+	async uploadBackup(snapshotDir: string) {
+		const backup = this.stored.backup;
+		if (!this.stored.link || !backup?.enabled) throw new AppError(409, 'Cloud backup is off.');
+		const setResult = (patch: Partial<NonNullable<Stored['backup']>>) => {
+			this.save({ ...this.stored, backup: { ...this.stored.backup!, ...patch } });
+			this.emit('status', this.status());
+		};
+		try {
+			const sealed = seal(pack(snapshotDir), backup.recoveryKey);
+			if (sealed.length > MAX_BACKUP)
+				throw new AppError(413, 'This backup is too big for the cloud (over 95 MB).');
+			const response = await this.device('/device/backups', {
+				method: 'PUT',
+				headers: {
+					'content-type': 'application/octet-stream',
+					'x-backup-key': keyFrom(backup.recoveryKey).id
+				},
+				body: new Uint8Array(sealed),
+				signal: AbortSignal.timeout(300_000)
+			});
+			if (!response.ok)
+				throw new AppError(
+					response.status === 402 ? 402 : 502,
+					((await response.json().catch(() => ({}))) as { error?: string }).error ??
+						`Print Lab Cloud answered ${response.status}.`
+				);
+			setResult({ last: { at: new Date().toISOString(), size: sealed.length }, error: null });
+			return { size: sealed.length };
+		} catch (error) {
+			setResult({ error: (error as Error).message });
+			throw error;
+		}
+	}
+
+	/** Backups stored for the account, newest first. */
+	async listBackups(): Promise<CloudBackup[]> {
+		const response = await this.device('/device/backups', { signal: AbortSignal.timeout(15_000) });
+		if (!response.ok) throw new AppError(502, `Print Lab Cloud answered ${response.status}.`);
+		const { backups } = (await response.json()) as {
+			backups: { id: string; device: string; createdAt: string; size: number; keyId: string }[];
+		};
+		const ours = this.stored.backup ? keyFrom(this.stored.backup.recoveryKey).id : null;
+		return backups.map(({ keyId, ...b }) => ({ ...b, ours: keyId === ours }));
+	}
+
+	async downloadBackup(id: string): Promise<Buffer> {
+		const response = await this.device(`/device/backups/${encodeURIComponent(id)}`, {
+			signal: AbortSignal.timeout(300_000)
+		});
+		if (!response.ok) throw new AppError(404, 'That backup is not in the cloud any more.');
+		return Buffer.from(await response.arrayBuffer());
+	}
+
+	private async device(path: string, init: RequestInit) {
+		const link = this.stored.link;
+		if (!link) throw new AppError(409, 'Link this computer to Print Lab Cloud first.');
+		try {
+			return await fetch(`${this.url}${path}`, {
+				...init,
+				headers: { ...init.headers, authorization: `Bearer ${link.deviceToken}` }
+			});
+		} catch {
+			throw new AppError(502, 'Cannot reach Print Lab Cloud. Check the internet connection.');
+		}
 	}
 
 	// ---------- Connection ----------

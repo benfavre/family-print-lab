@@ -13,10 +13,26 @@ export interface CloudStatus {
 	shareNames: boolean;
 	/** Send the printer's progress (state, title, percent, time left) for the phone. Off by default. */
 	shareProgress: boolean;
+	/** Encrypted backups in the cloud (Family plan). The recovery key never leaves this computer. */
+	backup: {
+		enabled: boolean;
+		last: { at: string; size: number } | null;
+		error: string | null;
+	};
 	/** While linking: the code to enter and where. */
 	pairing: { userCode: string; verifyUrl: string; expiresAt: string } | null;
 	error: string | null;
 	linkedAt: string | null;
+}
+
+/** A backup stored in the cloud (from any computer linked to the account). */
+export interface CloudBackup {
+	id: string;
+	device: string;
+	createdAt: string;
+	size: number;
+	/** Whether this computer's recovery key opens it. */
+	ours: boolean;
 }
 
 export const CLOUD_OFF: CloudStatus = {
@@ -27,6 +43,7 @@ export const CLOUD_OFF: CloudStatus = {
 	plan: false,
 	shareNames: true,
 	shareProgress: false,
+	backup: { enabled: false, last: null, error: null },
 	pairing: null,
 	error: null,
 	linkedAt: null
