@@ -24,9 +24,30 @@ const withArticle = (name: string) => `${/^[AEFHILMNORSX]/i.test(name) ? 'an' : 
 // Matches BODY_SIZE_LIMIT (110M); sliced plates are usually 2-40 MB.
 export const MAX_SLICED_BYTES = 110 * 1000 * 1000;
 
+/**
+ * A send's mapping (one tray per filament the plate uses, in the plate's order) → project_file's: one
+ * entry per filament of the project, by filament id, -1 for the ones this plate does not use (Bambu
+ * Studio SelectMachine.cpp get_ams_mapping_result ~1424–1510 loops over every filament preset).
+ */
+type PlateFilaments = Pick<SlicedInfo['plates'][number], 'filaments'>;
+export function projectMapping(
+	sliced: { plates: PlateFilaments[] },
+	plate: PlateFilaments,
+	mapping: number[]
+): number[] {
+	// Files without filament ids: as given.
+	if (!plate.filaments.length || plate.filaments.some((f) => !(f.id >= 1 && f.id <= 64)))
+		return mapping;
+	const count = Math.max(...sliced.plates.flatMap((p) => p.filaments.map((f) => f.id)));
+	const out = Array<number>(count).fill(-1);
+	plate.filaments.forEach((f, i) => (out[f.id - 1] = mapping[i] ?? -1));
+	return out;
+}
+
 export interface SendOptions {
 	plate?: number;
 	useAms: boolean;
+	/** One tray per filament the plate uses, in the plate's order (sent by filament id: projectMapping). */
 	amsMapping: number[];
 	bedLeveling?: boolean;
 	timelapse?: boolean;
@@ -113,8 +134,9 @@ export class PrintFiles {
 		);
 	}
 
-	/** One send at a time per printer: a printer can only take one print. */
+	/** One send at a time per printer (a printer can only take one print), and per job. */
 	private sending = new Set<string>();
+	private sendingJobs = new Set<string>();
 
 	private job(id: string): Job {
 		const job = this.lab.getJob(id);
@@ -196,8 +218,15 @@ export class PrintFiles {
 		return { id, printer: id ? (this.printers.get(id) ?? null) : null };
 	}
 
-	/** Checks everything that can be checked before sending; returns problems in plain words. */
-	check(jobId: string, opts: SendOptions): { blocking: string[]; warnings: string[] } {
+	/**
+	 * Checks everything that can be checked before sending; returns problems in plain words. `ownSend`:
+	 * the send task re-checking itself after waking the printer (its own send lock is not a problem).
+	 */
+	check(
+		jobId: string,
+		opts: SendOptions,
+		ownSend = false
+	): { blocking: string[]; warnings: string[] } {
 		const job = this.job(jobId);
 		const blocking: string[] = [],
 			warnings: string[] = [];
@@ -208,7 +237,7 @@ export class PrintFiles {
 		if (!id) blocking.push('No printer is set up yet.');
 		else if (!saved) blocking.push('That printer no longer exists.');
 		else if (!printer) blocking.push('That printer is switched off in Settings.');
-		else if (this.sending.has(id))
+		else if (!ownSend && this.sending.has(id))
 			blocking.push('Another print is being sent to this printer right now.');
 		else if (!status?.connected) {
 			// With wake-up hooks the send task switches the printer on and checks again then.
@@ -217,6 +246,8 @@ export class PrintFiles {
 			blocking.push('The printer is busy with another print.');
 		else if (status.state?.developerMode === false) blocking.push(DEVELOPER_MODE_OFF);
 		if (job.status !== 'Queued') blocking.push('Only a queued job can be sent.');
+		else if (!ownSend && this.sendingJobs.has(jobId))
+			blocking.push('This job is being sent right now.');
 		const sliced = job.sliced;
 		if (!sliced) blocking.push('Attach a sliced file first.');
 		else {
@@ -258,6 +289,7 @@ export class PrintFiles {
 		const remoteName = `${title.replace(/\s+/g, '_').slice(0, 50) || 'print'}.gcode.3mf`;
 		const sendingFile = sliced.file;
 		this.sending.add(printerId);
+		this.sendingJobs.add(jobId);
 		return this.tasks.start(
 			{
 				kind: 'print-send',
@@ -279,6 +311,7 @@ export class PrintFiles {
 					);
 				} finally {
 					this.sending.delete(printerId);
+					this.sendingJobs.delete(jobId);
 				}
 			}
 		);
@@ -299,9 +332,8 @@ export class PrintFiles {
 				await hook({ printerId, jobId, signal: ctx.signal });
 			if (ctx.signal.aborted) throw new Error('Stopped');
 			// Awake now? Everything is checked again, as nothing was checked while it slept.
-			const { blocking } = this.check(jobId, { ...opts, printerId, wake: false });
-			const others = blocking.filter((b) => !b.startsWith('Another print is being sent'));
-			if (others.length) throw new Error(others[0]);
+			const { blocking } = this.check(jobId, { ...opts, printerId, wake: false }, true);
+			if (blocking.length) throw new Error(blocking[0]);
 			ctx.stage('Uploading to the printer…');
 		}
 		const printer = this.printers.require(printerId);
@@ -325,7 +357,7 @@ export class PrintFiles {
 		if (!now || now.status !== 'Queued' || now.sliced?.file !== file)
 			throw new Error('The job changed while it was being sent; nothing was started.');
 		ctx.stage('Starting the print…');
-		const amsMapping = opts.useAms ? opts.amsMapping : [];
+		const amsMapping = opts.useAms ? projectMapping(now.sliced!, plate, opts.amsMapping) : [];
 		this.lab.startSentJob(jobId, {
 			printerTask: title,
 			printerId,

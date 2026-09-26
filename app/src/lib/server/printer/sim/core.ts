@@ -481,9 +481,11 @@ export function createSimulator(o: SimOptions = {}) {
 		const plateNo = Number(String(msg.param ?? '').match(/plate_(\d+)/)?.[1] ?? 1);
 		const plate = sliced.plates.find((p) => p.index === plateNo);
 		if (!plate) throw new Error(`Plate ${plateNo} is not in the file`);
+		// One entry per project filament, by filament id (Bambu Studio get_ams_mapping_result): the
+		// plate's first filament decides which tray feeds it.
 		const mapping = Array.isArray(msg.ams_mapping2) ? msg.ams_mapping2 : [];
-		const first =
-			mapping.find((m: Json) => m && m.ams_id !== 255 && m.slot_id !== 255) ?? mapping[0];
+		const used = plate.filaments[0]?.id;
+		const first = used ? mapping[used - 1] : mapping[0];
 		let tray: number | null = null;
 		if (msg.use_ams && first) {
 			const ams = Number(first.ams_id);

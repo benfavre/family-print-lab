@@ -176,7 +176,10 @@ export interface JobDispatch {
 	printerId: string;
 	plate: number;
 	useAms: boolean;
-	/** Global tray per filament in the file, as sent (see GlobalTray for the numbering). */
+	/**
+	 * Global tray per filament in the file, as sent: entry i is filament i + 1, -1 when this plate does
+	 * not use it (see GlobalTray for the numbering).
+	 */
 	amsMapping: number[];
 	remoteName: string;
 	at: string;

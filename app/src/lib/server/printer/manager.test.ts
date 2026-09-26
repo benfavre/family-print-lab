@@ -116,6 +116,25 @@ describe('test lab with a simulated fleet', () => {
 		expect(job(t, jobId)).toMatchObject({ status: 'Cancelled', chargeGrams: 0 });
 	});
 
+	it('does not announce a print as started again when it reconnects mid-print', async () => {
+		const t = await lab({ fleet: ['N6'], speed: 1 });
+		const x2d = t.printer('N6');
+		const { jobId } = queuedJob(t, 'N6');
+		const started = t.nextEvent('print.started');
+		t.rt.printing.send(jobId, { useAms: true, amsMapping: [0] });
+		expect((await started).jobId).toBe(jobId);
+		// Switched off and on in Settings: a fresh connection whose first report is mid-print.
+		const version = () => t.rt.printers.info().find((p) => p.id === x2d.info.id)!.version;
+		t.rt.printers.update(x2d.info.id, { enabled: false, version: version() });
+		t.rt.printers.update(x2d.info.id, { enabled: true, version: version() });
+		await until(() => t.rt.printers.get(x2d.info.id)?.status().printing);
+		expect(t.rt.bus.recent().filter((e) => e.name === 'print.started')).toHaveLength(1);
+		// Still linked: stopping it closes the job.
+		const cancelled = t.nextEvent('print.cancelled');
+		await t.rt.printers.require(x2d.info.id).control('stop');
+		expect((await cancelled).jobId).toBe(jobId);
+	});
+
 	it('runs pause and resume through the command layer per printer', async () => {
 		const t = await lab({ fleet: ['N6', 'N1'], speed: 1 });
 		const mini = t.rt.printers.require(t.printer('N1').info.id);
@@ -164,6 +183,43 @@ describe('waking a printer before a send (beforeDispatch hooks)', () => {
 		expect(job(t, jobId).status).toBe('Succeeded');
 		off();
 	}, 40_000);
+
+	it('checks the connection again after the hooks, and uploads nothing when still offline', async () => {
+		const t = await lab({ fleet: ['C12'] });
+		const p1s = t.printer('C12');
+		const entry = t.fleet.printers[0];
+		const { jobId } = queuedJob(t, 'C12');
+		await entry.sim.close();
+		await until(() => !t.rt.printers.get(p1s.info.id)!.connected);
+		// A plug that never brings the printer back.
+		const off = t.rt.hooks.beforeDispatch.add(async () => {});
+		const task = t.rt.printing.send(jobId, {
+			printerId: p1s.info.id,
+			useAms: true,
+			amsMapping: [0],
+			wake: true
+		});
+		const info = () => t.rt.tasks.list().find((x) => x.id === task.id)!;
+		await until(() => info().status !== 'running');
+		expect(info().status).toBe('failed');
+		expect(info().error).toBe('The printer is not connected.');
+		expect(job(t, jobId).status).toBe('Queued');
+		off();
+	});
+});
+
+describe('sending one job', () => {
+	it('refuses to send the same job to a second printer while the first send runs', async () => {
+		const t = await lab({ fleet: ['C12', 'C11'] });
+		const { jobId } = queuedJob(t, 'C12');
+		const opts = { useAms: true, amsMapping: [0] };
+		const first = t.printer('C12').info.id;
+		const second = t.printer('C11').info.id;
+		t.rt.printing.send(jobId, { ...opts, printerId: first });
+		expect(t.rt.printing.check(jobId, { ...opts, printerId: second }).blocking).toContain(
+			'This job is being sent right now.'
+		);
+	});
 });
 
 describe('printer registry', () => {
@@ -371,6 +427,45 @@ describe('printer registry', () => {
 		await until(() => !manager.primary()!.connected);
 		expect(events).not.toContain('printer.offline');
 		await until(() => events.includes('printer.offline'), 3000);
+	});
+});
+
+describe('printer certificates and access codes', () => {
+	it('sends the saved access code only to the same serial, and keeps the pin when the address changes', async () => {
+		const db = openDatabase(':memory:');
+		const bus = new EventBus();
+		const manager = new PrinterManager(db, new Lab(db, bus), bus, { env: {}, log: () => {} });
+		cleanups.push(() => manager.stop());
+		const saved = manager.create({
+			name: 'P1S',
+			model: 'C12',
+			host: '127.0.0.1',
+			port: 1,
+			serial: 'SIM-PIN-0001',
+			accessCode: '12345678',
+			enabled: false
+		});
+		await expect(
+			manager.test({
+				id: saved.id,
+				name: 'P1S',
+				model: 'C12',
+				host: '10.0.0.66',
+				serial: 'OTHER-0001'
+			})
+		).rejects.toThrow(/access code/);
+		const { printers } = await import('../db/schema');
+		const { eq } = await import('drizzle-orm');
+		const pin = () => db.select().from(printers).where(eq(printers.id, saved.id)).get()!.tlsPin;
+		db.update(printers)
+			.set({ tlsPin: 'ab'.repeat(32) })
+			.run();
+		// DHCP gave it a new address: same printer, same certificate.
+		const moved = manager.update(saved.id, { version: saved.version, host: '127.0.0.2' });
+		expect(pin()).toBe('ab'.repeat(32));
+		// Another printer: its certificate is trusted afresh.
+		manager.update(saved.id, { version: moved.version, serial: 'SIM-PIN-0002' });
+		expect(pin()).toBeNull();
 	});
 });
 
