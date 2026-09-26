@@ -1,0 +1,274 @@
+{
+	"gcodeState": "RUNNING",
+	"percent": 64,
+	"remainingMinutes": 33,
+	"layer": 150,
+	"totalLayers": 230,
+	"nozzle": 220,
+	"nozzleTarget": 220,
+	"bed": 55,
+	"bedTarget": 55,
+	"chamber": 31,
+	"task": "cable_dock_v03",
+	"speedLevel": 3,
+	"printError": 0,
+	"hms": [
+		{
+			"attr": 117441024,
+			"code": 131073
+		}
+	],
+	"wifiSignal": "-51dBm",
+	"ams": [
+		{
+			"unit": "0",
+			"humidity": 3,
+			"trays": [
+				{
+					"slot": "0",
+					"active": false,
+					"type": "",
+					"name": "",
+					"color": null,
+					"remain": null,
+					"global": 0,
+					"colors": [],
+					"infoIdx": "",
+					"idName": "",
+					"tagUid": null,
+					"trayUuid": null,
+					"weight": null,
+					"diameter": null,
+					"tempMin": null,
+					"tempMax": null,
+					"bedTemp": null,
+					"dryingTemp": null,
+					"dryingHours": null,
+					"k": null,
+					"state": null,
+					"totalLengthMm": null,
+					"isBambu": false
+				},
+				{
+					"slot": "1",
+					"active": false,
+					"type": "PETG",
+					"name": "PETG Basic",
+					"color": "#1f79e5",
+					"remain": 72,
+					"global": 1,
+					"colors": [
+						"#1f79e5"
+					],
+					"infoIdx": "GFG00",
+					"idName": "",
+					"tagUid": "A1B2C3D4E5F60708",
+					"trayUuid": "0123456789ABCDEF0123456789ABCDEF",
+					"weight": 1000,
+					"diameter": 1.75,
+					"tempMin": 230,
+					"tempMax": 260,
+					"bedTemp": 70,
+					"dryingTemp": 65,
+					"dryingHours": 8,
+					"k": null,
+					"state": null,
+					"totalLengthMm": 330000,
+					"isBambu": true
+				},
+				{
+					"slot": "2",
+					"active": true,
+					"type": "PLA",
+					"name": "PLA Matte",
+					"color": "#ff7a2f",
+					"remain": 40,
+					"global": 2,
+					"colors": [
+						"#ff7a2f"
+					],
+					"infoIdx": "GFA01",
+					"idName": "",
+					"tagUid": null,
+					"trayUuid": null,
+					"weight": null,
+					"diameter": null,
+					"tempMin": null,
+					"tempMax": null,
+					"bedTemp": null,
+					"dryingTemp": null,
+					"dryingHours": null,
+					"k": null,
+					"state": null,
+					"totalLengthMm": null,
+					"isBambu": true
+				},
+				{
+					"slot": "3",
+					"active": false,
+					"type": "PLA",
+					"name": "",
+					"color": "#000000",
+					"remain": null,
+					"global": 3,
+					"colors": [
+						"#000000"
+					],
+					"infoIdx": "GFL99",
+					"idName": "",
+					"tagUid": null,
+					"trayUuid": null,
+					"weight": null,
+					"diameter": null,
+					"tempMin": null,
+					"tempMax": null,
+					"bedTemp": null,
+					"dryingTemp": null,
+					"dryingHours": null,
+					"k": null,
+					"state": null,
+					"totalLengthMm": null,
+					"isBambu": false
+				}
+			],
+			"id": 0,
+			"model": "AMS",
+			"humidityIndex": 3,
+			"humidityPercent": null,
+			"temp": 25.1,
+			"drying": null,
+			"serial": "AMS0",
+			"firmware": "00.00.06.49",
+			"nozzle": null,
+			"dryStatus": null
+		}
+	],
+	"chamberTarget": null,
+	"stage": {
+		"id": 0,
+		"name": "Printing",
+		"subStage": 0,
+		"printStage": 2
+	},
+	"speed": {
+		"level": 3,
+		"magnitude": 124
+	},
+	"fans": {
+		"part": 100,
+		"aux": 0,
+		"chamber": 60,
+		"heatbreak": 100,
+		"secondaryAux": null
+	},
+	"airductMode": null,
+	"lights": {
+		"chamber": "on",
+		"chamber2": null,
+		"work": "off",
+		"heatbed": null
+	},
+	"nozzles": [
+		{
+			"id": 0,
+			"temp": 220,
+			"target": 220,
+			"diameter": 0.4,
+			"type": "hardened_steel",
+			"activeTray": 2,
+			"wear": null
+		}
+	],
+	"activeNozzle": 0,
+	"externalSpools": [
+		{
+			"slot": "254",
+			"active": false,
+			"type": "",
+			"name": "",
+			"color": null,
+			"remain": null,
+			"global": 255,
+			"colors": [],
+			"infoIdx": "",
+			"idName": "",
+			"tagUid": null,
+			"trayUuid": null,
+			"weight": null,
+			"diameter": null,
+			"tempMin": null,
+			"tempMax": null,
+			"bedTemp": null,
+			"dryingTemp": null,
+			"dryingHours": null,
+			"k": null,
+			"state": null,
+			"totalLengthMm": null,
+			"isBambu": false
+		}
+	],
+	"activeTray": 2,
+	"xcam": {
+		"spaghetti": true,
+		"firstLayer": true,
+		"buildplateMarker": false,
+		"printingMonitor": true,
+		"printHalt": true,
+		"haltSensitivity": "medium",
+		"allowSkipParts": false
+	},
+	"sdCard": "normal",
+	"doorOpen": true,
+	"camera": {
+		"present": true,
+		"lanLiveview": "rtsps",
+		"rtspUrl": "rtsps://192.0.2.10/streaming/live/1",
+		"recording": true,
+		"timelapse": false,
+		"resolution": "1080p"
+	},
+	"skippedObjects": [
+		412
+	],
+	"printType": "local",
+	"gcodeFile": "/sdcard/cable_dock_v03.gcode.3mf",
+	"prepareProgress": 100,
+	"plate": {
+		"index": null,
+		"count": null
+	},
+	"developerMode": null,
+	"firmwareSupport": {},
+	"firmware": {
+		"version": "01.08.02.00",
+		"modules": [
+			{
+				"name": "ota",
+				"hw": "",
+				"sw": "01.08.02.00",
+				"product": "Bambu Lab X1-Carbon",
+				"serialTail": ""
+			},
+			{
+				"name": "rv1126",
+				"hw": "AP05",
+				"sw": "00.00.28.55",
+				"product": "",
+				"serialTail": ""
+			},
+			{
+				"name": "ams/0",
+				"hw": "AMS08",
+				"sw": "00.00.06.49",
+				"product": "",
+				"serialTail": "AMS0"
+			}
+		]
+	},
+	"upgrade": {
+		"available": true,
+		"version": "01.09.01.00",
+		"state": "IDLE"
+	},
+	"lastReportAt": null
+}

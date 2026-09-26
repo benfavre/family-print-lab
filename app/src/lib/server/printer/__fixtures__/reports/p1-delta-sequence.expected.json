@@ -1,0 +1,564 @@
+{
+	"gcodeState": "IDLE",
+	"percent": 0,
+	"remainingMinutes": 0,
+	"layer": 0,
+	"totalLayers": 0,
+	"nozzle": 249.5,
+	"nozzleTarget": 0,
+	"bed": 69.8,
+	"bedTarget": 0,
+	"chamber": 5,
+	"task": "",
+	"speedLevel": 2,
+	"printError": 0,
+	"hms": [],
+	"wifiSignal": "-42dBm",
+	"ams": [
+		{
+			"unit": "0",
+			"humidity": 4,
+			"trays": [
+				{
+					"slot": "0",
+					"active": false,
+					"type": "PLA",
+					"name": "",
+					"color": "#ffffff",
+					"remain": 80,
+					"global": 0,
+					"colors": [
+						"#ffffff"
+					],
+					"infoIdx": "GFA00",
+					"idName": "",
+					"tagUid": null,
+					"trayUuid": null,
+					"weight": null,
+					"diameter": null,
+					"tempMin": 190,
+					"tempMax": 240,
+					"bedTemp": null,
+					"dryingTemp": null,
+					"dryingHours": null,
+					"k": 0.02,
+					"state": null,
+					"totalLengthMm": null,
+					"isBambu": true
+				},
+				{
+					"slot": "1",
+					"active": false,
+					"type": "PETG",
+					"name": "",
+					"color": "#00ae42",
+					"remain": 35,
+					"global": 1,
+					"colors": [
+						"#00ae42"
+					],
+					"infoIdx": "GFG00",
+					"idName": "",
+					"tagUid": null,
+					"trayUuid": null,
+					"weight": null,
+					"diameter": null,
+					"tempMin": 190,
+					"tempMax": 240,
+					"bedTemp": null,
+					"dryingTemp": null,
+					"dryingHours": null,
+					"k": 0.02,
+					"state": null,
+					"totalLengthMm": null,
+					"isBambu": true
+				},
+				{
+					"slot": "2",
+					"active": false,
+					"type": "",
+					"name": "",
+					"color": null,
+					"remain": null,
+					"global": 2,
+					"colors": [],
+					"infoIdx": "",
+					"idName": "",
+					"tagUid": null,
+					"trayUuid": null,
+					"weight": null,
+					"diameter": null,
+					"tempMin": null,
+					"tempMax": null,
+					"bedTemp": null,
+					"dryingTemp": null,
+					"dryingHours": null,
+					"k": null,
+					"state": null,
+					"totalLengthMm": null,
+					"isBambu": false
+				},
+				{
+					"slot": "3",
+					"active": false,
+					"type": "PLA",
+					"name": "",
+					"color": "#000000",
+					"remain": 100,
+					"global": 3,
+					"colors": [
+						"#000000"
+					],
+					"infoIdx": "GFA01",
+					"idName": "",
+					"tagUid": null,
+					"trayUuid": null,
+					"weight": null,
+					"diameter": null,
+					"tempMin": 190,
+					"tempMax": 240,
+					"bedTemp": null,
+					"dryingTemp": null,
+					"dryingHours": null,
+					"k": 0.02,
+					"state": null,
+					"totalLengthMm": null,
+					"isBambu": true
+				}
+			],
+			"id": 0,
+			"model": "AMS",
+			"humidityIndex": 4,
+			"humidityPercent": null,
+			"temp": 24.3,
+			"drying": null,
+			"serial": "AMS0",
+			"firmware": "00.00.06.49",
+			"nozzle": null,
+			"dryStatus": null
+		}
+	],
+	"chamberTarget": null,
+	"stage": {
+		"id": 255,
+		"name": "Idle",
+		"subStage": 0,
+		"printStage": 1
+	},
+	"speed": {
+		"level": 2,
+		"magnitude": 100
+	},
+	"fans": {
+		"part": 100,
+		"aux": 40,
+		"chamber": 20,
+		"heatbreak": 100,
+		"secondaryAux": null
+	},
+	"airductMode": null,
+	"lights": {
+		"chamber": "on",
+		"chamber2": null,
+		"work": null,
+		"heatbed": null
+	},
+	"nozzles": [
+		{
+			"id": 0,
+			"temp": 249.5,
+			"target": 0,
+			"diameter": 0.4,
+			"type": "stainless_steel",
+			"activeTray": null,
+			"wear": null
+		}
+	],
+	"activeNozzle": 0,
+	"externalSpools": [
+		{
+			"slot": "254",
+			"active": false,
+			"type": "PETG",
+			"name": "",
+			"color": "#bcbcbc",
+			"remain": 0,
+			"global": 255,
+			"colors": [],
+			"infoIdx": "GFSNL08",
+			"idName": "",
+			"tagUid": null,
+			"trayUuid": null,
+			"weight": null,
+			"diameter": null,
+			"tempMin": 230,
+			"tempMax": 280,
+			"bedTemp": null,
+			"dryingTemp": null,
+			"dryingHours": null,
+			"k": 0.019999999552965164,
+			"state": null,
+			"totalLengthMm": null,
+			"isBambu": false
+		}
+	],
+	"activeTray": null,
+	"xcam": {
+		"spaghetti": null,
+		"firstLayer": null,
+		"buildplateMarker": null,
+		"printingMonitor": null,
+		"printHalt": null,
+		"haltSensitivity": null,
+		"allowSkipParts": null
+	},
+	"sdCard": "normal",
+	"doorOpen": null,
+	"camera": {
+		"present": true,
+		"lanLiveview": null,
+		"rtspUrl": null,
+		"recording": false,
+		"timelapse": false,
+		"resolution": null
+	},
+	"skippedObjects": [],
+	"printType": "idle",
+	"gcodeFile": "",
+	"prepareProgress": 100,
+	"plate": {
+		"index": null,
+		"count": null
+	},
+	"developerMode": null,
+	"firmwareSupport": {},
+	"firmware": {
+		"version": "01.08.02.00",
+		"modules": [
+			{
+				"name": "ota",
+				"hw": "OTA",
+				"sw": "01.08.02.00",
+				"product": "Bambu Lab P1S",
+				"serialTail": "0001"
+			},
+			{
+				"name": "esp32",
+				"hw": "AP04",
+				"sw": "01.11.35.64",
+				"product": "",
+				"serialTail": ""
+			},
+			{
+				"name": "mc",
+				"hw": "MC07",
+				"sw": "00.01.32.85",
+				"product": "",
+				"serialTail": ""
+			},
+			{
+				"name": "th",
+				"hw": "TH09",
+				"sw": "00.00.09.95",
+				"product": "",
+				"serialTail": ""
+			},
+			{
+				"name": "ams/0",
+				"hw": "AMS08",
+				"sw": "00.00.06.49",
+				"product": "AMS",
+				"serialTail": "AMS0"
+			}
+		]
+	},
+	"upgrade": {
+		"available": false,
+		"version": null,
+		"state": "UPGRADE_SUCCESS"
+	},
+	"lastReportAt": null,
+	"afterDeltas": {
+		"gcodeState": "FINISH",
+		"percent": 100,
+		"remainingMinutes": 0,
+		"layer": 118,
+		"totalLayers": 118,
+		"nozzle": 249.5,
+		"nozzleTarget": 0,
+		"bed": 69.8,
+		"bedTarget": 0,
+		"chamber": 5,
+		"task": "desk_hook_v2",
+		"speedLevel": 2,
+		"printError": 0,
+		"hms": [],
+		"wifiSignal": "-42dBm",
+		"ams": [
+			{
+				"unit": "0",
+				"humidity": 2,
+				"trays": [
+					{
+						"slot": "0",
+						"active": false,
+						"type": "PLA",
+						"name": "",
+						"color": "#ffffff",
+						"remain": 80,
+						"global": 0,
+						"colors": [
+							"#ffffff"
+						],
+						"infoIdx": "GFA00",
+						"idName": "",
+						"tagUid": null,
+						"trayUuid": null,
+						"weight": null,
+						"diameter": null,
+						"tempMin": 190,
+						"tempMax": 240,
+						"bedTemp": null,
+						"dryingTemp": null,
+						"dryingHours": null,
+						"k": 0.02,
+						"state": null,
+						"totalLengthMm": null,
+						"isBambu": true
+					},
+					{
+						"slot": "1",
+						"active": false,
+						"type": "PETG",
+						"name": "",
+						"color": "#00ae42",
+						"remain": 35,
+						"global": 1,
+						"colors": [
+							"#00ae42"
+						],
+						"infoIdx": "GFG00",
+						"idName": "",
+						"tagUid": null,
+						"trayUuid": null,
+						"weight": null,
+						"diameter": null,
+						"tempMin": 190,
+						"tempMax": 240,
+						"bedTemp": null,
+						"dryingTemp": null,
+						"dryingHours": null,
+						"k": 0.02,
+						"state": null,
+						"totalLengthMm": null,
+						"isBambu": true
+					},
+					{
+						"slot": "2",
+						"active": false,
+						"type": "PLA",
+						"name": "",
+						"color": "#f4d03f",
+						"remain": 100,
+						"global": 2,
+						"colors": [
+							"#f4d03f"
+						],
+						"infoIdx": "GFA00",
+						"idName": "",
+						"tagUid": null,
+						"trayUuid": null,
+						"weight": null,
+						"diameter": null,
+						"tempMin": null,
+						"tempMax": null,
+						"bedTemp": null,
+						"dryingTemp": null,
+						"dryingHours": null,
+						"k": null,
+						"state": null,
+						"totalLengthMm": null,
+						"isBambu": false
+					},
+					{
+						"slot": "3",
+						"active": false,
+						"type": "PLA",
+						"name": "",
+						"color": "#000000",
+						"remain": 100,
+						"global": 3,
+						"colors": [
+							"#000000"
+						],
+						"infoIdx": "GFA01",
+						"idName": "",
+						"tagUid": null,
+						"trayUuid": null,
+						"weight": null,
+						"diameter": null,
+						"tempMin": 190,
+						"tempMax": 240,
+						"bedTemp": null,
+						"dryingTemp": null,
+						"dryingHours": null,
+						"k": 0.02,
+						"state": null,
+						"totalLengthMm": null,
+						"isBambu": true
+					}
+				],
+				"id": 0,
+				"model": "AMS",
+				"humidityIndex": 2,
+				"humidityPercent": null,
+				"temp": 24.3,
+				"drying": null,
+				"serial": "AMS0",
+				"firmware": "00.00.06.49",
+				"nozzle": null,
+				"dryStatus": null
+			}
+		],
+		"chamberTarget": null,
+		"stage": {
+			"id": 255,
+			"name": "Idle",
+			"subStage": 0,
+			"printStage": 1
+		},
+		"speed": {
+			"level": 2,
+			"magnitude": 100
+		},
+		"fans": {
+			"part": 100,
+			"aux": 40,
+			"chamber": 20,
+			"heatbreak": 100,
+			"secondaryAux": null
+		},
+		"airductMode": null,
+		"lights": {
+			"chamber": "on",
+			"chamber2": null,
+			"work": null,
+			"heatbed": null
+		},
+		"nozzles": [
+			{
+				"id": 0,
+				"temp": 249.5,
+				"target": 0,
+				"diameter": 0.4,
+				"type": "stainless_steel",
+				"activeTray": null,
+				"wear": null
+			}
+		],
+		"activeNozzle": 0,
+		"externalSpools": [
+			{
+				"slot": "254",
+				"active": false,
+				"type": "PETG",
+				"name": "",
+				"color": "#bcbcbc",
+				"remain": 0,
+				"global": 255,
+				"colors": [],
+				"infoIdx": "GFSNL08",
+				"idName": "",
+				"tagUid": null,
+				"trayUuid": null,
+				"weight": null,
+				"diameter": null,
+				"tempMin": 230,
+				"tempMax": 280,
+				"bedTemp": null,
+				"dryingTemp": null,
+				"dryingHours": null,
+				"k": 0.019999999552965164,
+				"state": null,
+				"totalLengthMm": null,
+				"isBambu": false
+			}
+		],
+		"activeTray": null,
+		"xcam": {
+			"spaghetti": null,
+			"firstLayer": null,
+			"buildplateMarker": null,
+			"printingMonitor": null,
+			"printHalt": null,
+			"haltSensitivity": null,
+			"allowSkipParts": null
+		},
+		"sdCard": "normal",
+		"doorOpen": null,
+		"camera": {
+			"present": true,
+			"lanLiveview": null,
+			"rtspUrl": null,
+			"recording": false,
+			"timelapse": false,
+			"resolution": null
+		},
+		"skippedObjects": [],
+		"printType": "local",
+		"gcodeFile": "",
+		"prepareProgress": 100,
+		"plate": {
+			"index": null,
+			"count": null
+		},
+		"developerMode": null,
+		"firmwareSupport": {},
+		"firmware": {
+			"version": "01.08.02.00",
+			"modules": [
+				{
+					"name": "ota",
+					"hw": "OTA",
+					"sw": "01.08.02.00",
+					"product": "Bambu Lab P1S",
+					"serialTail": "0001"
+				},
+				{
+					"name": "esp32",
+					"hw": "AP04",
+					"sw": "01.11.35.64",
+					"product": "",
+					"serialTail": ""
+				},
+				{
+					"name": "mc",
+					"hw": "MC07",
+					"sw": "00.01.32.85",
+					"product": "",
+					"serialTail": ""
+				},
+				{
+					"name": "th",
+					"hw": "TH09",
+					"sw": "00.00.09.95",
+					"product": "",
+					"serialTail": ""
+				},
+				{
+					"name": "ams/0",
+					"hw": "AMS08",
+					"sw": "00.00.06.49",
+					"product": "AMS",
+					"serialTail": "AMS0"
+				}
+			]
+		},
+		"upgrade": {
+			"available": false,
+			"version": null,
+			"state": "UPGRADE_SUCCESS"
+		},
+		"lastReportAt": null
+	}
+}

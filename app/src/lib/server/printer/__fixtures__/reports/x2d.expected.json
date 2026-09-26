@@ -1,0 +1,363 @@
+{
+	"gcodeState": "RUNNING",
+	"percent": 98,
+	"remainingMinutes": 2,
+	"layer": 129,
+	"totalLayers": 140,
+	"nozzle": 250,
+	"nozzleTarget": 250,
+	"bed": 70,
+	"bedTarget": 70,
+	"chamber": 38,
+	"task": "Build Plate Cleaner Trays - A1 Mini",
+	"speedLevel": 2,
+	"printError": 0,
+	"hms": [
+		{
+			"attr": 83887616,
+			"code": 131184
+		}
+	],
+	"wifiSignal": "-72dBm",
+	"ams": [
+		{
+			"unit": "0",
+			"humidity": 5,
+			"trays": [
+				{
+					"slot": "0",
+					"active": false,
+					"type": "PLA",
+					"name": "",
+					"color": "#161616",
+					"remain": null,
+					"global": 0,
+					"colors": [
+						"#161616"
+					],
+					"infoIdx": "SUN20013",
+					"idName": "",
+					"tagUid": null,
+					"trayUuid": null,
+					"weight": null,
+					"diameter": 1.75,
+					"tempMin": 190,
+					"tempMax": 240,
+					"bedTemp": null,
+					"dryingTemp": null,
+					"dryingHours": null,
+					"k": null,
+					"state": 11,
+					"totalLengthMm": 330000,
+					"isBambu": true
+				},
+				{
+					"slot": "1",
+					"active": true,
+					"type": "PETG",
+					"name": "",
+					"color": "#161616",
+					"remain": null,
+					"global": 1,
+					"colors": [
+						"#161616"
+					],
+					"infoIdx": "SUN22001",
+					"idName": "",
+					"tagUid": null,
+					"trayUuid": null,
+					"weight": null,
+					"diameter": 1.75,
+					"tempMin": 240,
+					"tempMax": 260,
+					"bedTemp": null,
+					"dryingTemp": null,
+					"dryingHours": null,
+					"k": null,
+					"state": 27,
+					"totalLengthMm": 330000,
+					"isBambu": true
+				},
+				{
+					"slot": "2",
+					"active": false,
+					"type": "PLA",
+					"name": "",
+					"color": "#ffffff",
+					"remain": null,
+					"global": 2,
+					"colors": [
+						"#ffffff"
+					],
+					"infoIdx": "SUN20001",
+					"idName": "",
+					"tagUid": null,
+					"trayUuid": null,
+					"weight": null,
+					"diameter": 1.75,
+					"tempMin": 190,
+					"tempMax": 240,
+					"bedTemp": null,
+					"dryingTemp": null,
+					"dryingHours": null,
+					"k": null,
+					"state": 11,
+					"totalLengthMm": 330000,
+					"isBambu": true
+				},
+				{
+					"slot": "3",
+					"active": false,
+					"type": "ABS",
+					"name": "",
+					"color": "#161616",
+					"remain": null,
+					"global": 3,
+					"colors": [
+						"#161616"
+					],
+					"infoIdx": "P6a40469",
+					"idName": "",
+					"tagUid": null,
+					"trayUuid": null,
+					"weight": null,
+					"diameter": 1.75,
+					"tempMin": 190,
+					"tempMax": 240,
+					"bedTemp": null,
+					"dryingTemp": null,
+					"dryingHours": null,
+					"k": null,
+					"state": 11,
+					"totalLengthMm": 330000,
+					"isBambu": true
+				}
+			],
+			"id": 0,
+			"model": "AMS 2 Pro",
+			"humidityIndex": 5,
+			"humidityPercent": 12,
+			"temp": 27.1,
+			"drying": null,
+			"serial": "AMS0",
+			"firmware": "04.00.21.90",
+			"nozzle": 1,
+			"dryStatus": 0
+		}
+	],
+	"chamberTarget": 0,
+	"stage": {
+		"id": 0,
+		"name": "Printing",
+		"subStage": 0,
+		"printStage": 2
+	},
+	"speed": {
+		"level": 2,
+		"magnitude": 100
+	},
+	"fans": {
+		"part": 70,
+		"aux": 10,
+		"chamber": 80,
+		"heatbreak": 50,
+		"secondaryAux": 10
+	},
+	"airductMode": 0,
+	"lights": {
+		"chamber": "on",
+		"chamber2": null,
+		"work": "flashing",
+		"heatbed": null
+	},
+	"nozzles": [
+		{
+			"id": 0,
+			"temp": 50,
+			"target": 0,
+			"diameter": 0.4,
+			"type": "HS01",
+			"activeTray": null,
+			"wear": 0
+		},
+		{
+			"id": 1,
+			"temp": 250,
+			"target": 250,
+			"diameter": 0.4,
+			"type": "HS01",
+			"activeTray": 1,
+			"wear": 0
+		}
+	],
+	"activeNozzle": 1,
+	"externalSpools": [
+		{
+			"slot": "255",
+			"active": false,
+			"type": "",
+			"name": "",
+			"color": null,
+			"remain": null,
+			"global": 255,
+			"colors": [],
+			"infoIdx": "",
+			"idName": "",
+			"tagUid": null,
+			"trayUuid": null,
+			"weight": null,
+			"diameter": 1.75,
+			"tempMin": null,
+			"tempMax": null,
+			"bedTemp": null,
+			"dryingTemp": null,
+			"dryingHours": null,
+			"k": null,
+			"state": null,
+			"totalLengthMm": 330000,
+			"isBambu": false
+		},
+		{
+			"slot": "254",
+			"active": false,
+			"type": "",
+			"name": "",
+			"color": null,
+			"remain": null,
+			"global": 254,
+			"colors": [],
+			"infoIdx": "",
+			"idName": "",
+			"tagUid": null,
+			"trayUuid": null,
+			"weight": null,
+			"diameter": 1.75,
+			"tempMin": null,
+			"tempMax": null,
+			"bedTemp": null,
+			"dryingTemp": null,
+			"dryingHours": null,
+			"k": null,
+			"state": null,
+			"totalLengthMm": 330000,
+			"isBambu": false
+		}
+	],
+	"activeTray": 1,
+	"xcam": {
+		"spaghetti": true,
+		"firstLayer": true,
+		"buildplateMarker": true,
+		"printingMonitor": true,
+		"printHalt": true,
+		"haltSensitivity": "medium",
+		"allowSkipParts": false
+	},
+	"sdCard": "missing",
+	"doorOpen": false,
+	"camera": {
+		"present": true,
+		"lanLiveview": "disabled",
+		"rtspUrl": null,
+		"recording": true,
+		"timelapse": false,
+		"resolution": "1080p"
+	},
+	"skippedObjects": [],
+	"printType": "cloud",
+	"gcodeFile": "/data/Metadata/plate_3.gcode",
+	"prepareProgress": 100,
+	"plate": {
+		"index": 3,
+		"count": 4
+	},
+	"developerMode": false,
+	"firmwareSupport": {
+		"mqttBedTemp": true,
+		"mqttHoming": true,
+		"mqttAxis": true,
+		"partSkip": true,
+		"flowCalibration": false,
+		"paCalibration": true,
+		"motorNoiseCali": true,
+		"internalTimelapse": true,
+		"doorOpenCheck": true,
+		"nozzleRack": false,
+		"remoteDrying": true,
+		"printWithEmmc": true
+	},
+	"firmware": {
+		"version": "01.01.00.00",
+		"modules": [
+			{
+				"name": "ota",
+				"hw": "N/A",
+				"sw": "01.01.00.00",
+				"product": "Bambu Lab X2D",
+				"serialTail": "-X2D"
+			},
+			{
+				"name": "n3f/0",
+				"hw": "N3F05",
+				"sw": "04.00.21.90",
+				"product": "AMS 2 Pro (1)",
+				"serialTail": "AMS0"
+			},
+			{
+				"name": "ahb",
+				"hw": "AHB-N602",
+				"sw": "02.00.17.18",
+				"product": "Filament Buffer - for X2",
+				"serialTail": ""
+			},
+			{
+				"name": "eef",
+				"hw": "EEF01",
+				"sw": "00.00.13.35",
+				"product": "Bambu Lab External Exhaust Fan",
+				"serialTail": ""
+			},
+			{
+				"name": "ixmj",
+				"hw": "N/A",
+				"sw": "00.00.36.49",
+				"product": "",
+				"serialTail": ""
+			},
+			{
+				"name": "th",
+				"hw": "TH06",
+				"sw": "02.00.27.16",
+				"product": "",
+				"serialTail": ""
+			},
+			{
+				"name": "smc",
+				"hw": "SMC03",
+				"sw": "02.00.18.23",
+				"product": "",
+				"serialTail": ""
+			},
+			{
+				"name": "mc",
+				"hw": "MC12",
+				"sw": "02.00.90.74",
+				"product": "",
+				"serialTail": ""
+			},
+			{
+				"name": "ap2",
+				"hw": "AP04",
+				"sw": "00.00.36.49",
+				"product": "",
+				"serialTail": ""
+			}
+		]
+	},
+	"upgrade": {
+		"available": false,
+		"version": null,
+		"state": "IDLE"
+	},
+	"lastReportAt": null
+}

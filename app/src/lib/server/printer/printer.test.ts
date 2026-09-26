@@ -76,7 +76,7 @@ describe('report parsing', () => {
 			}
 		});
 		expect(s).toMatchObject({ gcodeState: 'RUNNING', percent: 42, layer: 80, task: 'dock' });
-		expect(s.ams[0].trays[0]).toEqual({
+		expect(s.ams[0].trays[0]).toMatchObject({
 			slot: '1',
 			active: true,
 			type: 'PETG',

@@ -1,0 +1,101 @@
+// What the printer is doing right now (`stg_cur`), in plain words. Ids and meanings from ha-bambulab
+// pybambu/const.py CURRENT_STAGE_IDS (MIT, https://github.com/greghesp/ha-bambulab at 0e027ff).
+
+export const STAGE_NAMES: Record<number, string> = {
+	[-1]: 'Idle',
+	0: 'Printing',
+	1: 'Levelling the bed',
+	2: 'Heating the bed',
+	3: 'Vibration compensation',
+	4: 'Changing filament',
+	5: 'Paused (M400)',
+	6: 'Paused: filament ran out',
+	7: 'Heating the nozzle',
+	8: 'Calibrating extrusion',
+	9: 'Scanning the bed surface',
+	10: 'Inspecting the first layer',
+	11: 'Identifying the build plate',
+	12: 'Calibrating the micro lidar',
+	13: 'Homing the toolhead',
+	14: 'Cleaning the nozzle tip',
+	15: 'Checking the extruder temperature',
+	16: 'Paused by the user',
+	17: 'Paused: front cover fell off',
+	18: 'Calibrating the micro lidar',
+	19: 'Calibrating extrusion flow',
+	20: 'Paused: nozzle temperature problem',
+	21: 'Paused: bed temperature problem',
+	22: 'Unloading filament',
+	23: 'Paused: skipped step',
+	24: 'Loading filament',
+	25: 'Calibrating motor noise',
+	26: 'Paused: AMS lost',
+	27: 'Paused: heatbreak fan too slow',
+	28: 'Paused: chamber temperature problem',
+	29: 'Cooling the chamber',
+	30: 'Paused by the G-code',
+	31: 'Motor noise showoff',
+	32: 'Paused: filament covering the nozzle',
+	33: 'Paused: cutter problem',
+	34: 'Paused: first layer problem',
+	35: 'Paused: nozzle clog',
+	36: 'Checking accuracy before calibration',
+	37: 'Calibrating absolute accuracy',
+	38: 'Checking accuracy after calibration',
+	39: 'Calibrating nozzle offset',
+	40: 'Levelling the bed at high temperature',
+	41: 'Checking the quick release',
+	42: 'Checking the door and cover',
+	43: 'Calibrating the laser',
+	44: 'Checking the platform',
+	45: 'Checking the bird’s-eye camera position',
+	46: 'Calibrating the bird’s-eye camera',
+	47: 'Levelling the bed (phase 1)',
+	48: 'Levelling the bed (phase 2)',
+	49: 'Heating the chamber',
+	50: 'Cooling the heated bed',
+	51: 'Printing calibration lines',
+	52: 'Checking the material',
+	53: 'Calibrating the live view camera',
+	54: 'Waiting for the bed temperature',
+	55: 'Checking the material position',
+	56: 'Calibrating the cutter offset',
+	57: 'Measuring the surface',
+	58: 'Thermal preconditioning',
+	59: 'Homing the blade holder',
+	60: 'Calibrating the camera offset',
+	61: 'Calibrating the blade holder position',
+	62: 'Testing the hotend pick and place',
+	63: 'Waiting for the chamber temperature to settle',
+	64: 'Preparing the hotend',
+	65: 'Calibrating nozzle clump detection',
+	66: 'Purifying the chamber air',
+	67: 'Measuring the rotary attachment',
+	68: 'Moving the toolhead above the purge chute',
+	69: 'Cooling the nozzle',
+	70: 'Moving the toolhead to the bed centre',
+	71: 'Active arc fitting',
+	72: 'Detecting the hotend type',
+	73: 'Detecting build plate alignment',
+	74: 'Checking the bed for objects',
+	75: 'Checking under the bed for objects',
+	76: 'Extruding before printing',
+	77: 'Preparing the AMS',
+	255: 'Idle'
+};
+
+/** Stage id → name; unknown ids read "Working". */
+export function stageName(id: number | null | undefined): string {
+	if (id === null || id === undefined) return '';
+	return STAGE_NAMES[id] ?? 'Working';
+}
+
+/** Stages where the printer has paused a print and waits for someone. */
+export const PAUSE_STAGES = new Set([5, 6, 16, 17, 20, 21, 23, 26, 27, 28, 30, 32, 33, 34, 35]);
+
+export const SPEED_LABELS: Record<number, string> = {
+	1: 'Silent',
+	2: 'Standard',
+	3: 'Sport',
+	4: 'Ludicrous'
+};

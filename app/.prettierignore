@@ -10,3 +10,4 @@ bun.lockb
 /drizzle/
 drizzle/
 src/lib/server/__fixtures__/
+**/__fixtures__/

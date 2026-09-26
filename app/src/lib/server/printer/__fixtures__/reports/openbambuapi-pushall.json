@@ -1,0 +1,185 @@
+{
+	"source": "Written for this project from our reading of OpenBambuAPI mqtt.md \"pushing.pushall\" and \"print.push_status\" (https://github.com/Doridian/OpenBambuAPI at cc383a2). OpenBambuAPI is GFDL-1.3, so nothing is copied from it.",
+	"licence": "AGPL-3.0-or-later (Family Print Lab)",
+	"model": "BL-P001",
+	"synthetic": true,
+	"edits": "Synthetic X1C full report: printing on AMS tray 2, one RFID Bambu spool in tray 1, one HMS alert, door open (home_flag 0x00800000), a skipped object, an offered firmware update.",
+	"pushall": {
+		"command": "push_status",
+		"msg": 0,
+		"sequence_id": "2001",
+		"gcode_state": "RUNNING",
+		"mc_percent": 64,
+		"mc_remaining_time": 33,
+		"mc_print_stage": "2",
+		"mc_print_sub_stage": 0,
+		"layer_num": 150,
+		"total_layer_num": 230,
+		"subtask_name": "cable_dock_v03",
+		"gcode_file": "/sdcard/cable_dock_v03.gcode.3mf",
+		"gcode_file_prepare_percent": "100",
+		"print_type": "local",
+		"stg_cur": 0,
+		"stg": [
+			2,
+			14,
+			1,
+			0
+		],
+		"nozzle_temper": 220.03125,
+		"nozzle_target_temper": 220,
+		"bed_temper": 55.0,
+		"bed_target_temper": 55,
+		"chamber_temper": 31,
+		"cooling_fan_speed": "15",
+		"big_fan1_speed": "0",
+		"big_fan2_speed": "8",
+		"heatbreak_fan_speed": "15",
+		"spd_lvl": 3,
+		"spd_mag": 124,
+		"print_error": 0,
+		"wifi_signal": "-51dBm",
+		"sdcard": true,
+		"home_flag": 8388871,
+		"hms": [
+			{
+				"attr": 117441024,
+				"code": 131073
+			}
+		],
+		"s_obj": [
+			412
+		],
+		"nozzle_diameter": "0.4",
+		"nozzle_type": "hardened_steel",
+		"lights_report": [
+			{
+				"node": "chamber_light",
+				"mode": "on"
+			},
+			{
+				"node": "work_light",
+				"mode": "off"
+			}
+		],
+		"ipcam": {
+			"ipcam_dev": "1",
+			"ipcam_record": "enable",
+			"timelapse": "disable",
+			"resolution": "1080p",
+			"rtsp_url": "rtsps://192.0.2.10/streaming/live/1"
+		},
+		"xcam": {
+			"spaghetti_detector": true,
+			"first_layer_inspector": true,
+			"buildplate_marker_detector": false,
+			"printing_monitor": true,
+			"print_halt": true,
+			"halt_print_sensitivity": "medium",
+			"allow_skip_parts": false
+		},
+		"upgrade_state": {
+			"new_version_state": 1,
+			"ota_new_version_number": "01.09.01.00",
+			"status": "IDLE",
+			"progress": "0"
+		},
+		"ams": {
+			"ams": [
+				{
+					"id": "0",
+					"humidity": "3",
+					"temp": "25.1",
+					"tray": [
+						{
+							"id": "0"
+						},
+						{
+							"id": "1",
+							"tray_type": "PETG",
+							"tray_sub_brands": "PETG Basic",
+							"tray_color": "1F79E5FF",
+							"remain": 72,
+							"tray_info_idx": "GFG00",
+							"tag_uid": "A1B2C3D4E5F60708",
+							"tray_uuid": "0123456789ABCDEF0123456789ABCDEF",
+							"tray_weight": "1000",
+							"tray_diameter": "1.75",
+							"nozzle_temp_min": "230",
+							"nozzle_temp_max": "260",
+							"bed_temp": "70",
+							"drying_temp": "65",
+							"drying_time": "8",
+							"cols": [
+								"1F79E5FF"
+							],
+							"total_len": 330000
+						},
+						{
+							"id": "2",
+							"tray_type": "PLA",
+							"tray_sub_brands": "PLA Matte",
+							"tray_color": "FF7A2FFF",
+							"remain": 40,
+							"tray_info_idx": "GFA01",
+							"tag_uid": "0000000000000000",
+							"tray_uuid": "00000000000000000000000000000000",
+							"cols": [
+								"FF7A2FFF"
+							]
+						},
+						{
+							"id": "3",
+							"tray_type": "PLA",
+							"tray_sub_brands": "",
+							"tray_color": "000000FF",
+							"remain": -1,
+							"tray_info_idx": "GFL99",
+							"cols": [
+								"000000FF"
+							]
+						}
+					]
+				}
+			],
+			"ams_exist_bits": "1",
+			"tray_exist_bits": "e",
+			"tray_is_bbl_bits": "6",
+			"tray_now": "2",
+			"tray_pre": "2",
+			"tray_tar": "2",
+			"version": 3
+		},
+		"vt_tray": {
+			"id": "254",
+			"tray_type": "",
+			"tray_color": "00000000",
+			"remain": 0
+		}
+	},
+	"get_version": {
+		"command": "get_version",
+		"sequence_id": "20001",
+		"module": [
+			{
+				"name": "ota",
+				"hw_ver": "",
+				"sn": "",
+				"sw_ver": "01.08.02.00",
+				"product_name": "Bambu Lab X1-Carbon"
+			},
+			{
+				"name": "rv1126",
+				"hw_ver": "AP05",
+				"sn": "**REDACTED**",
+				"sw_ver": "00.00.28.55"
+			},
+			{
+				"name": "ams/0",
+				"hw_ver": "AMS08",
+				"sn": "SIM-X1C-AMS0",
+				"sw_ver": "00.00.06.49"
+			}
+		]
+	}
+}

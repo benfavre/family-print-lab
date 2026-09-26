@@ -1,0 +1,9 @@
+# The one pinned Bambu Studio source for everything derived from upstream: the printer model
+# catalogue (app/tools/gen-printer-models.ts), HMS texts, vendor profiles and the slicer engine.
+# Read it through app/tools/lib/upstream.ts. Only `upstream.sh export` (or a deliberate PR) changes it.
+name=BambuStudio
+url=https://github.com/bambulab/BambuStudio.git
+tag=v02.08.02.61
+commit=926a7192574bcb9b3a732e1ec59a46d79cb45466
+queue=0
+queue_hash=

@@ -1,0 +1,297 @@
+{
+	"gcodeState": "IDLE",
+	"percent": 0,
+	"remainingMinutes": 0,
+	"layer": 0,
+	"totalLayers": 0,
+	"nozzle": 22,
+	"nozzleTarget": 0,
+	"bed": 22,
+	"bedTarget": 0,
+	"chamber": 5,
+	"task": "",
+	"speedLevel": 2,
+	"printError": 0,
+	"hms": [],
+	"wifiSignal": "-52dBm",
+	"ams": [
+		{
+			"unit": "16",
+			"humidity": 5,
+			"trays": [
+				{
+					"slot": "0",
+					"active": false,
+					"type": "",
+					"name": "",
+					"color": null,
+					"remain": null,
+					"global": 24,
+					"colors": [],
+					"infoIdx": "",
+					"idName": "",
+					"tagUid": null,
+					"trayUuid": null,
+					"weight": null,
+					"diameter": null,
+					"tempMin": null,
+					"tempMax": null,
+					"bedTemp": null,
+					"dryingTemp": null,
+					"dryingHours": null,
+					"k": null,
+					"state": null,
+					"totalLengthMm": null,
+					"isBambu": false
+				},
+				{
+					"slot": "1",
+					"active": false,
+					"type": "PETG",
+					"name": "",
+					"color": "#0acc38",
+					"remain": null,
+					"global": 25,
+					"colors": [
+						"#0acc38"
+					],
+					"infoIdx": "GFG01",
+					"idName": "",
+					"tagUid": null,
+					"trayUuid": null,
+					"weight": null,
+					"diameter": null,
+					"tempMin": 230,
+					"tempMax": 270,
+					"bedTemp": null,
+					"dryingTemp": null,
+					"dryingHours": null,
+					"k": 0.03999999910593,
+					"state": 3,
+					"totalLengthMm": 330000,
+					"isBambu": false
+				},
+				{
+					"slot": "2",
+					"active": false,
+					"type": "",
+					"name": "",
+					"color": null,
+					"remain": null,
+					"global": 26,
+					"colors": [],
+					"infoIdx": "",
+					"idName": "",
+					"tagUid": null,
+					"trayUuid": null,
+					"weight": null,
+					"diameter": null,
+					"tempMin": null,
+					"tempMax": null,
+					"bedTemp": null,
+					"dryingTemp": null,
+					"dryingHours": null,
+					"k": null,
+					"state": null,
+					"totalLengthMm": null,
+					"isBambu": false
+				},
+				{
+					"slot": "3",
+					"active": false,
+					"type": "",
+					"name": "",
+					"color": null,
+					"remain": null,
+					"global": 27,
+					"colors": [],
+					"infoIdx": "",
+					"idName": "",
+					"tagUid": null,
+					"trayUuid": null,
+					"weight": null,
+					"diameter": null,
+					"tempMin": null,
+					"tempMax": null,
+					"bedTemp": null,
+					"dryingTemp": null,
+					"dryingHours": null,
+					"k": null,
+					"state": null,
+					"totalLengthMm": null,
+					"isBambu": false
+				}
+			],
+			"id": 16,
+			"model": "AMS Lite",
+			"humidityIndex": 5,
+			"humidityPercent": null,
+			"temp": 0,
+			"drying": null,
+			"serial": "AMS0",
+			"firmware": "00.00.08.22",
+			"nozzle": 0,
+			"dryStatus": 0
+		}
+	],
+	"chamberTarget": null,
+	"stage": {
+		"id": 255,
+		"name": "Idle",
+		"subStage": 0,
+		"printStage": 1
+	},
+	"speed": {
+		"level": 2,
+		"magnitude": 100
+	},
+	"fans": {
+		"part": 0,
+		"aux": 0,
+		"chamber": 0,
+		"heatbreak": 0,
+		"secondaryAux": null
+	},
+	"airductMode": null,
+	"lights": {
+		"chamber": "off",
+		"chamber2": null,
+		"work": null,
+		"heatbed": null
+	},
+	"nozzles": [
+		{
+			"id": 0,
+			"temp": 22,
+			"target": 0,
+			"diameter": 0.4,
+			"type": "HA00",
+			"activeTray": null,
+			"wear": 0
+		}
+	],
+	"activeNozzle": 0,
+	"externalSpools": [
+		{
+			"slot": "255",
+			"active": false,
+			"type": "",
+			"name": "",
+			"color": null,
+			"remain": null,
+			"global": 255,
+			"colors": [],
+			"infoIdx": "",
+			"idName": "",
+			"tagUid": null,
+			"trayUuid": null,
+			"weight": null,
+			"diameter": null,
+			"tempMin": null,
+			"tempMax": null,
+			"bedTemp": null,
+			"dryingTemp": null,
+			"dryingHours": null,
+			"k": null,
+			"state": null,
+			"totalLengthMm": null,
+			"isBambu": false
+		}
+	],
+	"activeTray": null,
+	"xcam": {
+		"spaghetti": null,
+		"firstLayer": null,
+		"buildplateMarker": true,
+		"printingMonitor": null,
+		"printHalt": null,
+		"haltSensitivity": null,
+		"allowSkipParts": null
+	},
+	"sdCard": "normal",
+	"doorOpen": null,
+	"camera": {
+		"present": true,
+		"lanLiveview": null,
+		"rtspUrl": null,
+		"recording": false,
+		"timelapse": false,
+		"resolution": "1080p"
+	},
+	"skippedObjects": [],
+	"printType": "idle",
+	"gcodeFile": "",
+	"prepareProgress": 0,
+	"plate": {
+		"index": 0,
+		"count": null
+	},
+	"developerMode": false,
+	"firmwareSupport": {
+		"mqttBedTemp": true,
+		"mqttHoming": true,
+		"mqttAxis": true,
+		"partSkip": false,
+		"flowCalibration": false,
+		"paCalibration": true,
+		"motorNoiseCali": true,
+		"internalTimelapse": false,
+		"doorOpenCheck": false,
+		"nozzleRack": false,
+		"remoteDrying": true,
+		"printWithEmmc": false
+	},
+	"firmware": {
+		"version": "01.01.00.00",
+		"modules": [
+			{
+				"name": "ota",
+				"hw": "OTA",
+				"sw": "01.01.00.00",
+				"product": "Bambu Lab A2L",
+				"serialTail": "-A2L"
+			},
+			{
+				"name": "ap",
+				"hw": "AP03",
+				"sw": "01.12.50.02",
+				"product": "",
+				"serialTail": ""
+			},
+			{
+				"name": "mc",
+				"hw": "MC04",
+				"sw": "01.01.90.49",
+				"product": "",
+				"serialTail": ""
+			},
+			{
+				"name": "th",
+				"hw": "TH03",
+				"sw": "01.01.27.00",
+				"product": "",
+				"serialTail": ""
+			},
+			{
+				"name": "ams_f1/16",
+				"hw": "AMS_F102",
+				"sw": "00.00.08.22",
+				"product": "AMS lite",
+				"serialTail": "AMS0"
+			},
+			{
+				"name": "smc",
+				"hw": "SMC03",
+				"sw": "01.01.18.97",
+				"product": "",
+				"serialTail": ""
+			}
+		]
+	},
+	"upgrade": {
+		"available": false,
+		"version": null,
+		"state": "IDLE"
+	},
+	"lastReportAt": null
+}

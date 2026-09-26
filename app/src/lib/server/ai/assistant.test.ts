@@ -4,6 +4,7 @@ import { anthropicApi, type AnyClient } from './providers';
 import { openDatabase } from '../db';
 import { Lab } from '../lab';
 import { AppError } from '../validation';
+import { emptySnapshot } from '$lib/shared/printers/status';
 
 function stub(reply: unknown) {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -128,24 +129,13 @@ describe('lab assistant', () => {
 			configured: true,
 			connected: true,
 			name: 'X2D',
-			state: {
+			state: emptySnapshot({
 				gcodeState: 'RUNNING',
 				task: 'dock',
 				percent: 5,
-				layer: null,
-				totalLayers: null,
-				remainingMinutes: null,
 				nozzle: 220,
-				nozzleTarget: 220,
-				bed: null,
-				bedTarget: null,
-				chamber: null,
-				speedLevel: null,
-				printError: 0,
-				hms: [],
-				wifiSignal: '',
-				ams: []
-			}
+				nozzleTarget: 220
+			})
 		});
 		expect(text).toMatch(/X2D: RUNNING, task "dock", 5%/);
 	});

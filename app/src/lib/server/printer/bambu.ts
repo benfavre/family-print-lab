@@ -5,6 +5,8 @@
 import { EventEmitter } from 'node:events';
 import { MqttClient } from './mqtt';
 import { uploadFile } from './ftp';
+import { mergeReport, parseReport } from './report';
+import { PRINTER_MODELS, type ModelCode } from '$lib/shared/printers/models';
 import {
 	ACTIVE_PRINTER_STATES,
 	type PrinterSnapshot,
@@ -12,70 +14,15 @@ import {
 } from '$lib/shared/domain';
 
 type Raw = Record<string, unknown>;
-const num = (v: unknown) => {
-	const n = typeof v === 'string' ? Number(v) : v;
-	return typeof n === 'number' && Number.isFinite(n) ? n : null;
-};
 const text = (v: unknown, max = 200) => (typeof v === 'string' ? v.slice(0, max) : '');
-const color = (hex: unknown) =>
-	typeof hex === 'string' && /^[0-9a-f]{6}/i.test(hex) ? `#${hex.slice(0, 6).toLowerCase()}` : null;
 
-function merge(target: Raw, patch: Raw) {
-	for (const [key, value] of Object.entries(patch ?? {})) {
-		// Reports come off the network: never let them reach object prototypes.
-		if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
-		const current = target[key];
-		if (
-			value &&
-			typeof value === 'object' &&
-			!Array.isArray(value) &&
-			current &&
-			typeof current === 'object' &&
-			!Array.isArray(current)
-		)
-			merge(current as Raw, value as Raw);
-		else target[key] = value;
-	}
-	return target;
-}
-
-/** Turns the raw, incrementally-updated `print` report into the snapshot the app uses. */
-export function summarize(p: Raw = {}): PrinterSnapshot {
-	const ams = (p.ams ?? {}) as Raw;
-	const units = Array.isArray(ams.ams) ? (ams.ams as Raw[]) : [];
-	const trayNow = text(ams.tray_now, 8);
-	return {
-		gcodeState: text(p.gcode_state, 20) || 'UNKNOWN',
-		percent: num(p.mc_percent),
-		remainingMinutes: num(p.mc_remaining_time),
-		layer: num(p.layer_num),
-		totalLayers: num(p.total_layer_num),
-		nozzle: num(p.nozzle_temper),
-		nozzleTarget: num(p.nozzle_target_temper),
-		bed: num(p.bed_temper),
-		bedTarget: num(p.bed_target_temper),
-		chamber: num(p.chamber_temper),
-		task: text(p.subtask_name) || text(p.gcode_file),
-		speedLevel: num(p.spd_lvl),
-		printError: num(p.print_error) || 0,
-		hms: Array.isArray(p.hms)
-			? (p.hms as Raw[]).slice(0, 20).map((h) => ({ attr: num(h.attr), code: num(h.code) }))
-			: [],
-		wifiSignal: text(p.wifi_signal, 20),
-		ams: units.slice(0, 8).map((unit) => ({
-			unit: text(String(unit.id ?? ''), 8),
-			humidity: num(unit.humidity),
-			trays: (Array.isArray(unit.tray) ? (unit.tray as Raw[]) : []).slice(0, 4).map((tray) => ({
-				slot: text(String(tray.id ?? ''), 8),
-				active: trayNow !== '' && Number(trayNow) === Number(unit.id) * 4 + Number(tray.id),
-				type: text(tray.tray_type, 40),
-				name: text(tray.tray_sub_brands, 80),
-				color: color(tray.tray_color),
-				remain:
-					num(tray.remain) !== null && (tray.remain as number) >= 0 ? (tray.remain as number) : null
-			}))
-		}))
-	};
+/** Turns a raw `print` report into the snapshot the app uses (see report.ts). */
+export function summarize(p: Raw = {}, model: ModelCode = 'N6'): PrinterSnapshot {
+	return parseReport(mergeReport({}, p), {
+		model: PRINTER_MODELS[model],
+		versions: [],
+		accessCodeSet: true
+	});
 }
 
 export interface PrinterConfig {
@@ -209,8 +156,12 @@ export class BambuPrinter extends EventEmitter {
 			});
 			return;
 		}
-		merge(this.raw, message.print);
-		this.snapshot = summarize(this.raw);
+		mergeReport(this.raw, message.print);
+		this.snapshot = parseReport(this.raw, {
+			model: PRINTER_MODELS.N6,
+			versions: [],
+			accessCodeSet: true
+		});
 		this.lastSeen = new Date().toISOString();
 		const { gcodeState: state, task } = this.snapshot;
 		if (state !== this.lastState) {

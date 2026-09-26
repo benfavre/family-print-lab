@@ -262,44 +262,19 @@ export interface Workspace {
 	changeId: number;
 }
 
-export interface PrinterTray {
-	slot: string;
-	active: boolean;
-	type: string;
-	name: string;
-	color: string | null;
-	remain: number | null;
-}
-
-export interface PrinterSnapshot {
-	gcodeState: string;
-	percent: number | null;
-	remainingMinutes: number | null;
-	layer: number | null;
-	totalLayers: number | null;
-	nozzle: number | null;
-	nozzleTarget: number | null;
-	bed: number | null;
-	bedTarget: number | null;
-	chamber: number | null;
-	task: string;
-	speedLevel: number | null;
-	printError: number;
-	hms: { attr: number | null; code: number | null }[];
-	wifiSignal: string;
-	ams: { unit: string; humidity: number | null; trays: PrinterTray[] }[];
-}
-
-export interface PrinterStatus {
-	configured: boolean;
-	name?: string;
-	simulated?: boolean;
-	connected?: boolean;
-	lastSeen?: string | null;
-	error?: string;
-	warning?: string;
-	printing?: boolean;
-	state?: PrinterSnapshot | null;
-}
-
-export const ACTIVE_PRINTER_STATES = new Set(['PREPARE', 'RUNNING', 'PAUSE', 'SLICING']);
+// Printer status types live in shared/printers/ (one file per concern); re-exported so existing imports work.
+export {
+	ACTIVE_PRINTER_STATES,
+	EXT_DEPUTY,
+	EXT_MAIN,
+	type AmsUnit,
+	type GlobalTray,
+	type HmsCode,
+	type LightMode,
+	type NozzleState,
+	type PrinterSnapshot,
+	type PrinterStatus,
+	type PrinterTray,
+	type SpeedLevel,
+	type VersionModule
+} from './printers/status';

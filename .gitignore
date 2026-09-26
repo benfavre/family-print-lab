@@ -24,3 +24,13 @@ security-review-*/
 # Python bytecode (Blender scripts)
 __pycache__/
 *.pyc
+
+# Parity programme: upstream Bambu Studio checkout, slicer engine build output and bundles,
+# downloaded upstream resources (profiles, HMS, printers)
+app/resources/bambu/
+slicer/.upstream/
+slicer/.build/
+slicer/dist/
+desktop/server/engine/
+# Bambu printer CA certificates are public and ship with the app
+!app/src/lib/server/printer/certs/*.pem

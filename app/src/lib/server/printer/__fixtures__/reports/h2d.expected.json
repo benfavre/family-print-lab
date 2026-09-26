@@ -1,0 +1,487 @@
+{
+	"gcodeState": "RUNNING",
+	"percent": 6,
+	"remainingMinutes": 549,
+	"layer": 1,
+	"totalLayers": 200,
+	"nozzle": 245,
+	"nozzleTarget": 245,
+	"bed": 70,
+	"bedTarget": 70,
+	"chamber": 35,
+	"task": "T-pose - slim H2D dual AMS riser",
+	"speedLevel": 2,
+	"printError": 0,
+	"hms": [],
+	"wifiSignal": "-46dBm",
+	"ams": [
+		{
+			"unit": "0",
+			"humidity": 5,
+			"trays": [
+				{
+					"slot": "0",
+					"active": false,
+					"type": "PLA-S",
+					"name": "Support for PLA",
+					"color": "#ffffff",
+					"remain": 1,
+					"global": 0,
+					"colors": [
+						"#ffffff"
+					],
+					"infoIdx": "GFS02",
+					"idName": "S02-W0",
+					"tagUid": "0C047A9600000100",
+					"trayUuid": "95558FE23FB14F3A9E4985B8B37839B1",
+					"weight": 250,
+					"diameter": 1.75,
+					"tempMin": 190,
+					"tempMax": 230,
+					"bedTemp": 35,
+					"dryingTemp": 55,
+					"dryingHours": 8,
+					"k": null,
+					"state": 11,
+					"totalLengthMm": 330000,
+					"isBambu": true
+				},
+				{
+					"slot": "1",
+					"active": false,
+					"type": "PLA",
+					"name": "PLA Basic",
+					"color": "#ffffff",
+					"remain": 31,
+					"global": 1,
+					"colors": [
+						"#ffffff"
+					],
+					"infoIdx": "GFA00",
+					"idName": "A00-W1",
+					"tagUid": "9AD3FBAC00000100",
+					"trayUuid": "5998E373899342BE9FC6BFA51103AB78",
+					"weight": 1000,
+					"diameter": 1.75,
+					"tempMin": 190,
+					"tempMax": 230,
+					"bedTemp": null,
+					"dryingTemp": 55,
+					"dryingHours": 8,
+					"k": null,
+					"state": 11,
+					"totalLengthMm": 330000,
+					"isBambu": true
+				},
+				{
+					"slot": "2",
+					"active": false,
+					"type": "PETG",
+					"name": "PETG HF",
+					"color": "#ffffff",
+					"remain": 100,
+					"global": 2,
+					"colors": [
+						"#ffffff"
+					],
+					"infoIdx": "GFG02",
+					"idName": "G02-W0",
+					"tagUid": "BC8F639400000100",
+					"trayUuid": "809D8CAB76D94C2C9AAAACBEB5620F3D",
+					"weight": 1000,
+					"diameter": 1.75,
+					"tempMin": 230,
+					"tempMax": 260,
+					"bedTemp": null,
+					"dryingTemp": 65,
+					"dryingHours": 8,
+					"k": null,
+					"state": 11,
+					"totalLengthMm": 330000,
+					"isBambu": true
+				},
+				{
+					"slot": "3",
+					"active": false,
+					"type": "PLA",
+					"name": "PLA Basic",
+					"color": "#ffffff",
+					"remain": 100,
+					"global": 3,
+					"colors": [
+						"#ffffff"
+					],
+					"infoIdx": "GFA00",
+					"idName": "A00-W1",
+					"tagUid": "FABCE4E000000100",
+					"trayUuid": "8CCF700805CD483086E38C8AC5BB6ED9",
+					"weight": 1000,
+					"diameter": 1.75,
+					"tempMin": 190,
+					"tempMax": 230,
+					"bedTemp": null,
+					"dryingTemp": 55,
+					"dryingHours": 8,
+					"k": null,
+					"state": 11,
+					"totalLengthMm": 330000,
+					"isBambu": true
+				}
+			],
+			"id": 0,
+			"model": "AMS 2 Pro",
+			"humidityIndex": 5,
+			"humidityPercent": 1,
+			"temp": 27,
+			"drying": null,
+			"serial": "LEFT",
+			"firmware": "02.00.19.47",
+			"nozzle": 1,
+			"dryStatus": null
+		},
+		{
+			"unit": "1",
+			"humidity": 5,
+			"trays": [
+				{
+					"slot": "0",
+					"active": false,
+					"type": "PLA",
+					"name": "PLA Basic",
+					"color": "#000000",
+					"remain": 55,
+					"global": 4,
+					"colors": [
+						"#000000"
+					],
+					"infoIdx": "GFA00",
+					"idName": "A00-K0",
+					"tagUid": "64AFAB0000000100",
+					"trayUuid": "CA9B8419B0284ACA84044AA73FF17557",
+					"weight": 1000,
+					"diameter": 1.75,
+					"tempMin": 190,
+					"tempMax": 230,
+					"bedTemp": null,
+					"dryingTemp": 55,
+					"dryingHours": 8,
+					"k": null,
+					"state": 11,
+					"totalLengthMm": 330000,
+					"isBambu": true
+				},
+				{
+					"slot": "1",
+					"active": false,
+					"type": "PLA",
+					"name": "PLA Basic",
+					"color": "#000000",
+					"remain": 100,
+					"global": 5,
+					"colors": [
+						"#000000"
+					],
+					"infoIdx": "GFA00",
+					"idName": "A00-K0",
+					"tagUid": "1464700100000100",
+					"trayUuid": "333D700B030E4A5E88ABE5F4A20E1D20",
+					"weight": 1000,
+					"diameter": 1.75,
+					"tempMin": 190,
+					"tempMax": 230,
+					"bedTemp": null,
+					"dryingTemp": 55,
+					"dryingHours": 8,
+					"k": null,
+					"state": 11,
+					"totalLengthMm": 330000,
+					"isBambu": true
+				},
+				{
+					"slot": "2",
+					"active": false,
+					"type": "PETG-CF",
+					"name": "PETG-CF",
+					"color": "#000000",
+					"remain": 100,
+					"global": 6,
+					"colors": [
+						"#000000"
+					],
+					"infoIdx": "GFG50",
+					"idName": "G50-K0",
+					"tagUid": "B2A80B7000000100",
+					"trayUuid": "DE69ECEBB924468D99CA2A9DFCB5FD3B",
+					"weight": 1000,
+					"diameter": 1.75,
+					"tempMin": 240,
+					"tempMax": 270,
+					"bedTemp": 70,
+					"dryingTemp": 65,
+					"dryingHours": 8,
+					"k": null,
+					"state": 11,
+					"totalLengthMm": 330000,
+					"isBambu": true
+				},
+				{
+					"slot": "3",
+					"active": true,
+					"type": "PETG",
+					"name": "PETG HF",
+					"color": "#adb1b2",
+					"remain": 51,
+					"global": 7,
+					"colors": [
+						"#adb1b2"
+					],
+					"infoIdx": "GFG02",
+					"idName": "G02-D0",
+					"tagUid": "0A4670E100000100",
+					"trayUuid": "31E07CBE145B460B8B0199223280DBD1",
+					"weight": 1000,
+					"diameter": 1.75,
+					"tempMin": 230,
+					"tempMax": 260,
+					"bedTemp": null,
+					"dryingTemp": 65,
+					"dryingHours": 8,
+					"k": null,
+					"state": 11,
+					"totalLengthMm": 330000,
+					"isBambu": true
+				}
+			],
+			"id": 1,
+			"model": "AMS 2 Pro",
+			"humidityIndex": 5,
+			"humidityPercent": 6,
+			"temp": 29.7,
+			"drying": null,
+			"serial": "IGHT",
+			"firmware": "02.00.19.47",
+			"nozzle": 0,
+			"dryStatus": null
+		}
+	],
+	"chamberTarget": 0,
+	"stage": {
+		"id": 0,
+		"name": "Printing",
+		"subStage": 0,
+		"printStage": 2
+	},
+	"speed": {
+		"level": 2,
+		"magnitude": 100
+	},
+	"fans": {
+		"part": 0,
+		"aux": 0,
+		"chamber": 30,
+		"heatbreak": 100,
+		"secondaryAux": null
+	},
+	"airductMode": 0,
+	"lights": {
+		"chamber": "on",
+		"chamber2": "on",
+		"work": "flashing",
+		"heatbed": null
+	},
+	"nozzles": [
+		{
+			"id": 0,
+			"temp": 245,
+			"target": 245,
+			"diameter": 0.4,
+			"type": "HS01",
+			"activeTray": 7,
+			"wear": 0
+		},
+		{
+			"id": 1,
+			"temp": 47,
+			"target": 0,
+			"diameter": 0.4,
+			"type": "HS01",
+			"activeTray": null,
+			"wear": 0
+		}
+	],
+	"activeNozzle": 0,
+	"externalSpools": [
+		{
+			"slot": "255",
+			"active": false,
+			"type": "",
+			"name": "",
+			"color": null,
+			"remain": null,
+			"global": 255,
+			"colors": [],
+			"infoIdx": "",
+			"idName": "",
+			"tagUid": null,
+			"trayUuid": null,
+			"weight": null,
+			"diameter": 1.75,
+			"tempMin": null,
+			"tempMax": null,
+			"bedTemp": null,
+			"dryingTemp": null,
+			"dryingHours": null,
+			"k": null,
+			"state": null,
+			"totalLengthMm": 330000,
+			"isBambu": false
+		},
+		{
+			"slot": "254",
+			"active": false,
+			"type": "",
+			"name": "",
+			"color": null,
+			"remain": null,
+			"global": 254,
+			"colors": [],
+			"infoIdx": "",
+			"idName": "",
+			"tagUid": null,
+			"trayUuid": null,
+			"weight": null,
+			"diameter": 1.75,
+			"tempMin": null,
+			"tempMax": null,
+			"bedTemp": null,
+			"dryingTemp": null,
+			"dryingHours": null,
+			"k": null,
+			"state": null,
+			"totalLengthMm": 330000,
+			"isBambu": false
+		}
+	],
+	"activeTray": 7,
+	"xcam": {
+		"spaghetti": true,
+		"firstLayer": true,
+		"buildplateMarker": true,
+		"printingMonitor": true,
+		"printHalt": true,
+		"haltSensitivity": "medium",
+		"allowSkipParts": false
+	},
+	"sdCard": "normal",
+	"doorOpen": false,
+	"camera": {
+		"present": true,
+		"lanLiveview": "rtsp",
+		"rtspUrl": null,
+		"recording": true,
+		"timelapse": false,
+		"resolution": "1080p"
+	},
+	"skippedObjects": [],
+	"printType": "local",
+	"gcodeFile": "/data/Metadata/plate_1.gcode",
+	"prepareProgress": 100,
+	"plate": {
+		"index": 1,
+		"count": 1
+	},
+	"developerMode": false,
+	"firmwareSupport": {
+		"mqttBedTemp": false,
+		"mqttHoming": true,
+		"mqttAxis": false,
+		"partSkip": false,
+		"flowCalibration": true,
+		"paCalibration": true,
+		"motorNoiseCali": true,
+		"internalTimelapse": false,
+		"doorOpenCheck": true,
+		"nozzleRack": false
+	},
+	"firmware": {
+		"version": "01.01.01.00",
+		"modules": [
+			{
+				"name": "ota",
+				"hw": "N/A",
+				"sw": "01.01.01.00",
+				"product": "Bambu Lab H2D",
+				"serialTail": "-H2D"
+			},
+			{
+				"name": "n3f/0",
+				"hw": "N3F05",
+				"sw": "02.00.19.47",
+				"product": "AMS 2 Pro (1)",
+				"serialTail": "LEFT"
+			},
+			{
+				"name": "n3f/1",
+				"hw": "N3F05",
+				"sw": "02.00.19.47",
+				"product": "AMS 2 Pro (2)",
+				"serialTail": "IGHT"
+			},
+			{
+				"name": "ahb",
+				"hw": "AHB02",
+				"sw": "00.00.09.75",
+				"product": "",
+				"serialTail": ""
+			},
+			{
+				"name": "mc",
+				"hw": "MC09",
+				"sw": "02.02.56.50",
+				"product": "",
+				"serialTail": ""
+			},
+			{
+				"name": "mc-sub",
+				"hw": "N/A",
+				"sw": "02.02.56.50",
+				"product": "",
+				"serialTail": ""
+			},
+			{
+				"name": "th",
+				"hw": "TH08",
+				"sw": "02.00.17.46",
+				"product": "",
+				"serialTail": ""
+			},
+			{
+				"name": "ext",
+				"hw": "EXT07",
+				"sw": "00.00.08.18",
+				"product": "",
+				"serialTail": ""
+			},
+			{
+				"name": "smc",
+				"hw": "SMC09",
+				"sw": "02.00.11.79",
+				"product": "",
+				"serialTail": ""
+			},
+			{
+				"name": "ap",
+				"hw": "AP05",
+				"sw": "00.00.50.02",
+				"product": "",
+				"serialTail": ""
+			}
+		]
+	},
+	"upgrade": {
+		"available": false,
+		"version": null,
+		"state": "IDLE"
+	},
+	"lastReportAt": null
+}

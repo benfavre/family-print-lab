@@ -1,0 +1,151 @@
+{
+	"gcodeState": "FINISH",
+	"percent": 100,
+	"remainingMinutes": 0,
+	"layer": 124,
+	"totalLayers": 124,
+	"nozzle": 25.9,
+	"nozzleTarget": 0,
+	"bed": 23.1,
+	"bedTarget": 0,
+	"chamber": 5,
+	"task": "sensor_altanlås_v2_v3",
+	"speedLevel": 2,
+	"printError": 0,
+	"hms": [],
+	"wifiSignal": "-42dBm",
+	"ams": [],
+	"chamberTarget": null,
+	"stage": {
+		"id": 255,
+		"name": "Idle",
+		"subStage": 0,
+		"printStage": 1
+	},
+	"speed": {
+		"level": 2,
+		"magnitude": 100
+	},
+	"fans": {
+		"part": 0,
+		"aux": 0,
+		"chamber": 0,
+		"heatbreak": 0,
+		"secondaryAux": null
+	},
+	"airductMode": null,
+	"lights": {
+		"chamber": "on",
+		"chamber2": null,
+		"work": null,
+		"heatbed": null
+	},
+	"nozzles": [
+		{
+			"id": 0,
+			"temp": 25.9,
+			"target": 0,
+			"diameter": 0.4,
+			"type": "stainless_steel",
+			"activeTray": 255,
+			"wear": null
+		}
+	],
+	"activeNozzle": 0,
+	"externalSpools": [
+		{
+			"slot": "254",
+			"active": true,
+			"type": "PETG",
+			"name": "",
+			"color": "#bcbcbc",
+			"remain": 0,
+			"global": 255,
+			"colors": [],
+			"infoIdx": "GFSNL08",
+			"idName": "",
+			"tagUid": null,
+			"trayUuid": null,
+			"weight": null,
+			"diameter": null,
+			"tempMin": 230,
+			"tempMax": 280,
+			"bedTemp": null,
+			"dryingTemp": null,
+			"dryingHours": null,
+			"k": 0.019999999552965164,
+			"state": null,
+			"totalLengthMm": null,
+			"isBambu": false
+		}
+	],
+	"activeTray": 255,
+	"xcam": {
+		"spaghetti": null,
+		"firstLayer": null,
+		"buildplateMarker": null,
+		"printingMonitor": null,
+		"printHalt": null,
+		"haltSensitivity": null,
+		"allowSkipParts": null
+	},
+	"sdCard": "normal",
+	"doorOpen": null,
+	"camera": {
+		"present": true,
+		"lanLiveview": null,
+		"rtspUrl": null,
+		"recording": false,
+		"timelapse": false,
+		"resolution": null
+	},
+	"skippedObjects": [],
+	"printType": "idle",
+	"gcodeFile": "",
+	"prepareProgress": 100,
+	"plate": {
+		"index": null,
+		"count": null
+	},
+	"developerMode": null,
+	"firmwareSupport": {},
+	"firmware": {
+		"version": "01.08.02.00",
+		"modules": [
+			{
+				"name": "ota",
+				"hw": "OTA",
+				"sw": "01.08.02.00",
+				"product": "Bambu Lab P1P",
+				"serialTail": "OAMS"
+			},
+			{
+				"name": "esp32",
+				"hw": "AP04",
+				"sw": "01.11.35.64",
+				"product": "",
+				"serialTail": ""
+			},
+			{
+				"name": "mc",
+				"hw": "MC07",
+				"sw": "00.01.32.85",
+				"product": "",
+				"serialTail": ""
+			},
+			{
+				"name": "th",
+				"hw": "TH09",
+				"sw": "00.00.09.95",
+				"product": "",
+				"serialTail": ""
+			}
+		]
+	},
+	"upgrade": {
+		"available": false,
+		"version": null,
+		"state": "UPGRADE_SUCCESS"
+	},
+	"lastReportAt": null
+}
