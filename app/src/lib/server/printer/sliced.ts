@@ -65,13 +65,20 @@ export function readSliced(buf: Buffer): SlicedFile {
 			const fromHead = (label: RegExp) => head.match(label)?.[1];
 			const seconds =
 				Number(meta('prediction')) || parseDuration(fromHead(/total estimated time: ([^;\n]+)/));
-			const filaments: SlicedFilament[] = [...block.matchAll(/<filament\b[^>]*\/?>/g)].map((f) => ({
-				id: Number(attr(f[0], 'id')) || 0,
-				type: attr(f[0], 'type') || 'PLA',
-				color: attr(f[0], 'color') || '#888888',
-				grams: Number(attr(f[0], 'used_g')) || 0,
-				meters: Number(attr(f[0], 'used_m')) || 0
-			}));
+			// One extruder per project filament, space-separated ("1 2 1"; 1 left, 2 right).
+			const maps = meta('filament_maps').trim().split(/\s+/).map(Number);
+			const filaments: SlicedFilament[] = [...block.matchAll(/<filament\b[^>]*\/?>/g)].map((f) => {
+				const id = Number(attr(f[0], 'id')) || 0;
+				const extruder = maps[id - 1];
+				return {
+					id,
+					type: attr(f[0], 'type') || 'PLA',
+					color: attr(f[0], 'color') || '#888888',
+					grams: Number(attr(f[0], 'used_g')) || 0,
+					meters: Number(attr(f[0], 'used_m')) || 0,
+					...(extruder === 1 || extruder === 2 ? { extruder } : {})
+				};
+			});
 			const grams =
 				Number(meta('weight')) ||
 				filaments.reduce((a, f) => a + f.grams, 0) ||
@@ -119,6 +126,8 @@ export function fakeSliced(opts: {
 	layers?: number;
 	printerModelId?: string;
 	filaments?: { type: string; color: string; grams: number }[];
+	/** slice_info filament_maps: the extruder (1 left, 2 right) of each filament. */
+	filamentMaps?: number[];
 	thumbnail?: Buffer;
 }): Buffer {
 	const layers = opts.layers ?? 120;
@@ -151,7 +160,7 @@ export function fakeSliced(opts: {
     <metadata key="nozzle_diameters" value="0.4"/>
     <metadata key="prediction" value="${opts.minutes * 60}"/>
     <metadata key="weight" value="${opts.grams}"/>
-    <metadata key="support_used" value="false"/>
+    <metadata key="support_used" value="false"/>${opts.filamentMaps ? `\n    <metadata key="filament_maps" value="${opts.filamentMaps.join(' ')}"/>` : ''}
 ${filaments.map((f, i) => `    <filament id="${i + 1}" type="${f.type}" color="${f.color}" used_m="${(f.grams / 3).toFixed(2)}" used_g="${f.grams}"/>`).join('\n')}
   </plate>
 </config>`;

@@ -142,6 +142,11 @@ export interface SlicedFilament {
 	color: string;
 	grams: number;
 	meters: number;
+	/**
+	 * Dual-nozzle printers: the extruder that prints it, 1 left or 2 right (slice_info.config plate
+	 * metadata filament_maps, Bambu Studio bbs_3mf.cpp _add_slice_info_config_file_to_archive).
+	 */
+	extruder?: 1 | 2;
 }
 export interface SlicedPlate {
 	index: number;

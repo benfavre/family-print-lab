@@ -48,6 +48,26 @@ const tray = z
 
 const active = (state: string | undefined) => !!state && ACTIVE_PRINTER_STATES.has(state);
 
+/** A global tray inside an AMS (AMS 0–15, AMS Lite on the A2L 24–27, AMS HT 128–135). */
+const isAmsTray = (t: GlobalTray) =>
+	(t >= 0 && t < 16) || (t >= 24 && t <= 27) || (t >= 128 && t <= 135);
+
+/**
+ * Whether the printer feeds from the AMS, decided from the mapping the way Bambu Studio does
+ * (SelectMachine.cpp ~3358–3373 with _HasAms/_HasExt ~2620–2643, and do_ams_mapping ~1275
+ * STUDIO-11971): false on a printer that reports no AMS unit, false when every filament maps to an
+ * external spool (or the mapping is empty), true when at least one maps to an AMS tray.
+ */
+export function feedsFromAms(
+	requested: boolean,
+	mapping: GlobalTray[],
+	status: { ams: unknown[] } | null
+): boolean {
+	if (!requested) return false;
+	if (status && status.ams.length === 0) return false;
+	return mapping.some(isAmsTray);
+}
+
 export default [
 	defineCommand({
 		name: 'pushing.pushall',
@@ -74,7 +94,7 @@ export default [
 		name: 'print.project_file',
 		topic: 'print',
 		source:
-			'OpenBambuAPI mqtt.md "print.project_file"; mapping per Bambu Studio SelectMachine.cpp get_ams_mapping_result ~1424–1510; url form per ha-bambulab const.py LEGACY_SDCARD_PRINTERS',
+			'OpenBambuAPI mqtt.md "print.project_file"; mapping per Bambu Studio SelectMachine.cpp get_ams_mapping_result ~1424–1510, use_ams per ~3358–3373; url form per ha-bambulab const.py LEGACY_SDCARD_PRINTERS',
 		params: z.strictObject({
 			file: z
 				.string()
@@ -112,7 +132,7 @@ export default [
 			flow_cali: o.flowCalibration ?? true,
 			vibration_cali: true,
 			layer_inspect: false,
-			use_ams: o.useAms,
+			use_ams: feedsFromAms(o.useAms, o.amsMapping, ctx.status),
 			// One entry per filament: the tray index, -1 for unused and for external spools.
 			ams_mapping: o.amsMapping.map((t) => (t === EXT_MAIN || t === EXT_DEPUTY ? -1 : t)),
 			// Dual-nozzle printers read this form: { ams_id, slot_id } per filament, {255, 255} unused.

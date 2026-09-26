@@ -1,15 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import golden from './commands.golden.json';
 import { allCommands, commandDef, replyFailed, type CommandContext } from './registry';
+import { feedsFromAms } from './defs/core';
 import { PRINTER_MODELS, capabilitiesFor, type ModelCode } from '$lib/shared/printers/models';
-import { emptySnapshot } from '$lib/shared/printers/status';
+import { emptySnapshot, type AmsUnit } from '$lib/shared/printers/status';
 import { parse } from '../../validation';
 
-const ctx = (model: ModelCode, state = 'IDLE'): CommandContext => ({
+const ctx = (model: ModelCode, state = 'IDLE', amsUnits = 0): CommandContext => ({
 	printerId: 'p',
 	model: PRINTER_MODELS[model],
 	caps: capabilitiesFor(model, null),
-	status: emptySnapshot({ gcodeState: state }),
+	status: emptySnapshot({
+		gcodeState: state,
+		ams: Array.from({ length: amsUnits }, (_, i) => ({ unit: String(i), id: i }) as AmsUnit)
+	}),
 	firmware: null
 });
 
@@ -37,7 +41,7 @@ describe('printer commands', () => {
 		it(`${g.name} on the ${g.model} builds the documented payload`, () => {
 			const def = commandDef(g.name)!;
 			const params = parse(def.params, g.params);
-			const body = def.build(params as never, ctx(g.model as ModelCode));
+			const body = def.build(params as never, ctx(g.model as ModelCode, 'IDLE', g.amsUnits ?? 0));
 			expect({ [def.topic]: { sequence_id: 'SEQ', ...body } }).toEqual(g.payload);
 			expect(def.qos ?? 0).toBe(g.qos);
 		});
@@ -66,6 +70,19 @@ describe('printer commands', () => {
 		expect(gcode.guard!(ctx('N1'), { lines: ['M112'], allowEmergency: true })).toBeNull();
 		expect(() => parse(gcode.params, { lines: Array(51).fill('G28') })).toThrow();
 		expect(() => parse(gcode.params, { lines: ['G28\nM112'] })).toThrow(/printable/);
+	});
+
+	it('feeds from the AMS only when the printer has one and a filament maps to it', () => {
+		const withAms = { ams: [{}] };
+		expect(feedsFromAms(true, [2, 255], withAms)).toBe(true);
+		expect(feedsFromAms(true, [130], withAms)).toBe(true);
+		expect(feedsFromAms(true, [25], withAms)).toBe(true);
+		expect(feedsFromAms(true, [255, 254, -1], withAms)).toBe(false);
+		expect(feedsFromAms(true, [], withAms)).toBe(false);
+		expect(feedsFromAms(false, [2], withAms)).toBe(false);
+		expect(feedsFromAms(true, [2], { ams: [] })).toBe(false);
+		// No report yet: the mapping decides.
+		expect(feedsFromAms(true, [2], null)).toBe(true);
 	});
 
 	it('reads replies the way the printers write them', () => {

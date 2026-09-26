@@ -54,6 +54,7 @@
 	{
 		"name": "print.project_file",
 		"model": "C12",
+		"amsUnits": 1,
 		"params": {
 			"file": "Desk_hook_v02.gcode.3mf",
 			"plate": 2,
@@ -96,6 +97,7 @@
 	{
 		"name": "print.project_file",
 		"model": "O1D",
+		"amsUnits": 2,
 		"params": {
 			"file": "Tray.gcode.3mf",
 			"plate": 1,
@@ -131,6 +133,85 @@
 				"ams_mapping2": [
 					{ "ams_id": 1, "slot_id": 1 },
 					{ "ams_id": 129, "slot_id": 0 },
+					{ "ams_id": 254, "slot_id": 0 }
+				]
+			}
+		}
+	},
+	{
+		"name": "print.project_file",
+		"model": "C11",
+		"amsUnits": 0,
+		"params": {
+			"file": "Clip.gcode.3mf",
+			"plate": 1,
+			"title": "Clip",
+			"useAms": true,
+			"amsMapping": [255]
+		},
+		"source": "A P1P with no AMS, PETG on the external spool: use_ams false (Bambu Studio SelectMachine.cpp ~3358–3373, obj_->HasAms() false), the external spool still in ams_mapping2",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "project_file",
+				"param": "Metadata/plate_1.gcode",
+				"url": "file:///sdcard/Clip.gcode.3mf",
+				"file": "",
+				"md5": "",
+				"project_id": "0",
+				"profile_id": "0",
+				"task_id": "0",
+				"subtask_id": "0",
+				"subtask_name": "Clip",
+				"bed_type": "auto",
+				"timelapse": false,
+				"bed_levelling": true,
+				"flow_cali": true,
+				"vibration_cali": true,
+				"layer_inspect": false,
+				"use_ams": false,
+				"ams_mapping": [-1],
+				"ams_mapping2": [{ "ams_id": 255, "slot_id": 0 }]
+			}
+		}
+	},
+	{
+		"name": "print.project_file",
+		"model": "O1D",
+		"amsUnits": 1,
+		"params": {
+			"file": "Two.gcode.3mf",
+			"plate": 1,
+			"title": "Two",
+			"useAms": true,
+			"amsMapping": [255, 254]
+		},
+		"source": "Every filament on an external spool although the printer has an AMS: use_ams false (SelectMachine.cpp ~3365 has_ext && !has_ams)",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "project_file",
+				"param": "Metadata/plate_1.gcode",
+				"url": "ftp:///Two.gcode.3mf",
+				"file": "",
+				"md5": "",
+				"project_id": "0",
+				"profile_id": "0",
+				"task_id": "0",
+				"subtask_id": "0",
+				"subtask_name": "Two",
+				"bed_type": "auto",
+				"timelapse": false,
+				"bed_levelling": true,
+				"flow_cali": true,
+				"vibration_cali": true,
+				"layer_inspect": false,
+				"use_ams": false,
+				"ams_mapping": [-1, -1],
+				"ams_mapping2": [
+					{ "ams_id": 255, "slot_id": 0 },
 					{ "ams_id": 254, "slot_id": 0 }
 				]
 			}

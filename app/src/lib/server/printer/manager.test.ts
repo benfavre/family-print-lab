@@ -103,6 +103,24 @@ describe('test lab with a simulated fleet', () => {
 		expect(() => t.rt.printing.send(jobId, { useAms: false, amsMapping: [] })).toThrow(/P1S/);
 	});
 
+	it('prints from the external spool on a P1P without an AMS, whatever the tick box says', async () => {
+		const t = await lab({ fleet: ['C11'] });
+		const p1p = t.printer('C11');
+		const { jobId } = queuedJob(t, 'C11');
+		const finished = t.nextEvent('print.finished', (e) => e.printerId === p1p.info.id);
+		// The send panel ticks "Feed from the AMS" when any tray is loaded, the external spool included;
+		// the simulator refuses use_ams on a printer with no AMS, as Bambu Studio never sends it. (The
+		// fixture's external spool holds PETG and the job is PLA, hence force.)
+		t.rt.printing.send(jobId, {
+			printerId: p1p.info.id,
+			useAms: true,
+			amsMapping: [255],
+			force: true
+		});
+		await finished;
+		expect(job(t, jobId).status).toBe('Succeeded');
+	});
+
 	it('closes a stopped print as Cancelled', async () => {
 		const t = await lab({ fleet: ['N6'], speed: 1 });
 		const x2d = t.printer('N6');

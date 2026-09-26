@@ -487,6 +487,10 @@ export function createSimulator(o: SimOptions = {}) {
 		const used = plate.filaments[0]?.id;
 		const first = used ? mapping[used - 1] : mapping[0];
 		let tray: number | null = null;
+		// Stands in for the firmware refusing to feed from an AMS it does not have (not verified on a
+		// real printer; Bambu Studio never asks for it, SelectMachine.cpp ~3358–3373).
+		if (msg.use_ams && !printer.trays().some((t) => t.unit))
+			throw new Error('This printer has no AMS to feed from');
 		if (msg.use_ams && first) {
 			const ams = Number(first.ams_id);
 			const slot = Number(first.slot_id);
@@ -497,7 +501,14 @@ export function createSimulator(o: SimOptions = {}) {
 						? 24 + slot
 						: ams * 4 + slot;
 			if (ams === 255 && slot === 255) tray = null;
-		} else if (!msg.use_ams) tray = printer.trays().find((t) => !t.unit)?.global ?? null;
+		} else if (!msg.use_ams) {
+			// External spool: the one the mapping names ({254|255, 0} on dual-nozzle printers), else the first.
+			const ext = Number(first?.ams_id);
+			tray =
+				(ext === EXT_MAIN || ext === EXT_DEPUTY ? trayFor(ext)?.global : undefined) ??
+				printer.trays().find((t) => !t.unit)?.global ??
+				null;
+		}
 		startPrint({
 			name: String(msg.subtask_name || name.replace(/\.gcode\.3mf$/, '')),
 			minutes: plate.minutes,

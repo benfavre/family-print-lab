@@ -16,6 +16,7 @@ import { slice } from './slicer';
 import { AppError } from './validation';
 import { loadedSlots, mappingProblems } from '$lib/shared/printing';
 import { ACTIVE_PRINTER_STATES, type Job, type SlicedInfo } from '$lib/shared/domain';
+import { EXT_DEPUTY, EXT_MAIN } from '$lib/shared/printers/status';
 import { PRINTER_MODELS, modelShort, sameModel, type ModelCode } from '$lib/shared/printers/models';
 
 /** "a P1S", "an X2D". */
@@ -42,6 +43,27 @@ export function projectMapping(
 	const out = Array<number>(count).fill(-1);
 	plate.filaments.forEach((f, i) => (out[f.id - 1] = mapping[i] ?? -1));
 	return out;
+}
+
+/**
+ * Not feeding from the AMS on a dual-nozzle printer: each filament goes to its own nozzle's external
+ * spool, the left (deputy, 254) for extruder 1 and the right (main, 255) for extruder 2, as Bambu
+ * Studio's do_ams_mapping does with use_ams off (SelectMachine.cpp ~1288–1343, then
+ * get_ams_mapping_result ~1463–1500 writes {254|255, 0} per filament). Single-nozzle printers, and
+ * files that do not say which nozzle prints what, get the empty mapping.
+ */
+export function externalMapping(
+	sliced: { plates: PlateFilaments[] },
+	plate: PlateFilaments,
+	nozzles: number
+): number[] {
+	if (nozzles !== 2 || !plate.filaments.length || plate.filaments.some((f) => !f.extruder))
+		return [];
+	return projectMapping(
+		sliced,
+		plate,
+		plate.filaments.map((f) => (f.extruder === 1 ? EXT_DEPUTY : EXT_MAIN))
+	);
 }
 
 export interface SendOptions {
@@ -357,7 +379,9 @@ export class PrintFiles {
 		if (!now || now.status !== 'Queued' || now.sliced?.file !== file)
 			throw new Error('The job changed while it was being sent; nothing was started.');
 		ctx.stage('Starting the print…');
-		const amsMapping = opts.useAms ? projectMapping(now.sliced!, plate, opts.amsMapping) : [];
+		const amsMapping = opts.useAms
+			? projectMapping(now.sliced!, plate, opts.amsMapping)
+			: externalMapping(now.sliced!, plate, printer.model.nozzles);
 		this.lab.startSentJob(jobId, {
 			printerTask: title,
 			printerId,
