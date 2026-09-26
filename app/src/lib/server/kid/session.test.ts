@@ -11,6 +11,7 @@ describe('kid mode access', () => {
 			['/printer', '/printer'],
 			['/family', '/family'],
 			['/projects/x', '/projects/[id]'],
+			['/printers/p', '/printers/[id]'],
 			['/kidnapped', '/kidnapped']
 		])
 			expect(kidAccess('GET', path, route)).toBe('redirect');
@@ -32,6 +33,12 @@ describe('kid mode access', () => {
 			['PUT', '/api/models/m/versions/v/model.stl'],
 			['GET', '/api/models/m/versions/v/model.3mf'],
 			['POST', '/api/printer/control'],
+			['POST', '/api/printers/p/commands'],
+			['POST', '/api/printers/p/control'],
+			['POST', '/api/printers/p/trust'],
+			['DELETE', '/api/printers/p'],
+			['GET', '/api/printers/p/diagnostics'],
+			['POST', '/api/printers/reorder'],
 			['POST', '/api/profiles'],
 			['PATCH', '/api/profiles/p'],
 			['DELETE', '/api/projects/p'],
