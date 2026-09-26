@@ -1,7 +1,8 @@
 // The app's sections, shared by the top bar, the mobile tab bar and the "G then …" shortcuts. Packages
 // add sections through the UI registry (client/modules/<key>/ui.ts `nav`), placed by `order`.
 import { resolve } from '$app/paths';
-import { UI, mergeUi, type SlotEntry } from './registry';
+import { UI, type SlotEntry } from './registry';
+import { mergeUi } from './slots';
 
 export interface NavItem {
 	href: string;
