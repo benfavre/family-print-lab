@@ -14,7 +14,7 @@ A self-hosted workshop for a household's 3D printing: collect ideas for each per
 
 ## Download
 
-Get the desktop app for Windows, macOS or Linux from **[printlab-cloud.wd29.workers.dev/download](https://printlab-cloud.wd29.workers.dev/download)** (or the [latest release](https://github.com/benfavre/family-print-lab/releases/latest)). It keeps itself up to date. Your data stays on your computer, in the app's own folder (File → Open data folder), and printer or AI settings go in File → Printer and AI settings.
+Get the desktop app for Windows, macOS or Linux from **[familyprintlab.app/download](https://familyprintlab.app/download)** (or the [latest release](https://github.com/benfavre/family-print-lab/releases/latest)). It keeps itself up to date. Your data stays on your computer, in the app's own folder (File → Open data folder), and printer or AI settings go in File → Printer and AI settings.
 
 The installers are not code-signed yet: Windows may show a SmartScreen warning (More info → Run anyway), and on macOS open the app with right-click → Open the first time. Automatic updates on macOS need signing, so Mac users download new versions by hand for now.
 
