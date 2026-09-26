@@ -30,6 +30,22 @@ function migrationsBefore(upTo: number) {
 	return dir;
 }
 
+describe('the migration journal', () => {
+	it('rises strictly in idx and in when, so no migration is ever skipped', () => {
+		// Drizzle applies a migration only when its `when` is later than the newest one a database has
+		// (drizzle-orm sqlite-core/dialect.js migrate). One merged with a lower `when` than a migration
+		// already applied somewhere would be skipped there for good (docs/parity/PLAN.md 7.3).
+		const { entries } = JSON.parse(
+			fs.readFileSync(path.join(MIGRATIONS, 'meta', '_journal.json'), 'utf8')
+		) as { entries: { idx: number; when: number; tag: string }[] };
+		entries.forEach((e, i) => {
+			expect(e.idx, e.tag).toBe(i);
+			if (i) expect(e.when, e.tag).toBeGreaterThan(entries[i - 1].when);
+			expect(fs.existsSync(path.join(MIGRATIONS, `${e.tag}.sql`)), e.tag).toBe(true);
+		});
+	});
+});
+
 describe('0005_printers on an existing database', () => {
 	it('keeps every job, links nothing yet, and the env printer is imported on boot', () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'print-lab-upgrade-'));

@@ -3350,8 +3350,15 @@ job sent.
 
 ### 7.3 Migration slots
 
-`when` values keep drizzle's ordering (`sqlite-core/dialect.js` applies a migration only if its `when`
-is greater than the last applied one), so slots are fixed in advance: `when = 1790400000000 + NN × 60000`.
+Drizzle applies a migration only if its `when` is greater than the newest one already applied
+(`sqlite-core/dialect.js`: `ORDER BY created_at DESC LIMIT 1`, then `created_at < folderMillis`). Packages
+merge in the 7.4 order, not in slot order, and any database migrated at an intermediate `parity` commit
+(dev, `dev:sim`, a desktop beta) would silently and permanently skip a lower slot merged later. So the
+slots below fix only the **file name** (`NNNN_<tag>.sql`, so packages do not collide while they work);
+**the merger assigns `idx` and `when` at merge time**: `idx` = next consecutive number, `when` =
+max(existing `when`) + 60000. A package branch may use any `when` above the base's newest.
+`db/migrations.test.ts` asserts that journal entries rise strictly in both `idx` and `when` and that each
+tag's file exists.
 
 | NN   | Tag                    | Package                                 |
 | ---- | ---------------------- | --------------------------------------- |
@@ -3377,9 +3384,8 @@ is greater than the last applied one), so slots are fixed in advance: `when = 17
 | 0024 | reserved               | slicer-calibration                      |
 | 0025 | reserved               | onboarding                              |
 
-A package that needs no table leaves its slot unused (gaps are fine: the journal `idx` must still be
-consecutive, so the merger assigns `idx` in merge order while keeping each file's `NNNN_` name and
-`when`). PLC: cloud-remote uses `migrations/0007_remote.sql`.
+A package that needs no table leaves its slot unused (gaps in file names are fine; `idx` and `when` are
+assigned in merge order as above). PLC: cloud-remote uses `migrations/0007_remote.sql`.
 
 ### 7.4 Merge order
 
