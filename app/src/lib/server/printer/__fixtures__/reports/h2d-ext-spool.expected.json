@@ -643,7 +643,7 @@
 			"type": "TPU",
 			"name": "",
 			"color": "#9b9ea0",
-			"remain": 0,
+			"remain": null,
 			"global": 255,
 			"colors": [
 				"#9b9ea0"
@@ -670,7 +670,7 @@
 			"type": "PLA",
 			"name": "",
 			"color": "#76d9f4",
-			"remain": 0,
+			"remain": null,
 			"global": 254,
 			"colors": [
 				"#76d9f4"

@@ -184,7 +184,7 @@
 			"type": "PLA",
 			"name": "",
 			"color": "#ffffff",
-			"remain": 0,
+			"remain": null,
 			"global": 255,
 			"colors": [],
 			"infoIdx": "GFA00",

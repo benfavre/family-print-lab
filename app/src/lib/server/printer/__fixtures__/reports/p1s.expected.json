@@ -182,7 +182,7 @@
 			"type": "PETG",
 			"name": "",
 			"color": "#bcbcbc",
-			"remain": 0,
+			"remain": null,
 			"global": 255,
 			"colors": [],
 			"infoIdx": "GFSNL08",

@@ -171,7 +171,9 @@ function parseTray(t: Raw, global: GlobalTray, bblBits: unknown, active: Set<num
 	const state = num(t.state);
 	const loaded = state === null ? true : spoolLoaded(state);
 	const type = loaded ? text(t.tray_type, 40) : '';
-	const remain = num(t.remain);
+	// External spools report remain 0 without measuring anything (ha-bambulab ExternalSpool.remain: -1).
+	const external = global === EXT_MAIN || global === EXT_DEPUTY;
+	const remain = external ? null : num(t.remain);
 	return {
 		slot: text(t.id, 8),
 		active: active.has(global),
