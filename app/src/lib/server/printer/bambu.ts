@@ -527,7 +527,13 @@ function redact(v: unknown, serial: string, key = ''): unknown {
 		for (const [k, x] of Object.entries(v)) out[k] = redact(x, serial, k);
 		return out;
 	}
-	if (/^(sn|serial|dev_id|.*_sn)$/i.test(key) && typeof v === 'string') return '**REDACTED**';
+	// Serial numbers, and cloud account, task and model ids (they can identify the family).
+	if (
+		/^(sn|serial|dev_id|.*_sn|job_id|task_id|subtask_id|project_id|profile_id|model_id|design_id|user_id)$/i.test(
+			key
+		)
+	)
+		return typeof v === 'number' ? 0 : '**REDACTED**';
 	if (key === 'ip' && typeof v === 'number') return 0;
 	if (typeof v === 'string')
 		return v.replace(IPV4, '192.0.2.10').replaceAll(serial, '**REDACTED**');

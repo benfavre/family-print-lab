@@ -141,6 +141,35 @@ describe('typed commands against the simulator', () => {
 	});
 });
 
+describe('diagnostics', () => {
+	it('exports the raw report without serials, addresses or cloud ids', async () => {
+		const { sim, printer } = await connect();
+		await until(() => printer.status().connected && printer.versions.length);
+		Object.assign(sim.sim.state, {
+			model_id: 'US1fccd3bfcb9084',
+			job_id: 904240393,
+			net: { info: [{ ip: 889301184, mask: 16777215 }] },
+			ipcam: { ipcam_dev: '1', rtsp_url: 'rtsps://192.168.1.5/streaming/live/1' },
+			upgrade_state: { sn: sim.serial, new_version_state: 2 }
+		});
+		sim.report(true);
+		await until(() => printer.snapshot?.camera.rtspUrl);
+		const raw = printer.rawReport();
+		const text = JSON.stringify(raw);
+		expect(raw.model).toBe('N6');
+		expect(text).not.toContain(sim.serial);
+		expect(text).not.toContain('192.168.1.5');
+		expect(text).not.toContain('US1fccd3bfcb9084');
+		expect(text).not.toContain('889301184');
+		expect(text).not.toContain('904240393');
+		expect(raw.get_version.module).toEqual(
+			expect.arrayContaining([expect.objectContaining({ name: 'ota', sn: '**REDACTED**' })])
+		);
+		// The browser never sees the printer's own address in the camera URL either.
+		expect(printer.status().state?.camera.rtspUrl).toBe('rtsps://printer/streaming/live/1');
+	});
+});
+
 describe('report parsing', () => {
 	it('turns raw reports into a typed snapshot and tolerates missing fields', () => {
 		const s = summarize({
