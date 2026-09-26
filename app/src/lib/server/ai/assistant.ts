@@ -72,7 +72,7 @@ export function snapshot(state: Workspace, printers: PrinterStatus | PrinterStat
 		const who =
 			list.length > 1 ? `${printer.name} (${printer.modelName ?? printer.model})` : printer.name;
 		if (printer.enabled === false) {
-			lines.push(`- ${who}: switched off in Settings`);
+			lines.push(`- ${who}: switched off in Integrations → Printers`);
 			continue;
 		}
 		if (!printer.connected) {

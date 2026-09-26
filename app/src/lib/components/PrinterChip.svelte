@@ -4,9 +4,10 @@
 	import { printerStateLabel } from '$lib/client/format';
 	import type { PrinterStatus } from '$lib/shared/domain';
 
-	// The first printer's state; with more printers, a count and a menu listing each one.
+	// The first switched-on printer's state (the first saved one when all are off, which then reads
+	// "switched off"); with more printers, a count and a menu listing each one.
 	const { lab, ui } = useApp();
-	const p = $derived(lab.printer);
+	const p = $derived(lab.primaryPrinter ?? lab.printerList[0] ?? lab.printer);
 	const list = $derived(lab.printerList);
 	const short = (x: PrinterStatus) => {
 		const label = printerStateLabel(x).toLowerCase();

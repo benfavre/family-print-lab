@@ -78,17 +78,23 @@
 		</dl>
 	</div>
 	{#if trays.length}
-		<div class="strip" aria-label="Loaded filament">
+		<ul class="strip" aria-label="Loaded filament">
 			{#each trays as t (t.global)}
-				<span
+				<li
 					class="swatch"
 					class:none={!t.type}
 					class:loaded={t.active}
 					style:--swatch={t.color ?? undefined}
 					title={t.type ? `${t.type}${t.name ? ` · ${t.name}` : ''}` : 'Empty'}
-				></span>
+				>
+					<span class="sr-only"
+						>{t.type
+							? `${t.type}${t.name ? ` ${t.name}` : ''}${t.active ? ', in use' : ''}`
+							: 'Empty'}</span
+					>
+				</li>
 			{/each}
-		</div>
+		</ul>
 	{/if}
 	{#if !printer.connected && printer.error}<p class="err">{printer.error}</p>{/if}
 	{#if printer.warning}<p class="warn">{printer.warning}</p>{/if}
@@ -188,6 +194,9 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 5px;
+		margin: 0;
+		padding: 0;
+		list-style: none;
 	}
 	.strip .loaded {
 		box-shadow:

@@ -131,7 +131,8 @@ export class PrinterManager extends EventEmitter {
 	require(id: string): BambuPrinter {
 		const p = this.connections.get(id);
 		if (p) return p;
-		if (this.row(id)) throw new AppError(409, 'That printer is switched off in Settings.');
+		if (this.row(id))
+			throw new AppError(409, 'That printer is switched off in Integrations → Printers.');
 		throw new AppError(404, 'That printer no longer exists.');
 	}
 
@@ -167,7 +168,7 @@ export class PrinterManager extends EventEmitter {
 			simulated: row.simulated,
 			connected: false,
 			lastSeen: null,
-			error: 'Switched off in Settings.',
+			error: 'Switched off in Integrations → Printers.',
 			warning: '',
 			printing: false,
 			state: null

@@ -177,7 +177,7 @@
 
 	{#if printers.length}
 		<ul class="printer-list" aria-label="Saved printers (drag or Alt+arrow keys to reorder)">
-			{#each printers as p, i (p.id)}
+			{#each printers as p (p.id)}
 				{@const s = status(p)}
 				{@const t = tests[p.id]}
 				<li
@@ -201,7 +201,8 @@
 						}}>⋮⋮</button
 					>
 					<div class="who">
-						<b>{p.name}</b>{#if i === 0 && p.enabled}<small class="first">first</small>{/if}
+						<b>{p.name}</b>{#if p.id === lab.primaryPrinter?.id}<small class="first">first</small
+							>{/if}
 						<small
 							>{PRINTER_MODELS[p.model]?.short ?? p.model} · {p.host} · {p.serial}{p.simulated
 								? ' · simulator'
@@ -249,7 +250,7 @@
 	{:else}
 		<ol class="setup">
 			<li>
-				<strong>On the printer:</strong> Settings → WLAN / Network → turn on <em>LAN Mode Only</em>,
+				<strong>On the printer:</strong> Settings → WLAN / Network → turn on <em>LAN Only Mode</em>,
 				then <em>Developer Mode</em>. Note the IP address and the 8-character access code.
 			</li>
 			<li>

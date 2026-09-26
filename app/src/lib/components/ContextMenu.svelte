@@ -74,8 +74,11 @@
 					onclick={() => choose(item)}><i aria-hidden="true"></i>{item.label}</button
 				>
 			{:else}
-				<button role="menuitem" class:danger-item={item.danger} onclick={() => choose(item)}
-					>{item.label}</button
+				<button
+					role="menuitem"
+					class:danger-item={item.danger}
+					aria-current={item.current ? 'page' : undefined}
+					onclick={() => choose(item)}>{item.label}</button
 				>
 			{/if}
 		{/each}

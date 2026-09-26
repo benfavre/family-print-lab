@@ -4,15 +4,22 @@
 	import { useApp } from '$lib/client/app.svelte';
 	import { NAV, PRINTERS_HREF } from '$lib/client/nav';
 
-	// Phones: the first sections live in a tab bar at the bottom, within thumb reach; the rest under More.
+	// Phones: the sections live in a tab bar at the bottom, within thumb reach. Up to six fit; with
+	// more (packages add sections), the first five and a More menu with the rest.
 	const { lab, ui } = useApp();
-	const shown = $derived(NAV.length > 5 ? NAV.slice(0, 4) : NAV);
-	const rest = $derived(NAV.length > 5 ? NAV.slice(4) : []);
+	const shown = $derived(NAV.length > 6 ? NAV.slice(0, 5) : NAV);
+	const rest = $derived(NAV.length > 6 ? NAV.slice(5) : []);
+	const current = $derived(rest.find((n) => n.match(page.url.pathname)));
+	const moreOpen = $derived(ui.menu?.title === 'More');
 	function more(e: MouseEvent) {
 		const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
 		ui.menu = {
 			title: 'More',
-			items: rest.map((n) => ({ label: n.label, href: n.href })),
+			items: rest.map((n) => ({
+				label: n.label,
+				href: n.href,
+				current: n.match(page.url.pathname)
+			})),
 			x: r.left,
 			y: r.top - 6,
 			returnTo: e.currentTarget as HTMLElement,
@@ -24,7 +31,7 @@
 	);
 </script>
 
-<nav class="bottom-nav" aria-label="Sections">
+<nav class="bottom-nav" aria-label="Sections" style:--tabs={shown.length + (rest.length ? 1 : 0)}>
 	<!-- eslint-disable svelte/no-navigation-without-resolve -- NAV hrefs are built with resolve() in nav.ts -->
 	{#each shown as item (item.href)}
 		{@const active = item.match(page.url.pathname)}
@@ -53,8 +60,10 @@
 	{#if rest.length}
 		<button
 			class="more-tab"
-			class:active={rest.some((n) => n.match(page.url.pathname))}
+			class:active={!!current}
 			aria-haspopup="menu"
+			aria-expanded={moreOpen}
+			aria-label={current ? `More, ${current.label} selected` : undefined}
 			onclick={more}
 		>
 			<span class="tab-icon"
@@ -85,7 +94,7 @@
 			bottom: 0;
 			z-index: 30;
 			display: grid;
-			grid-template-columns: repeat(5, 1fr);
+			grid-template-columns: repeat(var(--tabs, 5), 1fr);
 			padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
 			background: rgb(var(--base) / 0.88);
 			backdrop-filter: blur(14px);

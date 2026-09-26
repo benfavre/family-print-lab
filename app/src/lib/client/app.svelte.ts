@@ -55,6 +55,8 @@ export interface MenuItem {
 	dot?: ProjectStatus;
 	separator?: boolean;
 	heading?: boolean;
+	/** The page the person is on (a navigation menu): announced as the current page. */
+	current?: boolean;
 }
 
 /** A model for the page visualizer, with print progress when it is on the printer. */

@@ -26,7 +26,7 @@ export const BAMBU_CA: string[] = Object.values(CERTS);
 export const CERT_CHANGED =
 	'This printer’s security certificate changed. If you replaced or reset the printer, press Trust the new certificate.';
 export const CERT_UNTRUSTED =
-	'Could not check this printer’s security certificate. Test the connection in Settings → Printers to trust it.';
+	'Could not check this printer’s security certificate. Test the connection in Integrations → Printers to trust it.';
 
 export function printerTlsOptions(serial: string, ca: (string | Buffer)[] = BAMBU_CA) {
 	return {

@@ -212,11 +212,13 @@ export function actions({ lab, ui }: AppContext) {
 			ui.openSend(job.id);
 		},
 		async printerControl(printerId: string, action: 'pause' | 'resume' | 'stop') {
+			// Several printers: say which one (and what it prints), since a stop cannot be undone.
+			const p = lab.printerById(printerId);
 			if (
 				action === 'stop' &&
 				!(await ui.ask(
-					'Stop this print?',
-					'The printer stops and the plate cannot be resumed. The job is marked as cancelled when the printer reports it.',
+					`Stop the print on ${p?.name ?? 'this printer'}?`,
+					`${p?.state?.task ? `“${p.state.task}” stops` : 'The printer stops'} and the plate cannot be resumed. The job is marked as cancelled when the printer reports it.`,
 					'Stop print'
 				))
 			)

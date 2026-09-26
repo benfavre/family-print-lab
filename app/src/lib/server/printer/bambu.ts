@@ -354,7 +354,7 @@ export class BambuPrinter extends EventEmitter {
 		const found = detectModel({ modules: this.versions });
 		this.warning =
 			found && found !== this.config.model && !(found === 'O1C2' && this.config.model === 'O1C')
-				? `This printer says it is a ${modelShort(found)}, but Settings say ${modelShort(this.config.model)}. Change the model in Settings → Printers.`
+				? `This printer says it is a ${modelShort(found)}, but it is saved as a ${modelShort(this.config.model)}. Change the model in Integrations → Printers.`
 				: '';
 	}
 

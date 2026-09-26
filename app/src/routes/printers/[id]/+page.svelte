@@ -46,7 +46,11 @@
 		{#if !info || !p}
 			<section class="panel">
 				<h2 class="panel-title">That printer is not here</h2>
-				<p class="panel-empty">It may have been removed in Settings.</p>
+				<p class="panel-empty">
+					It may have been removed in <a href="{resolve('/integrations')}#printers"
+						>Integrations → Printers</a
+					>.
+				</p>
 				<a class="mini" href={resolve('/printers')}>All printers</a>
 			</section>
 		{:else}
@@ -58,7 +62,7 @@
 				title={p.name ?? 'Printer'}
 				text={!p.connected
 					? p.enabled === false
-						? 'Switched off in Settings.'
+						? 'Switched off in Integrations → Printers.'
 						: p.error || 'Waiting for the printer…'
 					: s?.task && active
 						? `${label}: ${s.task}`

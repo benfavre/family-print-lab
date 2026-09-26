@@ -258,7 +258,7 @@ export class PrintFiles {
 		const canWake = !!opts.wake && this.hooks.beforeDispatch.size > 0;
 		if (!id) blocking.push('No printer is set up yet.');
 		else if (!saved) blocking.push('That printer no longer exists.');
-		else if (!printer) blocking.push('That printer is switched off in Settings.');
+		else if (!printer) blocking.push('That printer is switched off in Integrations → Printers.');
 		else if (!ownSend && this.sending.has(id))
 			blocking.push('Another print is being sent to this printer right now.');
 		else if (!status?.connected) {
