@@ -132,7 +132,8 @@ Cloud → app:
 }
 ```
 
-`PrinterSummary` (nothing else about the printer is sent):
+`PrinterSummary` (nothing else about the printer is sent). With several printers, protocol v1 carries
+only the first one in Settings → Printers; the others are never mentioned:
 
 ```json
 {

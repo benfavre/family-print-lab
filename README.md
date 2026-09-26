@@ -7,10 +7,15 @@ A self-hosted workshop for a household's 3D printing: collect ideas for each per
 - **Profiles for each maker.** Choose who is making when the app opens. Each person has their own ideas, projects and progress, and switching profiles keeps unsaved drafts.
 - **Projects and print jobs.** Checklists, sketches, slicer settings, the model version that was printed, and the outcome and time of each print.
 - **Model workbench.** Parametric OpenSCAD parts with live sliders, mesh tools (scale, cut, drill, combine, lay flat), Blender repair and round-trips, and full version history. Download any version as STL or 3MF.
-- **Printer link.** Live status from a Bambu Lab printer in LAN-only mode. Upload sliced `.gcode.3mf` plates, then start, pause, resume or stop prints. Jobs close themselves when a print finishes.
+- **Printers.** Every current Bambu Lab model, as many as you have, on your own network (LAN-only mode). Find them with one button, see live status (temperatures, both nozzles, AMS trays, progress, alerts), send sliced `.gcode.3mf` plates, and start, pause, resume or stop prints. Jobs close themselves when a print finishes, fails or is cancelled.
+- **Slicing.** Slice a model version for any of your printers from the job page, with the main settings. It uses a Bambu Studio or OrcaSlicer install for now; our own engine, Print Lab Slicer, is being built from Bambu Studio's slicing core ([`slicer/UPSTREAM.md`](slicer/UPSTREAM.md)).
 - **Filament shelf.** Each spool is charged for what its prints actually used.
+- **Kid mode.** Kids make things from safe templates and ask to print them; a grown-up approves on the Family page (or on the phone, with Print Lab Cloud).
 - **AI help (optional).** Uses your own Claude or ChatGPT subscription through the official Claude Code or Codex CLIs, or an Anthropic API key. It can design OpenSCAD models from a description or sketch, diagnose failed prints, suggest slicer settings, and help with writing.
 - **Safe with your data.** Automatic daily backups, JSON export and import, and live sync across open tabs.
+- **Print Lab Cloud (optional, paid).** Answer kids' requests and follow a print from your phone, get a notification when it ends, keep an encrypted copy of your backups, and add template packs and models from the shop.
+
+How this compares with Bambu Handy and Bambu Studio, and what is still to come: [docs/parity/STATUS.md](docs/parity/STATUS.md).
 
 ## Download
 
@@ -43,13 +48,17 @@ These are detected automatically and shown on the **Integrations** page:
 | [Claude Code](https://claude.com/claude-code) or Codex | AI features using your Claude or ChatGPT subscription |
 | Anthropic API key                                      | AI features billed per use                            |
 | Blender 4.2+                                           | Mesh repair, simplification and "Open in Blender"     |
-| Bambu Lab printer in LAN-only + Developer Mode         | Live status, sending plates, print control            |
+| Bambu Studio or OrcaSlicer                             | Slicing inside the app                                |
+| Bambu Lab printers in LAN-only + Developer Mode        | Live status, sending plates, print control            |
 
 ## Privacy and security
 
 - The server listens on `127.0.0.1` only, and it has **no login**. Profiles are for convenience, not access control. Don't expose it to the internet. To use it on your LAN, list the host names in `ALLOWED_HOSTS` and trust everyone on that network.
 - Nothing leaves your machine unless you turn on an AI provider or link Print Lab Cloud.
-- **Print Lab Cloud (optional)** lets a grown-up answer kids’ print requests from a phone. Linking is off until you do it on the Family page; the app then opens one outbound connection, shares only print requests (child’s first name or “Your child”, the title, message, size, colour and a small picture), and the cloud can only approve or decline a waiting request. The full protocol is in [docs/cloud-protocol.md](docs/cloud-protocol.md). AI requests send what the task needs (for example profile names and ages, project details, photos you attach, or a model's code) to the provider you chose.
+- **Printers** are reached on your local network only, never through Bambu's cloud: status over the printer's MQTT service (port 8883) and uploads over FTPS (port 990), both encrypted. Access codes stay in the local database. The app checks each printer's certificate against Bambu's certificate authorities, or remembers the certificate the first time you press Test and refuses a different one later, so the access code is never sent to a device pretending to be your printer. **Find printers** listens for the printers' announcements and sends one broadcast on your network (UDP port 2021), only when you press it. Download diagnostics saves a report to your computer with serials, access codes, job and file names and account ids removed; nothing is uploaded.
+- **Why LAN-only and Developer Mode.** Bambu printers accept commands from other apps only in LAN-only mode with Developer Mode on (printer settings → Network). That turns off Bambu's cloud (remote printing and viewing in Bambu Handy), and anyone on your network who knows the access code can then control the printer, so keep the code private and your Wi-Fi password strong. Without Developer Mode the app still shows status, and says why commands do nothing.
+- **Slicing** runs on your computer. Nothing is sent anywhere.
+- **Print Lab Cloud (optional)** lets a grown-up answer kids’ print requests from a phone. Linking is off until you do it on the Family page; the app then opens one outbound connection, shares only print requests (child’s first name or “Your child”, the title, message, size, colour and a small picture), and the cloud can only approve or decline a waiting request. Two more things are shared only if you switch them on: “Share print progress” sends the first printer’s state, print name, percentage, time left and layer (nothing else about your printers), and Cloud backup uploads backups sealed on your computer with a recovery key the cloud never sees. The full protocol is in [docs/cloud-protocol.md](docs/cloud-protocol.md). AI requests send what the task needs (for example profile names and ages, project details, photos you attach, or a model's code) to the provider you chose.
 - Subscription-based AI runs the official CLIs with tools, file access and MCP servers disabled. It is meant for one person using their own subscription. Don't share an instance that is signed in to your account.
 
 To report a vulnerability, see [SECURITY.md](SECURITY.md).
