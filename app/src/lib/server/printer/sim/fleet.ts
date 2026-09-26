@@ -24,6 +24,10 @@ export interface Fleet {
 }
 
 /** One SSDP NOTIFY as Bambu printers send it. */
+/** What a printer puts in DevModel: X1-series printers announce a name, not their code (models.ts SSDP_ALIASES). */
+const ssdpModel = (code: string) =>
+	code === 'BL-P001' ? '3DPrinter-X1-Carbon' : code === 'BL-P002' ? '3DPrinter-X1' : code;
+
 export function ssdpNotify(o: {
 	host: string;
 	serial: string;
@@ -88,7 +92,7 @@ export async function createFleet(o: {
 				ssdpNotify({
 					host,
 					serial: p.sim.serial,
-					model: p.sim.model.code,
+					model: ssdpModel(p.sim.model.code),
 					name: p.sim.sim.name,
 					firmware: p.sim.firmware
 				}),
@@ -108,7 +112,7 @@ export async function createFleet(o: {
 			JSON.stringify(
 				printers.map((p) => ({
 					name: p.sim.sim.name,
-					model: p.sim.model.code,
+					model: ssdpModel(p.sim.model.code),
 					host,
 					port: p.port,
 					ftpPort: p.ftpPort,

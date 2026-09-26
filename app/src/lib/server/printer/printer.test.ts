@@ -35,24 +35,30 @@ function follow(printer: BambuPrinter, on: (name: string, task: string) => void)
 	});
 }
 
-async function connect(options: { speed?: number; code?: string } = {}) {
+async function connect(
+	options: { speed?: number; code?: string; acceptUrl?: 'sdcard' | 'ftp'; logs?: string[] } = {}
+) {
 	const sim: Simulator = createSimulator({
 		speed: options.speed ?? 600,
 		failRate: 0,
-		log: () => {}
+		log: () => {},
+		acceptUrl: options.acceptUrl
 	});
 	const port = await sim.listen(0);
-	const printer = new BambuPrinter({
-		id: 'p1',
-		model: 'N6',
-		host: '127.0.0.1',
-		port,
-		ftpPort: sim.ftpPort,
-		serial: sim.serial,
-		accessCode: options.code ?? sim.accessCode,
-		useTls: false,
-		simulated: true
-	});
+	const printer = new BambuPrinter(
+		{
+			id: 'p1',
+			model: 'N6',
+			host: '127.0.0.1',
+			port,
+			ftpPort: sim.ftpPort,
+			serial: sim.serial,
+			accessCode: options.code ?? sim.accessCode,
+			useTls: false,
+			simulated: true
+		},
+		{ log: (m) => options.logs?.push(m) }
+	);
 	cleanups.push(
 		() => sim.close(),
 		() => printer.stop()
@@ -332,6 +338,24 @@ describe('sending prints', () => {
 		await until(() => printer.status().state?.gcodeState === 'RUNNING');
 		await printer.control('stop');
 		await until(() => !printer.status().printing);
+	});
+
+	it('tries the other url form once on a model whose form is not settled, and logs which worked', async () => {
+		// The X2D is sent ftp:///; this simulated one only takes file:///sdcard/.
+		const logs: string[] = [];
+		const { printer } = await connect({ acceptUrl: 'sdcard', logs });
+		await until(() => printer.status().connected && printer.status().state);
+		await printer.upload('dock.gcode.3mf', fakeSliced({ minutes: 5, grams: 2 }));
+		await expect(
+			printer.startPrint({
+				file: 'dock.gcode.3mf',
+				plate: 1,
+				title: 'Dock',
+				useAms: true,
+				amsMapping: [0]
+			})
+		).resolves.toBe('confirmed');
+		expect(logs.join('\n')).toMatch(/worked with the sdcard url form on the X2D/);
 	});
 
 	it('passes on the printer refusing a file sliced for another model or a missing file', async () => {

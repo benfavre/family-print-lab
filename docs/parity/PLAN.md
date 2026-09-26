@@ -455,6 +455,14 @@ Verified model table (section 8.1 has sources). Fill the hand-written fields fro
 | O1S       | Bambu Lab H2S       | H2S     | H2     | 093           | rtsps    | 1       | ftp      |
 | O1C, O1C2 | Bambu Lab H2C       | H2C     | H2     | null (verify) | rtsps    | 2       | ftp      |
 
+`printUrl` for N9 (A2L), N7 (P2S), N6 (X2D) and O1E (H2D Pro) is **unverified**: ha-bambulab (0e027ff)
+is split. `const.py` `LEGACY_SDCARD_PRINTERS` (defined but never used) implies `ftp` for them, while the
+path that runs, `coordinator.py` `_service_call_print_project_file` (~720–727), sends `ftp:///` only for
+H2C/H2S/H2D and `file:///sdcard/` for every other model. We keep `ftp` for these four
+(`PRINT_URL_UNVERIFIED` in `models.ts`); when the printer refuses `project_file`, `startPrint` retries
+once with the other form (the upload lands in the storage root, which both name) and logs which worked,
+so real diagnostics can settle it.
+
 "null (verify)": Bambu Studio's `resources/hms/` also has files for device prefixes `239`, `20P`, `26A`,
 `31B`; the hms package maps them to models (from the wiki or Bambu Studio source) and fills these in.
 

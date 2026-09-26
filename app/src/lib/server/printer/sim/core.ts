@@ -40,6 +40,8 @@ export interface SimOptions {
 	features?: SimFeature[];
 	/** Serve MQTT and FTP over TLS with this certificate (use CN = serial). */
 	tls?: { key: string | Buffer; cert: string | Buffer };
+	/** Only start files named with this project_file url form (default: either; tests the retry). */
+	acceptUrl?: 'sdcard' | 'ftp';
 }
 
 /** A print the simulator is playing out. */
@@ -470,7 +472,10 @@ export function createSimulator(o: SimOptions = {}) {
 
 	/** Checks a project_file command the way the firmware would and starts the print. */
 	function startFromFile(msg: Json) {
-		const name = String(msg.url ?? '').replace(/^(ftp|file):\/\/\/?(sdcard\/|mnt\/sdcard\/)?/, '');
+		const url = String(msg.url ?? '');
+		if (o.acceptUrl && !url.startsWith(o.acceptUrl === 'ftp' ? 'ftp://' : 'file:///sdcard/'))
+			throw new Error(`File ${url} not found on the printer`);
+		const name = url.replace(/^(ftp|file):\/\/\/?(sdcard\/|mnt\/sdcard\/)?/, '');
 		const stored = files.files.get(name);
 		if (!stored) throw new Error(`File ${name} not found on the printer`);
 		const sliced = readSliced(stored.data);
@@ -502,10 +507,12 @@ export function createSimulator(o: SimOptions = {}) {
 						: ams * 4 + slot;
 			if (ams === 255 && slot === 255) tray = null;
 		} else if (!msg.use_ams) {
-			// External spool: the one the mapping names ({254|255, 0} on dual-nozzle printers), else the first.
+			// External spool: the one the mapping names ({254|255, 0} on dual-nozzle printers), else the
+			// first loaded one.
 			const ext = Number(first?.ams_id);
 			tray =
 				(ext === EXT_MAIN || ext === EXT_DEPUTY ? trayFor(ext)?.global : undefined) ??
+				printer.trays().find((t) => !t.unit && t.tray.tray_type)?.global ??
 				printer.trays().find((t) => !t.unit)?.global ??
 				null;
 		}

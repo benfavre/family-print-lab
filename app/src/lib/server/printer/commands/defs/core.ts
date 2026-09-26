@@ -23,6 +23,8 @@ export interface ProjectFileParams {
 	title: string;
 	md5?: string;
 	useAms: boolean;
+	/** Override the model's url form (startPrint's one retry for PRINT_URL_UNVERIFIED models). */
+	urlForm?: 'sdcard' | 'ftp';
 	/** One entry per filament in the file, in filament order: the global tray, or -1 when unused. */
 	amsMapping: GlobalTray[];
 	bedType?: string;
@@ -94,7 +96,7 @@ export default [
 		name: 'print.project_file',
 		topic: 'print',
 		source:
-			'OpenBambuAPI mqtt.md "print.project_file"; mapping per Bambu Studio SelectMachine.cpp get_ams_mapping_result ~1424–1510, use_ams per ~3358–3373; url form per ha-bambulab const.py LEGACY_SDCARD_PRINTERS',
+			'OpenBambuAPI mqtt.md "print.project_file"; mapping per Bambu Studio SelectMachine.cpp get_ams_mapping_result ~1424–1510, use_ams per ~3358–3373; url form per ha-bambulab coordinator.py ~720–727 and const.py LEGACY_SDCARD_PRINTERS, which disagree for the models in PRINT_URL_UNVERIFIED',
 		params: z.strictObject({
 			file: z
 				.string()
@@ -107,6 +109,7 @@ export default [
 				.or(z.literal(''))
 				.optional(),
 			useAms: z.boolean(),
+			urlForm: z.enum(['sdcard', 'ftp']).optional(),
 			amsMapping: z.array(tray).max(32),
 			bedType: z.string().max(40).optional(),
 			timelapse: z.boolean().optional(),
@@ -118,7 +121,10 @@ export default [
 		build: (o, ctx) => ({
 			command: 'project_file',
 			param: `Metadata/plate_${o.plate}.gcode`,
-			url: ctx.model.printUrl === 'sdcard' ? `file:///sdcard/${o.file}` : `ftp:///${o.file}`,
+			url:
+				(o.urlForm ?? ctx.model.printUrl) === 'sdcard'
+					? `file:///sdcard/${o.file}`
+					: `ftp:///${o.file}`,
 			file: '',
 			md5: o.md5 ?? '',
 			project_id: '0',

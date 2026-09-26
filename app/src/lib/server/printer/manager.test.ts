@@ -364,7 +364,8 @@ describe('printer registry', () => {
 		const fleet: Fleet = await createFleet({
 			printers: [
 				{ model: 'N7', log: () => {} },
-				{ model: 'N1', log: () => {} }
+				{ model: 'N1', log: () => {} },
+				{ model: 'BL-P001', log: () => {} }
 			],
 			ssdpPort: port,
 			ssdpIntervalMs: 150
@@ -380,6 +381,8 @@ describe('printer registry', () => {
 			lanOnly: true,
 			known: false
 		});
+		// Announced as "3DPrinter-X1-Carbon", found as the X1 Carbon.
+		expect(Object.values(bySerial).find((p) => p.model === 'BL-P001')).toBeTruthy();
 		// The A1 mini of the test lab has the same serial as the fleet's: it is already saved.
 		expect(bySerial['SIM-A1MINI-0001']).toMatchObject({ model: 'N1', known: true });
 	});
@@ -406,6 +409,14 @@ describe('printer registry', () => {
 			lanOnly: false,
 			firmware: '01.02.00.00'
 		});
+		// X1-series printers announce a name (Bambu Studio DevConfigUtil.h _parse_printer_type).
+		expect(
+			parseSsdp(sample.replace('DevModel.bambu.com: N7', 'DevModel.bambu.com: 3DPrinter-X1-Carbon'))
+				?.model
+		).toBe('BL-P001');
+		expect(
+			parseSsdp(sample.replace('DevModel.bambu.com: N7', 'DevModel.bambu.com: 3DPrinter-X1'))?.model
+		).toBe('BL-P002');
 		expect(parseSsdp(sample.replace('10.13.1.30', 'evil.example'))).toBeNull();
 		expect(parseSsdp(sample.replace('3dprinter', 'toaster'))).toBeNull();
 		expect(parseSsdp(sample.replace('Workshop', 'x'.repeat(300)))).toBeNull();

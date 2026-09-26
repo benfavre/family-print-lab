@@ -20,6 +20,7 @@ import type { ProjectFileParams } from './commands/defs/core';
 import { AppError, parse } from '../validation';
 import {
 	PRINTER_MODELS,
+	PRINT_URL_UNVERIFIED,
 	capabilitiesFor,
 	detectModel,
 	modelShort,
@@ -103,6 +104,9 @@ interface Reply {
 	sequence: string;
 	body: Raw;
 }
+
+/** The printer answered a command with a failure (as opposed to the app refusing to send it). */
+export class PrinterRefused extends AppError {}
 
 /** Emits 'update' on every status change, 'reply' for command answers, 'log' for mc_print push_info lines. */
 export class BambuPrinter extends EventEmitter {
@@ -424,7 +428,7 @@ export class BambuPrinter extends EventEmitter {
 				if (failed)
 					finish(() =>
 						reject(
-							new AppError(
+							new PrinterRefused(
 								409,
 								failed === 'fail' || failed === 'failed'
 									? `The printer refused to ${command}.`
@@ -483,7 +487,27 @@ export class BambuPrinter extends EventEmitter {
 
 	/** Starts printing a plate of a file already uploaded with `upload`. */
 	async startPrint(o: ProjectFileParams) {
-		return (await this.send('print.project_file', o)).outcome;
+		try {
+			return (await this.send('print.project_file', o)).outcome;
+		} catch (error) {
+			// The url form is unsettled for some models (models.ts PRINT_URL_UNVERIFIED): when the
+			// printer itself refuses, try the other form once and log which one it took.
+			if (o.urlForm || !PRINT_URL_UNVERIFIED.has(this.model.code)) throw error;
+			if (!(error instanceof PrinterRefused)) throw error;
+			const other = this.model.printUrl === 'ftp' ? 'sdcard' : 'ftp';
+			this.log(
+				`project_file with the ${this.model.printUrl} url was refused (${error.message}); trying ${other}`
+			);
+			try {
+				const outcome = (await this.send('print.project_file', { ...o, urlForm: other })).outcome;
+				this.log(
+					`project_file worked with the ${other} url form on the ${this.model.short} (please report this)`
+				);
+				return outcome;
+			} catch {
+				throw error;
+			}
+		}
 	}
 
 	/** Pauses, resumes or stops the current print. */

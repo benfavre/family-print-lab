@@ -122,7 +122,10 @@ export interface PrinterModel {
 	reports: 'full' | 'delta';
 	camera: CameraProtocol;
 	nozzles: 1 | 2;
-	/** project_file url form: 'sdcard' → file:///sdcard/<name>, 'ftp' → ftp:///<name> (ha-bambulab const.py LEGACY_SDCARD_PRINTERS). */
+	/**
+	 * project_file url form: 'sdcard' → file:///sdcard/<name>, 'ftp' → ftp:///<name>. The references
+	 * disagree for some models: see PRINT_URL_UNVERIFIED.
+	 */
 	printUrl: 'sdcard' | 'ftp';
 	/** printer_is_enclosed. */
 	enclosed: boolean;
@@ -137,6 +140,16 @@ export interface PrinterModel {
 	/** Version-gated overrides, ascending by firmware version. */
 	firmwareCaps: { from: string; caps: Partial<Capabilities> }[];
 }
+
+/**
+ * Models whose project_file url form is not settled. ha-bambulab (0e027ff) contradicts itself:
+ * const.py LEGACY_SDCARD_PRINTERS (defined, never used) implies ftp:/// for every model not listed,
+ * while the path that runs, coordinator.py _service_call_print_project_file ~720–727, sends ftp:///
+ * only for the H2C, H2S and H2D and file:///sdcard/ for everything else, these four included. We keep
+ * ftp:/// and BambuPrinter.startPrint retries once with file:///sdcard/ (the upload lands in the
+ * storage root, which both forms name), logging which one worked so real diagnostics can settle it.
+ */
+export const PRINT_URL_UNVERIFIED: ReadonlySet<ModelCode> = new Set(['N9', 'N7', 'N6', 'O1E']);
 
 /** Hand-written columns, from the verified table in docs/parity/PLAN.md 4.1 / 8.1. */
 const TABLE: Record<
@@ -435,6 +448,15 @@ const PRODUCT_NAMES: Record<string, ModelCode> = {
 };
 
 /**
+ * X1-series printers announce a dev_type name in SSDP DevModel, not their code (Bambu Studio
+ * DeviceCore/DevConfigUtil.h _parse_printer_type, called from DevManager.cpp on_machine_alive).
+ */
+const SSDP_ALIASES: Record<string, ModelCode> = {
+	'3DPrinter-X1-Carbon': 'BL-P001',
+	'3DPrinter-X1': 'BL-P002'
+};
+
+/**
  * Model from SSDP DevModel, get_version product_name, or the older AP/project_name heuristics
  * (ha-bambulab utils.get_printer_type). The H2C pair O1C/O1C2 cannot be told apart from
  * product_name: SSDP DevModel wins, else O1C2.
@@ -444,8 +466,9 @@ export function detectModel(input: {
 	productName?: string;
 	modules?: VersionModule[];
 }): ModelCode | null {
-	if (input.ssdpModel && isModelCode(input.ssdpModel.trim()))
-		return input.ssdpModel.trim() as ModelCode;
+	const ssdp = input.ssdpModel?.trim();
+	if (ssdp && SSDP_ALIASES[ssdp]) return SSDP_ALIASES[ssdp];
+	if (ssdp && isModelCode(ssdp)) return ssdp as ModelCode;
 	if (input.productName) {
 		const hit = PRODUCT_NAMES[input.productName.trim()];
 		if (hit) return hit;
