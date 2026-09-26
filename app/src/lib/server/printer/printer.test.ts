@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { decode, encode, TYPE } from './mqtt';
+import net from 'node:net';
+import { decode, encode, MqttClient, TYPE } from './mqtt';
 import { BambuPrinter, summarize } from './bambu';
 import { diffStatus } from './diff';
 import type { PrinterStatus } from '$lib/shared/printers/status';
@@ -116,6 +117,30 @@ describe('MQTT QoS 1 and retain', () => {
 		await client.publish('device/x/request', '{}', { qos: 1 }).then(() => sent.push(1));
 		expect(sent).toEqual([1]);
 	});
+	it('gives up on a QoS 1 publish that is never acknowledged', async () => {
+		// A broker that accepts the connection (CONNACK) and then ignores everything.
+		const server = net.createServer((s) => {
+			s.once('data', () => s.write(Buffer.from([TYPE.CONNACK << 4, 2, 0, 0])));
+			s.on('error', () => {});
+		});
+		await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
+		const client = new MqttClient({
+			host: '127.0.0.1',
+			port: (server.address() as net.AddressInfo).port,
+			useTls: false,
+			clientId: 't'
+		});
+		client.on('error', () => {});
+		const connected = new Promise((r) => client.once('connect', r));
+		client.connect();
+		await connected;
+		await expect(client.publish('t', '{}', { qos: 1, timeoutMs: 50 })).rejects.toThrow(
+			'The printer did not confirm the command.'
+		);
+		expect((client as unknown as { inflight: Map<number, unknown> }).inflight.size).toBe(0);
+		client.end();
+		await new Promise<void>((r) => server.close(() => r()));
+	});
 });
 
 describe('typed commands against the simulator', () => {
@@ -182,7 +207,10 @@ describe('diagnostics', () => {
 			ipcam: { ipcam_dev: '1', rtsp_url: 'rtsps://192.168.1.5/streaming/live/1' },
 			// Should a report ever carry the access code (a URL with credentials), it stays out too.
 			upload: { url: `ftps://bblp:${sim.accessCode}@printer/` },
-			upgrade_state: { sn: sim.serial, new_version_state: 2 }
+			upgrade_state: { sn: sim.serial, new_version_state: 2 },
+			// What send() names the job: the project title and revision, often a child's name.
+			subtask_name: 'Mia’s rocket v2',
+			gcode_file: '/sdcard/Mia’s rocket v2.gcode.3mf'
 		});
 		sim.report(true);
 		await until(() => printer.snapshot?.camera.rtspUrl);
@@ -195,6 +223,8 @@ describe('diagnostics', () => {
 		expect(text).not.toContain('889301184');
 		expect(text).not.toContain('904240393');
 		expect(text).not.toContain(sim.accessCode);
+		expect(text).not.toContain('Mia');
+		expect(raw.pushall.gcode_file).toBe('**REDACTED**.gcode.3mf');
 		expect(raw.get_version.module).toEqual(
 			expect.arrayContaining([expect.objectContaining({ name: 'ota', sn: '**REDACTED**' })])
 		);

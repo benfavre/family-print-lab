@@ -194,7 +194,10 @@ export class MqttClient extends EventEmitter {
 	private nextId = 1;
 	private ping?: NodeJS.Timeout;
 	/** QoS 1 publishes waiting for their PUBACK, by packet id. */
-	private inflight = new Map<number, { resolve: () => void; reject: (e: Error) => void }>();
+	private inflight = new Map<
+		number,
+		{ resolve: () => void; reject: (e: Error) => void; timer: NodeJS.Timeout }
+	>();
 
 	constructor(private options: MqttOptions) {
 		super();
@@ -280,10 +283,14 @@ export class MqttClient extends EventEmitter {
 	 * Publishes a message. QoS 0 resolves once written; QoS 1 resolves when the broker acknowledges it
 	 * (PUBACK) and rejects if the connection closes first.
 	 */
+	/**
+	 * QoS 1 resolves on PUBACK and rejects on close or after `timeoutMs` (default 10 s) without one, so
+	 * a caller never waits forever and the packet id is freed.
+	 */
 	publish(
 		topic: string,
 		payload: unknown,
-		o: { qos?: 0 | 1; retain?: boolean } = {}
+		o: { qos?: 0 | 1; retain?: boolean; timeoutMs?: number } = {}
 	): Promise<void> {
 		const body = typeof payload === 'string' ? payload : JSON.stringify(payload);
 		const socket = this.socket;
@@ -295,7 +302,21 @@ export class MqttClient extends EventEmitter {
 		}
 		const id = this.packetId();
 		return new Promise((resolve, reject) => {
-			this.inflight.set(id, { resolve, reject });
+			const timer = setTimeout(() => {
+				if (this.inflight.get(id)?.timer !== timer) return;
+				this.inflight.delete(id);
+				reject(new Error('The printer did not confirm the command.'));
+			}, o.timeoutMs ?? 10_000);
+			timer.unref?.();
+			const settle = (fn: () => void) => {
+				clearTimeout(timer);
+				fn();
+			};
+			this.inflight.set(id, {
+				resolve: () => settle(resolve),
+				reject: (e) => settle(() => reject(e)),
+				timer
+			});
 			socket.write(encode.publish(topic, body, { qos: 1, retain: o.retain, id }));
 		});
 	}

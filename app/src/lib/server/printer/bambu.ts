@@ -406,7 +406,7 @@ export class BambuPrinter extends EventEmitter {
 		const topic = `device/${this.config.serial}/request`;
 		const message = { [def.topic]: { sequence_id: sequence, ...body } };
 		if (def.reply === 'none') {
-			await client.publish(topic, message, { qos: def.qos ?? 0 });
+			await client.publish(topic, message, { qos: def.qos ?? 0, timeoutMs: def.timeoutMs });
 			return { outcome: 'sent' };
 		}
 		return new Promise<CommandOutcome>((resolve, reject) => {
@@ -451,7 +451,7 @@ export class BambuPrinter extends EventEmitter {
 			client.once('close', onClose);
 			o.signal?.addEventListener('abort', onAbort, { once: true });
 			client
-				.publish(topic, message, { qos: def.qos ?? 0 })
+				.publish(topic, message, { qos: def.qos ?? 0, timeoutMs: def.timeoutMs })
 				.catch((error: Error) => finish(() => reject(new AppError(409, error.message))));
 		});
 	}
@@ -580,7 +580,10 @@ export class BambuPrinter extends EventEmitter {
 }
 
 const IPV4 = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
-/** `secrets`: the serial number and the access code (should a report ever carry it, e.g. in a URL). */
+/**
+ * For "Download diagnostics", which people share as fixtures. `secrets`: the serial number and the
+ * access code (should a report ever carry it, e.g. in a URL).
+ */
 function redact(v: unknown, secrets: string[], key = ''): unknown {
 	if (Array.isArray(v)) return v.map((x) => redact(x, secrets, key));
 	if (isObject(v)) {
@@ -595,6 +598,10 @@ function redact(v: unknown, secrets: string[], key = ''): unknown {
 		)
 	)
 		return typeof v === 'number' ? 0 : '**REDACTED**';
+	// Print and file names are the job titles people type (a child's name, a project), so they go
+	// too; the file keeps its extension, which is useful in a fixture.
+	if (/^(subtask_name|gcode_file|task_name|project_name)$/i.test(key) && typeof v === 'string' && v)
+		return `**REDACTED**${v.match(/\.gcode(\.3mf)?$/i)?.[0] ?? ''}`;
 	if (key === 'ip' && typeof v === 'number') return 0;
 	if (typeof v === 'string')
 		return secrets
