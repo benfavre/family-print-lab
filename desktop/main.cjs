@@ -83,6 +83,9 @@ async function startServer() {
 		PORT: String(port),
 		DATABASE_URL: process.env.DATABASE_URL || path.join(DATA, 'printlab.db'),
 		BODY_SIZE_LIMIT: process.env.BODY_SIZE_LIMIT || '110M',
+		// Phone approvals through familyprintlab.app. Nothing is sent until a parent links on the
+		// Family page; `CLOUD_URL=` (empty) in the settings file hides it.
+		CLOUD_URL: process.env.CLOUD_URL ?? 'https://familyprintlab.app',
 		PRINT_LAB_DESKTOP: '1'
 	});
 	// The server loads drizzle/ and resources/ relative to its working directory.
@@ -199,6 +202,10 @@ function buildMenu() {
 			role: 'help',
 			submenu: [
 				{ label: 'Check for updates', click: () => checkForUpdates(true) },
+				{
+					label: 'Family Print Lab website',
+					click: () => void shell.openExternal('https://familyprintlab.app')
+				},
 				{
 					label: 'Project page',
 					click: () => void shell.openExternal('https://github.com/benfavre/family-print-lab')

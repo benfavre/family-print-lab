@@ -346,7 +346,10 @@ export class BambuPrinter extends EventEmitter {
 	/** Pauses, resumes or stops the current print. */
 	async control(action: PrintControl) {
 		const state = this.snapshot?.gcodeState ?? '';
-		if (action === 'pause' && state !== 'RUNNING' && state !== 'PREPARE')
+		// While preparing (heating, levelling) the printer accepts the command but ignores it.
+		if (action === 'pause' && state === 'PREPARE')
+			throw new Error('The printer is still preparing; pause once it starts printing.');
+		if (action === 'pause' && state !== 'RUNNING')
 			throw new Error('Only a running print can pause.');
 		if (action === 'resume' && state !== 'PAUSE') throw new Error('Nothing is paused.');
 		if (action === 'stop' && !ACTIVE_PRINTER_STATES.has(state))

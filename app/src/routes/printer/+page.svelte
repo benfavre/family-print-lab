@@ -206,8 +206,14 @@
 										>▶ Resume</button
 									>
 								{:else}
-									<button class="secondary" onclick={() => act.printerControl('pause')}
-										>❚❚ Pause</button
+									<!-- The printer ignores a pause while it heats and levels, so wait for the print itself. -->
+									<button
+										class="secondary"
+										disabled={s?.gcodeState !== 'RUNNING'}
+										title={s?.gcodeState === 'RUNNING'
+											? undefined
+											: 'Pause is available once the printer starts printing'}
+										onclick={() => act.printerControl('pause')}>❚❚ Pause</button
 									>
 								{/if}
 								<button class="secondary danger" onclick={() => act.printerControl('stop')}

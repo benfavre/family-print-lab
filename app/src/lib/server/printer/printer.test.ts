@@ -169,6 +169,12 @@ describe('sending prints', () => {
 			})
 		).rejects.toThrow(/busy/);
 
+		// Still preparing: the printer would ignore a pause, so the app says so instead.
+		sim.sim.state.gcode_state = 'PREPARE';
+		sim.report();
+		await until(() => printer.status().state?.gcodeState === 'PREPARE');
+		await expect(printer.control('pause')).rejects.toThrow(/preparing/);
+
 		sim.sim.state.gcode_state = 'RUNNING';
 		sim.report();
 		await until(() => printer.status().state?.gcodeState === 'RUNNING');
