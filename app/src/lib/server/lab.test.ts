@@ -335,6 +335,14 @@ describe('jobs and filament', () => {
 		expect(lab.linkStartedTask('p2', 'x')).toBe(other);
 		expect(lab.closePrinterTask('p2', 'x', 'cancelled')).toBe(other);
 		expect(job(other)).toMatchObject({ status: 'Cancelled', chargeGrams: 0 });
+		// Two printers running the same file: each closes its own job, never an older one for any printer.
+		const legacy = lab.createJob({ projectId });
+		lab.transitionJob(legacy, { to: 'Printing', printerTask: 'same' });
+		const mine = lab.createJob({ projectId, printerId: 'p2' });
+		lab.transitionJob(mine, { to: 'Printing', printerTask: 'same' });
+		expect(lab.jobIdForTask('p2', 'same')).toBe(mine);
+		expect(lab.closePrinterTask('p2', 'same', 'succeeded')).toBe(mine);
+		expect(job(legacy).status).toBe('Printing');
 		expectError(() => lab.createJob({ projectId, printerId: 'nope' }), 404);
 		// Printing again keeps the printer it was meant for.
 		expect(job(lab.reprintJob(other)).printerId).toBe('p2');

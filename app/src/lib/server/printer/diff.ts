@@ -64,13 +64,21 @@ export function diffStatus(
 	const was = before?.gcodeState ?? '';
 	const now = after.gcodeState;
 
-	if (!active(before) && active(after)) push('print.started', ref());
-	if (active(before) && !active(after)) {
+	const ended = () => {
 		if (now === 'FINISH') push('print.finished', { ...ref(), minutes: null });
 		else if (now === 'FAILED') {
 			if (CANCEL_ERRORS.has(after.printError)) push('print.cancelled', ref());
 			else push('print.failed', { ...ref(), printError: after.printError, hms: after.hms });
 		} else if (now === 'IDLE') push('print.cancelled', ref());
+	};
+	if (before) {
+		if (!active(before) && active(after)) push('print.started', ref());
+		if (active(before) && !active(after)) ended();
+	} else if (task && (now === 'FINISH' || now === 'FAILED') && jobIdFor(task)) {
+		// The first report after the app started (or reconnected after a Settings change). A print
+		// already running did not just start (the manager links it quietly, without print.started), but
+		// one that ended while the app was away and still has its job open is reported, once.
+		ended();
 	}
 	if (was !== 'PAUSE' && now === 'PAUSE' && before) {
 		const stage = after.stage.id;

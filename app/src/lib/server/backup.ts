@@ -24,8 +24,11 @@ export interface RestoreResult {
  * files. Model version files never change after they are written, so they are hard-linked (no extra
  * space) when the file system allows it, and copied otherwise. Newest first; `keep` are retained.
  */
-/** Meta rows a restore keeps from the running computer instead of taking them from the backup. */
-const OWN_META = ['cloud'];
+/**
+ * Meta rows a restore keeps from the running computer instead of taking them from the backup (its
+ * printers stay, so the one-time BAMBU_* import must not run again and bring back a removed printer).
+ */
+const OWN_META = ['cloud', 'printers_env_imported'];
 /** Tables a restore keeps from the running computer: its printers (addresses, access codes) belong to this network. */
 const OWN_TABLES = new Set(['printers']);
 

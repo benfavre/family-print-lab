@@ -154,7 +154,10 @@ export function bootRuntime(o: BootOptions): Runtime {
 		}
 	};
 	bus.on('print.started', (e) =>
-		guard('Printer link skipped', () => lab.linkStartedTask(e.printerId, e.task))
+		guard('Printer link skipped', () => {
+			// Modules listening after this one see the job it was just linked to.
+			e.jobId ??= lab.linkStartedTask(e.printerId, e.task);
+		})
 	);
 	bus.on('print.finished', (e) =>
 		guard('Could not close the linked print job', () =>

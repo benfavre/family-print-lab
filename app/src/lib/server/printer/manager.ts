@@ -28,7 +28,7 @@ import {
 	type ModelCode
 } from '$lib/shared/printers/models';
 import type { DiscoveredPrinter, PrinterInfo } from '$lib/shared/printers/info';
-import type { PrinterStatus } from '$lib/shared/printers/status';
+import { ACTIVE_PRINTER_STATES, type PrinterStatus } from '$lib/shared/printers/status';
 
 export interface PrinterManagerOptions {
 	env: Record<string, string | undefined>;
@@ -251,6 +251,14 @@ export class PrinterManager extends EventEmitter {
 		const events = diffStatus({ id, name: printer.name }, prev, next, (task) =>
 			this.lab.jobIdForTask(id, task)
 		);
+		// A print already running when we first hear from the printer is not news (no print.started),
+		// but it may still belong to a job started outside the app.
+		if (!prev?.state && next.state && ACTIVE_PRINTER_STATES.has(next.state.gcodeState))
+			try {
+				this.lab.linkStartedTask(id, next.state.task);
+			} catch (error) {
+				this.options.log(`Printer link skipped: ${(error as Error).message}`);
+			}
 		for (const event of events) this.dispatch(printer, event);
 		this.emit('update', id);
 	}
@@ -315,8 +323,10 @@ export class PrinterManager extends EventEmitter {
 		const data = parse(printerInput, input);
 		this.uniqueSerial(data.serial);
 		const id = uuid();
-		const pin = this.pendingPins.get(data.serial) ?? null;
-		this.pendingPins.delete(data.serial);
+		// A certificate trusted by Test for exactly this printer and address.
+		const pendingKey = `${data.serial}@${data.host}`;
+		const pin = this.pendingPins.get(pendingKey) ?? null;
+		this.pendingPins.delete(pendingKey);
 		this.db
 			.insert(printers)
 			.values({ id, ...data, tlsPin: pin, sortOrder: this.nextSortOrder() })
@@ -335,15 +345,19 @@ export class PrinterManager extends EventEmitter {
 		const before = this.row(id);
 		if (!before) throw new AppError(404, 'That printer no longer exists.');
 		if (data.serial) this.uniqueSerial(data.serial, id);
-		// A different address or printer means a different certificate: trust it afresh.
-		const moved =
-			(data.host !== undefined && data.host !== before.host) ||
-			(data.serial !== undefined && data.serial !== before.serial);
+		// Another printer means another certificate: trust it afresh (or take the one Test just
+		// trusted). A new address alone keeps the pin, since the certificate names the serial number.
+		const otherPrinter = data.serial !== undefined && data.serial !== before.serial;
+		const moved = otherPrinter || (data.host !== undefined && data.host !== before.host);
+		const pendingKey = `${data.serial ?? before.serial}@${data.host ?? before.host}`;
+		const tested = this.pendingPins.get(pendingKey);
+		this.pendingPins.delete(pendingKey);
 		const result = this.db
 			.update(printers)
 			.set({
 				...data,
-				...(moved && { tlsPin: null }),
+				...(otherPrinter && { tlsPin: tested ?? null }),
+				...(!otherPrinter && !before.tlsPin && tested !== undefined && { tlsPin: tested }),
 				version: sql`${printers.version} + 1`,
 				updatedAt: nowIso()
 			})
@@ -420,9 +434,15 @@ export class PrinterManager extends EventEmitter {
 		const { id, ...data } = parse(printerTest, input);
 		const saved = id ? this.row(id) : undefined;
 		if (id && !saved) throw new AppError(404, 'That printer no longer exists.');
+		// The saved access code only ever goes to the printer it belongs to (the same serial number,
+		// which the certificate check holds the other end to).
+		if (saved && !data.accessCode && saved.serial !== data.serial)
+			throw new AppError(400, 'Enter the access code shown on this printer.');
 		const accessCode = data.accessCode || saved?.accessCode;
 		if (!accessCode) throw new AppError(400, 'Enter the access code shown on the printer.');
-		const samePrinter = saved && saved.serial === data.serial && saved.host === data.host;
+		// Same printer at a new address: its certificate has not changed, so the pin still applies.
+		const samePrinter = saved && saved.serial === data.serial;
+		const pendingKey = `${data.serial}@${data.host}`;
 		const started = performance.now();
 		const probe = new BambuPrinter(
 			{
@@ -442,8 +462,8 @@ export class PrinterManager extends EventEmitter {
 				mayPin: true,
 				ca: this.options.ca,
 				onPin: (pin) => {
-					if (samePrinter) this.savePin(saved!.id, pin);
-					else this.pendingPins.set(data.serial, pin);
+					if (samePrinter && saved!.host === data.host) this.savePin(saved!.id, pin);
+					else this.pendingPins.set(pendingKey, pin);
 				}
 			}
 		);

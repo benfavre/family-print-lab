@@ -149,6 +149,7 @@ export class BambuPrinter extends EventEmitter {
 	}
 
 	start() {
+		if (!this.stopped) return this;
 		this.stopped = false;
 		this.open();
 		this.watchdog = setInterval(() => this.checkStale(), 10_000);
@@ -192,8 +193,9 @@ export class BambuPrinter extends EventEmitter {
 			this.lastMessage = Date.now();
 			this.staleSince = 0;
 			client.subscribe(`device/${serial}/report`);
-			// Everything once on connect, then versions (and again every 6 hours).
-			this.requestPushall(true);
+			// Everything on the first connect (the merged report survives reconnects, so later ones keep
+			// to the 5-minute rule), then versions (and again every 6 hours).
+			this.requestPushall(!this.lastPushall);
 			this.requestVersions();
 			clearInterval(this.versionTimer);
 			this.versionTimer = setInterval(() => this.requestVersions(), VERSION_EVERY_MS);
@@ -245,8 +247,9 @@ export class BambuPrinter extends EventEmitter {
 		const quiet = Date.now() - this.lastMessage;
 		if (quiet < STALE_MS) return;
 		if (!this.staleSince) {
-			this.staleSince = Date.now();
-			this.requestPushall(false);
+			// A printer that sends deltas may just have nothing to say: only a pushall it leaves
+			// unanswered makes the connection stale, and pushall waits its 5 minutes.
+			if (this.requestPushall(false)) this.staleSince = Date.now();
 		} else if (Date.now() - this.staleSince >= STALE_CLOSE_MS) {
 			this.log('no reports for a while, reconnecting');
 			this.staleSince = 0;
@@ -254,11 +257,13 @@ export class BambuPrinter extends EventEmitter {
 		}
 	}
 
+	/** Asks for a full report; false when the 5-minute rule for delta printers says not yet. */
 	private requestPushall(force: boolean) {
 		if (!force && this.model.reports === 'delta' && Date.now() - this.lastPushall < PUSHALL_MIN_MS)
-			return;
+			return false;
 		this.lastPushall = Date.now();
 		void this.send('pushing.pushall', {}).catch(() => {});
+		return true;
 	}
 
 	private requestVersions() {
@@ -504,7 +509,10 @@ export class BambuPrinter extends EventEmitter {
 	rawReport(): { model: ModelCode; pushall: Raw; get_version: Raw } {
 		return {
 			model: this.model.code,
-			pushall: redact(structuredClone(this.raw), this.config.serial) as Raw,
+			pushall: redact(structuredClone(this.raw), [
+				this.config.serial,
+				this.config.accessCode
+			]) as Raw,
 			get_version: {
 				command: 'get_version',
 				module: this.versions.map((m) => ({
@@ -520,11 +528,12 @@ export class BambuPrinter extends EventEmitter {
 }
 
 const IPV4 = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
-function redact(v: unknown, serial: string, key = ''): unknown {
-	if (Array.isArray(v)) return v.map((x) => redact(x, serial, key));
+/** `secrets`: the serial number and the access code (should a report ever carry it, e.g. in a URL). */
+function redact(v: unknown, secrets: string[], key = ''): unknown {
+	if (Array.isArray(v)) return v.map((x) => redact(x, secrets, key));
 	if (isObject(v)) {
 		const out: Raw = {};
-		for (const [k, x] of Object.entries(v)) out[k] = redact(x, serial, k);
+		for (const [k, x] of Object.entries(v)) out[k] = redact(x, secrets, k);
 		return out;
 	}
 	// Serial numbers, and cloud account, task and model ids (they can identify the family).
@@ -536,7 +545,12 @@ function redact(v: unknown, serial: string, key = ''): unknown {
 		return typeof v === 'number' ? 0 : '**REDACTED**';
 	if (key === 'ip' && typeof v === 'number') return 0;
 	if (typeof v === 'string')
-		return v.replace(IPV4, '192.0.2.10').replaceAll(serial, '**REDACTED**');
+		return secrets
+			.filter(Boolean)
+			.reduce(
+				(out, secret) => out.replaceAll(secret, '**REDACTED**'),
+				v.replace(IPV4, '192.0.2.10')
+			);
 	return v;
 }
 

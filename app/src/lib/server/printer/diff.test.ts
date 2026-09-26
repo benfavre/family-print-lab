@@ -59,11 +59,31 @@ describe('diffStatus', () => {
 			['print.started']
 		],
 		[
-			'starts (first report while printing)',
+			// Already printing when the app starts: not news (the manager links the job quietly).
+			'first report while printing',
 			null,
 			status({ gcodeState: 'RUNNING', layer: 3 }),
-			['printer.online', 'print.started']
+			['printer.online']
 		],
+		[
+			'first report while printing, after connecting',
+			status(null),
+			status({ gcodeState: 'RUNNING', layer: 3 }),
+			[]
+		],
+		[
+			'first report: finished while the app was away, job still open',
+			status(null),
+			status({ gcodeState: 'FINISH' }),
+			['print.finished']
+		],
+		[
+			'first report: finished long ago, no open job',
+			status(null),
+			status({ gcodeState: 'FINISH', task: 'old' }),
+			[]
+		],
+		['first report: idle', status(null), status({ gcodeState: 'IDLE' }), []],
 		[
 			'finishes',
 			status({ gcodeState: 'RUNNING' }),

@@ -924,18 +924,23 @@ export class Lab {
 		});
 	}
 
-	/** Printing jobs a printer's task can belong to: that printer's, or ones for any printer. */
+	/** Printing jobs a printer's task can belong to: that printer's first, then ones for any printer. */
 	private printingOn(printerId: string) {
-		return this.db
-			.select()
-			.from(jobs)
-			.where(
-				and(eq(jobs.status, 'Printing'), or(eq(jobs.printerId, printerId), isNull(jobs.printerId)))
-			)
-			.all() as Job[];
+		return (
+			this.db
+				.select()
+				.from(jobs)
+				.where(
+					and(
+						eq(jobs.status, 'Printing'),
+						or(eq(jobs.printerId, printerId), isNull(jobs.printerId))
+					)
+				)
+				.all() as Job[]
+		).sort((a, b) => Number(b.printerId === printerId) - Number(a.printerId === printerId));
 	}
 
-	/** The job linked to a printer's running task, if any. */
+	/** The job linked to a printer's running task, if any (two printers may run the same file). */
 	jobIdForTask(printerId: string, task: string): string | null {
 		if (!task) return null;
 		return this.printingOn(printerId).find((j) => j.printerTask === task)?.id ?? null;

@@ -172,6 +172,32 @@ describe('keyed merge (P1/A1 deltas)', () => {
 		expect(parse(f, raw).ams[0].trays[0].type).toBe('PLA');
 	});
 
+	it('empties a tray sent as only its id (and state)', () => {
+		const raw = fresh(x1c);
+		mergeReport(raw, { ams: { ams: [{ id: '0', tray: [{ id: '1' }, { id: '2', state: 10 }] }] } });
+		const s = parse(x1c, raw);
+		expect(s.ams[0].trays.map((t) => t.type)).toEqual(['PLA', '', '', 'PLA']);
+		expect(s.ams[0].trays[1]).toMatchObject({ color: null, remain: null, tagUid: null });
+		// A spool put back in comes back in full.
+		mergeReport(raw, {
+			ams: { ams: [{ id: '0', tray: [{ id: '1', state: 11, tray_type: 'PETG', remain: 80 }] }] }
+		});
+		expect(parse(x1c, raw).ams[0].trays[1]).toMatchObject({ type: 'PETG', remain: 80 });
+	});
+
+	it('drops an unplugged AMS unit when ams_exist_bits no longer lists it', () => {
+		const raw = fresh(x1c);
+		expect(parse(x1c, raw).ams.map((u) => u.id)).toEqual([0, 1, 2, 128]);
+		// 0x17 → 0x13: unit 2 is gone (bits 0, 1 and 4 for the AMS HT 128 remain).
+		mergeReport(raw, { ams: { ams_exist_bits: '13' } });
+		expect(parse(x1c, raw).ams.map((u) => u.id)).toEqual([0, 1, 128]);
+		const a2l = load('a2l');
+		const lite = fresh(a2l);
+		expect(parse(a2l, lite).ams.map((u) => u.id)).toEqual([16]);
+		mergeReport(lite, { ams: { ams_exist_bits: '0' } });
+		expect(parse(a2l, lite).ams).toEqual([]);
+	});
+
 	it('the delta sequence ends finished, with the new tray, humidity and no alert', () => {
 		const f = load('p1-delta-sequence');
 		const raw = fresh(f);

@@ -43,6 +43,8 @@ const isObject = (v: unknown): v is Raw => !!v && typeof v === 'object' && !Arra
 const unsafeKey = (k: string) => k === '__proto__' || k === 'constructor' || k === 'prototype';
 const clone = <T>(v: T): T => (v && typeof v === 'object' ? structuredClone(v) : v);
 
+const isEmptyTray = (t: Raw) => Object.keys(t).every((k) => k === 'id' || k === 'state');
+
 function mergeInto(target: Raw, patch: Raw, path: string) {
 	for (const [key, value] of Object.entries(patch)) {
 		// Reports come off the network: never let them reach object prototypes.
@@ -57,7 +59,13 @@ function mergeInto(target: Raw, patch: Raw, path: string) {
 				const id = String(item[idKey]);
 				const existing = list.find((x) => isObject(x) && String(x[idKey]) === id) as
 					Raw | undefined;
-				if (existing) mergeInto(existing, item, `${here}[]`);
+				// A tray sent as only its id (and state) is empty now: ha-bambulab AMSTray.print_update
+				// ("metadata only"), and Bambu Studio clears the filament of a tray sent without tray_type
+				// (DevFilaSystem.cpp ParseAmsTrayInfo). Merging would keep the old spool.
+				if (existing && here === 'ams.ams[].tray' && isEmptyTray(item)) {
+					for (const k of Object.keys(existing)) delete existing[k];
+					Object.assign(existing, item);
+				} else if (existing) mergeInto(existing, item, `${here}[]`);
 				else if (list.length < MAX_ARRAY) {
 					const fresh: Raw = {};
 					mergeInto(fresh, item, `${here}[]`);
@@ -230,6 +238,20 @@ function amsModule(versions: VersionModule[], id: number) {
 	return null;
 }
 
+/**
+ * Whether `ams_exist_bits` still lists a unit (Bambu Studio DevFilaSystem.cpp ParseAmsInfo: bit = id for
+ * AMS, AMS Lite and AMS 2 Pro, 12 for the A2L's AMS Lite (type 5), 4 + id − 128 for AMS HT). Units stay
+ * in the merged report after they are unplugged; without the field every unit counts.
+ */
+function unitExists(bits: unknown, u: Raw): boolean {
+	if (typeof bits !== 'string' || !/^[0-9a-f]+$/i.test(bits)) return true;
+	const id = num(u.id);
+	if (id === null) return true;
+	const type = hexFlag(u.info, 0, 4);
+	const bit = type === 5 ? 12 : type === 4 || id >= 0x80 ? 4 + id - 0x80 : id;
+	return bit < 0 || hexFlag(bits, bit) !== 0;
+}
+
 function parseAms(
 	ams: Raw,
 	versions: VersionModule[],
@@ -239,6 +261,7 @@ function parseAms(
 ): AmsUnit[] {
 	return list(ams.ams)
 		.slice(0, 16)
+		.filter((u) => unitExists(ams.ams_exist_bits, u))
 		.map((u) => {
 			const id = num(u.id) ?? 0;
 			const info = u.info;

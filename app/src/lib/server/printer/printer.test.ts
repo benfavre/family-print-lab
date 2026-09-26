@@ -141,6 +141,28 @@ describe('typed commands against the simulator', () => {
 	});
 });
 
+describe('reconnecting', () => {
+	it('keeps the merged report and does not ask a delta printer for everything again', async () => {
+		const { sim, printer } = await connect();
+		const pushalls: string[] = [];
+		const send = printer.send.bind(printer);
+		printer.send = ((name, params, o) => {
+			if (name === 'pushing.pushall') pushalls.push(name);
+			return send(name, params, o);
+		}) as typeof printer.send;
+		await until(() => printer.status().connected && printer.snapshot);
+		const port = printer.config.port!;
+		await sim.close();
+		await until(() => !printer.connected);
+		await sim.listen(port, '127.0.0.1', sim.ftpPort);
+		await until(() => printer.connected, 8000);
+		// Once on the first connect only: the X2D sends deltas, so pushall at most every 5 minutes
+		// (OpenBambuAPI mqtt.md).
+		expect(pushalls).toEqual(['pushing.pushall']);
+		expect(printer.snapshot?.gcodeState).toBe('IDLE');
+	}, 12_000);
+});
+
 describe('diagnostics', () => {
 	it('exports the raw report without serials, addresses or cloud ids', async () => {
 		const { sim, printer } = await connect();
@@ -150,6 +172,8 @@ describe('diagnostics', () => {
 			job_id: 904240393,
 			net: { info: [{ ip: 889301184, mask: 16777215 }] },
 			ipcam: { ipcam_dev: '1', rtsp_url: 'rtsps://192.168.1.5/streaming/live/1' },
+			// Should a report ever carry the access code (a URL with credentials), it stays out too.
+			upload: { url: `ftps://bblp:${sim.accessCode}@printer/` },
 			upgrade_state: { sn: sim.serial, new_version_state: 2 }
 		});
 		sim.report(true);
@@ -162,6 +186,7 @@ describe('diagnostics', () => {
 		expect(text).not.toContain('US1fccd3bfcb9084');
 		expect(text).not.toContain('889301184');
 		expect(text).not.toContain('904240393');
+		expect(text).not.toContain(sim.accessCode);
 		expect(raw.get_version.module).toEqual(
 			expect.arrayContaining([expect.objectContaining({ name: 'ota', sn: '**REDACTED**' })])
 		);

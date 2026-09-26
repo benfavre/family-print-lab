@@ -74,6 +74,30 @@ describe('backups', () => {
 		}
 	});
 
+	it("keeps this computer's printers, and a removed env printer stays removed", async () => {
+		const { root, db, lab, backups } = workspace();
+		try {
+			const snap = await backups.create('manual');
+			// Saved after the backup: the one-time BAMBU_* import ran, and a printer was added.
+			db.$client
+				.prepare("INSERT INTO meta (key, value) VALUES ('printers_env_imported', 'x')")
+				.run();
+			db.$client
+				.prepare(
+					"INSERT INTO printers (id, name, model, host, serial, access_code) VALUES ('p1', 'P1S', 'C12', '10.0.0.2', 'S1', '12345678')"
+				)
+				.run();
+			await backups.restore(snap.file);
+			expect(lab.printers().map((p) => p.id)).toEqual(['p1']);
+			expect(
+				db.$client.prepare("SELECT value FROM meta WHERE key = 'printers_env_imported'").get()
+			).toEqual({ value: 'x' });
+		} finally {
+			db.$client.close();
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it('restores the oldest kept snapshot even when the safety copy pushes it past the limit', async () => {
 		const { root, db, lab, backups, profileId } = workspace();
 		try {
