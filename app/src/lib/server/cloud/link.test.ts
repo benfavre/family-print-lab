@@ -202,7 +202,9 @@ describe('Print Lab Cloud link', () => {
 		printer.status = printing('RUNNING', 40);
 		printer.update();
 		await new Promise((r) => setTimeout(r, 100));
-		expect(sim.state().printerMessages).toBe(0); // off by default: nothing sent
+		// Off by default: only `null` on connecting, nothing about the printer.
+		expect(sim.state().printer).toBeNull();
+		expect(sim.state().printerMessages).toBe(1);
 
 		link.setShareProgress(true);
 		await until(() => sim.state().printer, 'printer');

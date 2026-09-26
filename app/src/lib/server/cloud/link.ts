@@ -309,8 +309,9 @@ export class CloudLink extends EventEmitter {
 			this.lastSent = '';
 			this.lastPrinter = '';
 			this.report();
-			// The cloud forgets the printer on each connection, so this is sent only when shared.
-			if (this.stored.shareProgress) this.sendPrinter();
+			// Always, so the cloud catches a print that ended while offline, and forgets the printer
+			// if sharing was turned off meanwhile (then it is just `null`: nothing about the printer).
+			this.sendPrinter();
 		} else if (m.type === 'plan') {
 			this.plan = m.plan === true;
 			this.emit('status', this.status());
