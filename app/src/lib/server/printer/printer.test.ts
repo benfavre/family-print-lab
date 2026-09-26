@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { decode, encode, TYPE } from './mqtt';
 import { BambuPrinter, summarize } from './bambu';
+import { diffStatus } from './diff';
+import type { PrinterStatus } from '$lib/shared/printers/status';
 import { createSimulator, type Simulator } from './simulator';
 import { fakeSliced } from './sliced';
 import { openDatabase } from '../db';
@@ -20,6 +22,18 @@ afterEach(async () => {
 	for (const fn of cleanups.splice(0).reverse()) await fn();
 });
 
+/** Print start/finish as the PrinterManager derives them from status changes (diff.ts). */
+function follow(printer: BambuPrinter, on: (name: string, task: string) => void) {
+	let prev: PrinterStatus | null = null;
+	printer.on('update', () => {
+		const next = printer.status();
+		for (const e of diffStatus({ id: 'p1', name: 'X2D' }, prev, next, () => null))
+			if (e.name.startsWith('print.') && e.name !== 'print.layer')
+				on(e.name, (e.data as { task: string }).task);
+		prev = structuredClone(next);
+	});
+}
+
 async function connect(options: { speed?: number; code?: string } = {}) {
 	const sim: Simulator = createSimulator({
 		speed: options.speed ?? 600,
@@ -28,6 +42,8 @@ async function connect(options: { speed?: number; code?: string } = {}) {
 	});
 	const port = await sim.listen(0);
 	const printer = new BambuPrinter({
+		id: 'p1',
+		model: 'N6',
 		host: '127.0.0.1',
 		port,
 		ftpPort: sim.ftpPort,
@@ -58,6 +74,69 @@ describe('MQTT codec', () => {
 			expect(packets[0].password).toBe('pw');
 			expect(packets[1].payload!.toString()).toBe('y'.repeat(300));
 		}
+	});
+});
+
+describe('MQTT QoS 1 and retain', () => {
+	it('encodes and decodes packet ids, QoS, retain and PUBACK', () => {
+		const bytes = Buffer.concat([
+			encode.publish('a/b', '{"x":1}', { qos: 1, retain: true, id: 513 }),
+			encode.puback(513)
+		]);
+		const { packets } = decode(bytes);
+		expect(packets[0]).toMatchObject({
+			type: TYPE.PUBLISH,
+			topic: 'a/b',
+			qos: 1,
+			retain: true,
+			id: 513
+		});
+		expect(packets[0].payload!.toString()).toBe('{"x":1}');
+		expect(packets[1]).toMatchObject({ type: TYPE.PUBACK, id: 513 });
+		expect(() =>
+			decode(Buffer.concat([Buffer.from([0x30]), Buffer.from([0xff, 0xff, 0xff, 0x7f])]))
+		).toThrow(/too large/);
+	});
+
+	it('resolves a QoS 1 publish on PUBACK and rejects it when the connection drops', async () => {
+		const { printer } = await connect();
+		await until(() => printer.status().connected && printer.status().state);
+		// Pause is sent with QoS 1; the simulator acknowledges and answers.
+		printer.snapshot!.gcodeState = 'RUNNING';
+		await expect(printer.send('print.pause', {})).rejects.toThrow(/running print/);
+		const sent: number[] = [];
+		const client = (printer as unknown as { client: import('./mqtt').MqttClient }).client;
+		await client.publish('device/x/request', '{}', { qos: 1 }).then(() => sent.push(1));
+		expect(sent).toEqual([1]);
+	});
+});
+
+describe('typed commands against the simulator', () => {
+	it('uses decimal sequence ids in 20000–29999 and matches replies', async () => {
+		const { printer } = await connect();
+		await until(() => printer.status().connected && printer.versions.length);
+		const out = await printer.send('info.get_version', {});
+		expect(out.outcome).toBe('confirmed');
+		expect(out.reply?.module).toBeTruthy();
+		const seq = Number((printer as unknown as { sequence: number }).sequence);
+		expect(seq).toBeGreaterThanOrEqual(20000);
+		expect(seq).toBeLessThanOrEqual(29999);
+		await expect(printer.send('print.nope' as 'print.stop', {})).rejects.toMatchObject({
+			status: 400
+		});
+		await expect(printer.send('print.gcode_line', { lines: [] })).rejects.toMatchObject({
+			status: 400
+		});
+	});
+
+	it('refuses commands while Developer Mode is off, and says so', async () => {
+		const { sim, printer } = await connect();
+		await until(() => printer.status().connected && printer.status().state);
+		sim.sim.state.fun = '20000000';
+		sim.report();
+		await until(() => printer.status().state?.developerMode === false);
+		await expect(printer.control('stop')).rejects.toThrow(/Developer Mode is off/);
+		expect(printer.status().warning).toMatch(/Developer Mode/);
 	});
 });
 
@@ -92,15 +171,14 @@ describe('printer link against the simulator', () => {
 	it('connects, follows a whole print and reports start and finish', async () => {
 		const { sim, printer } = await connect();
 		const events: unknown[] = [];
-		printer.on('started', (e) => events.push(['started', e.task]));
-		printer.on('finished', (e) => events.push(['finished', e.task, e.ok]));
+		follow(printer, (name, task) => events.push([name, task]));
 		await until(() => printer.status().state?.gcodeState === 'IDLE');
 		expect(printer.status()).toMatchObject({ connected: true, simulated: true });
 		sim.start({ name: 'part', minutes: 2, slot: 2, grams: 100 });
 		await until(() => events.length === 2, 10_000);
 		expect(events).toEqual([
-			['started', 'part'],
-			['finished', 'part', true]
+			['print.started', 'part'],
+			['print.finished', 'part']
 		]);
 		expect(printer.status().state?.ams[0].trays[2].remain).toBeLessThan(92);
 	});
@@ -115,8 +193,10 @@ describe('printer link against the simulator', () => {
 	it('drives the workspace: links the running job, then closes it and charges filament', async () => {
 		const { sim, printer } = await connect();
 		const lab = new Lab(openDatabase(':memory:'));
-		printer.on('started', ({ task }) => lab.linkStartedTask(task));
-		printer.on('finished', ({ task, ok }) => lab.closePrinterTask(task, ok));
+		follow(printer, (name, task) => {
+			if (name === 'print.started') lab.linkStartedTask(task);
+			if (name === 'print.finished') lab.closePrinterTask(task, true);
+		});
 		const profileId = lab.createProfile({ name: 'Alex', color: 'blue' });
 		const projectId = lab.createProject({ profileId, title: 'Dock' });
 		const spoolId = lab.createSpool({

@@ -12,6 +12,11 @@ export interface FtpOptions {
 	password: string;
 	useTls?: boolean;
 	timeoutMs?: number;
+	/**
+	 * TLS settings and the certificate check from printer/tls.ts: the check runs once the handshake is
+	 * done, before USER/PASS, so the access code never reaches an unverified peer.
+	 */
+	tls?: { options: tls.ConnectionOptions; verify?: (socket: tls.TLSSocket) => string | null };
 }
 
 type Sock = net.Socket | tls.TLSSocket;
@@ -89,9 +94,18 @@ function ftpError(command: string, reply: { code: number; text: string }) {
 	return new Error(`Printer file transfer failed at ${verb}: ${reply.code} ${reply.text}`);
 }
 
-function open(opts: Required<FtpOptions>, port: number, session?: Buffer): Promise<Sock> {
+function open(
+	opts: Required<Omit<FtpOptions, 'tls'>> & Pick<FtpOptions, 'tls'>,
+	port: number,
+	session?: Buffer
+): Promise<Sock> {
 	return new Promise((resolve, reject) => {
 		const done = (s: Sock) => {
+			const refused = s instanceof tls.TLSSocket ? opts.tls?.verify?.(s) : null;
+			if (refused) {
+				s.destroy();
+				return reject(new Error(refused));
+			}
 			s.off('error', reject);
 			// Connected: drop the connect timeout (the control line may sit quiet during a long upload)
 			// and keep an error listener at all times, so a reset can never become an uncaught error.
@@ -103,11 +117,12 @@ function open(opts: Required<FtpOptions>, port: number, session?: Buffer): Promi
 		const socket: Sock = opts.useTls
 			? tls.connect(
 					{
+						// Without a policy (the simulator) nothing is checked; printers get printer/tls.ts.
+						rejectUnauthorized: false,
+						...opts.tls?.options,
 						host: opts.host,
 						port,
 						session,
-						// The printer's certificate is self-signed; the access code is the credential.
-						rejectUnauthorized: false,
 						// Session reuse is dependable with TLS 1.2 on the printer's FTP server.
 						maxVersion: 'TLSv1.2'
 					},
@@ -132,7 +147,7 @@ export async function uploadFile(
 	onProgress?: (fraction: number) => void,
 	signal?: AbortSignal
 ): Promise<string> {
-	const opts: Required<FtpOptions> = {
+	const opts: Required<Omit<FtpOptions, 'tls'>> & Pick<FtpOptions, 'tls'> = {
 		port: options.useTls === false ? 21 : 990,
 		user: 'bblp',
 		useTls: true,

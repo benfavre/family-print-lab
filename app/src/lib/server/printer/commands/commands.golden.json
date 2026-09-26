@@ -1,0 +1,139 @@
+[
+	{
+		"name": "pushing.pushall",
+		"model": "C12",
+		"params": {},
+		"source": "OpenBambuAPI mqtt.md pushing.pushall; Bambu Studio DeviceManager.cpp command_request_push_all",
+		"qos": 0,
+		"payload": {
+			"pushing": { "sequence_id": "SEQ", "command": "pushall", "version": 1, "push_target": 1 }
+		}
+	},
+	{
+		"name": "info.get_version",
+		"model": "N6",
+		"params": {},
+		"source": "OpenBambuAPI mqtt.md info.get_version; Bambu Studio DeviceManager.cpp command_get_version (QoS 1)",
+		"qos": 1,
+		"payload": { "info": { "sequence_id": "SEQ", "command": "get_version" } }
+	},
+	{
+		"name": "print.pause",
+		"model": "C12",
+		"params": {},
+		"source": "OpenBambuAPI mqtt.md print.pause (QoS 1); Bambu Studio command_task_pause",
+		"qos": 1,
+		"payload": { "print": { "sequence_id": "SEQ", "command": "pause", "param": "" } }
+	},
+	{
+		"name": "print.resume",
+		"model": "C12",
+		"params": {},
+		"source": "OpenBambuAPI mqtt.md print.resume (QoS 1); Bambu Studio command_task_resume",
+		"qos": 1,
+		"payload": { "print": { "sequence_id": "SEQ", "command": "resume", "param": "" } }
+	},
+	{
+		"name": "print.stop",
+		"model": "N6",
+		"params": {},
+		"source": "OpenBambuAPI mqtt.md print.stop (QoS 1); Bambu Studio command_task_abort",
+		"qos": 1,
+		"payload": { "print": { "sequence_id": "SEQ", "command": "stop", "param": "" } }
+	},
+	{
+		"name": "print.gcode_line",
+		"model": "N1",
+		"params": { "lines": ["M104 S200", "M140 S60"] },
+		"source": "OpenBambuAPI mqtt.md print.gcode_line; ha-bambulab commands.py SEND_GCODE_TEMPLATE",
+		"qos": 0,
+		"payload": {
+			"print": { "sequence_id": "SEQ", "command": "gcode_line", "param": "M104 S200\nM140 S60\n" }
+		}
+	},
+	{
+		"name": "print.project_file",
+		"model": "C12",
+		"params": {
+			"file": "Desk_hook_v02.gcode.3mf",
+			"plate": 2,
+			"title": "Desk hook v02",
+			"md5": "0123456789ABCDEF0123456789ABCDEF",
+			"useAms": true,
+			"amsMapping": [2, -1, 255]
+		},
+		"source": "OpenBambuAPI mqtt.md print.project_file; ams_mapping/ams_mapping2 per Bambu Studio SelectMachine.cpp get_ams_mapping_result; file:///sdcard/ on P1 per ha-bambulab const.py LEGACY_SDCARD_PRINTERS",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "project_file",
+				"param": "Metadata/plate_2.gcode",
+				"url": "file:///sdcard/Desk_hook_v02.gcode.3mf",
+				"file": "",
+				"md5": "0123456789ABCDEF0123456789ABCDEF",
+				"project_id": "0",
+				"profile_id": "0",
+				"task_id": "0",
+				"subtask_id": "0",
+				"subtask_name": "Desk hook v02",
+				"bed_type": "auto",
+				"timelapse": false,
+				"bed_levelling": true,
+				"flow_cali": true,
+				"vibration_cali": true,
+				"layer_inspect": false,
+				"use_ams": true,
+				"ams_mapping": [2, -1, -1],
+				"ams_mapping2": [
+					{ "ams_id": 0, "slot_id": 2 },
+					{ "ams_id": 255, "slot_id": 255 },
+					{ "ams_id": 255, "slot_id": 0 }
+				]
+			}
+		}
+	},
+	{
+		"name": "print.project_file",
+		"model": "O1D",
+		"params": {
+			"file": "Tray.gcode.3mf",
+			"plate": 1,
+			"title": "Tray",
+			"useAms": true,
+			"amsMapping": [5, 129, 254],
+			"timelapse": true,
+			"bedLeveling": false
+		},
+		"source": "Newer models take ftp:/// (ha-bambulab const.py); AMS HT {128+n, 0} and the deputy external spool {254, 0} per SelectMachine.cpp",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "project_file",
+				"param": "Metadata/plate_1.gcode",
+				"url": "ftp:///Tray.gcode.3mf",
+				"file": "",
+				"md5": "",
+				"project_id": "0",
+				"profile_id": "0",
+				"task_id": "0",
+				"subtask_id": "0",
+				"subtask_name": "Tray",
+				"bed_type": "auto",
+				"timelapse": true,
+				"bed_levelling": false,
+				"flow_cali": true,
+				"vibration_cali": true,
+				"layer_inspect": false,
+				"use_ams": true,
+				"ams_mapping": [5, 129, -1],
+				"ams_mapping2": [
+					{ "ams_id": 1, "slot_id": 1 },
+					{ "ams_id": 129, "slot_id": 0 },
+					{ "ams_id": 254, "slot_id": 0 }
+				]
+			}
+		}
+	}
+]

@@ -7,6 +7,7 @@ import { Lab } from './lab';
 import { Backups } from './backup';
 import { PrintFiles } from './printing';
 import { printerFromEnv, type BambuPrinter } from './printer/bambu';
+import { diffStatus } from './printer/diff';
 import { createAi, type Assistant } from './ai/assistant';
 import {
 	anthropicApi,
@@ -94,19 +95,22 @@ function boot(): Runtime {
 
 	const printer = printerFromEnv(env);
 	if (printer) {
-		printer.on('started', ({ task }) => {
-			try {
-				lab.linkStartedTask(task);
-			} catch (error) {
-				log(`Printer link skipped: ${(error as Error).message}`);
+		// Print start and end come from status changes (printer/diff.ts).
+		let prev: PrinterStatus | null = null;
+		printer.on('update', () => {
+			const next = printer.status();
+			for (const e of diffStatus({ id: printer.id, name: printer.name }, prev, next, () => null)) {
+				const { task } = e.data as { task?: string };
+				try {
+					if (e.name === 'print.started') lab.linkStartedTask(task ?? '');
+					if (e.name === 'print.finished') lab.closePrinterTask(task ?? '', true);
+					if (e.name === 'print.failed' || e.name === 'print.cancelled')
+						lab.closePrinterTask(task ?? '', false);
+				} catch (error) {
+					log(`Could not update the linked print job: ${(error as Error).message}`);
+				}
 			}
-		});
-		printer.on('finished', ({ task, ok }) => {
-			try {
-				lab.closePrinterTask(task, ok);
-			} catch (error) {
-				log(`Could not close the linked print job: ${(error as Error).message}`);
-			}
+			prev = structuredClone(next);
 		});
 		printer.start();
 	}

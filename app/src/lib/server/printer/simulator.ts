@@ -351,6 +351,8 @@ export function createSimulator({
 				if (!authed) continue;
 				if (p.type === TYPE.SUBSCRIBE) socket.write(encode.suback(p.id ?? 1));
 				if (p.type === TYPE.PINGREQ) socket.write(encode.pingresp());
+				if (p.type === TYPE.PUBLISH && p.qos === 1 && p.id !== undefined)
+					socket.write(encode.puback(p.id));
 				if (p.type === TYPE.PUBLISH && p.topic === `device/${serial}/request`) {
 					let msg: Json;
 					try {
@@ -361,6 +363,27 @@ export function createSimulator({
 					if (msg.pushing?.command === 'pushall') {
 						sim.sent = {};
 						report(true);
+					} else if (msg.info?.command === 'get_version') {
+						socket.write(
+							encode.publish(
+								`device/${serial}/report`,
+								JSON.stringify({
+									info: {
+										command: 'get_version',
+										sequence_id: String(msg.info.sequence_id ?? '0'),
+										module: [
+											{
+												name: 'ota',
+												sw_ver: '01.01.00.00',
+												hw_ver: 'N/A',
+												product_name: 'Bambu Lab X2D',
+												sn: serial
+											}
+										]
+									}
+								})
+							)
+						);
 					} else if (msg.print?.command) command(msg.print);
 					else log(`(ignored command: ${JSON.stringify(msg).slice(0, 80)})`);
 				}

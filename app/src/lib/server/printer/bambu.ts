@@ -1,31 +1,47 @@
-// Link to a Bambu Lab printer in LAN-only + Developer Mode, via its local MQTT broker (status, and the
-// print commands: start an uploaded sliced file, pause, resume, stop) and its FTPS file service.
-// Field names follow the community-documented report format (X1/P1/A1); newer models may add or rename
-// fields, so every value is optional and unknown data is ignored rather than trusted.
+// One connection to a Bambu Lab printer in LAN-only + Developer Mode: its local MQTT broker (reports on
+// device/<serial>/report, commands on device/<serial>/request) and its FTPS file service. Reports go
+// through report.ts (merge + parse); commands go through the typed command layer (commands/). The
+// PrinterManager owns one of these per saved printer and turns status changes into bus events.
 import { EventEmitter } from 'node:events';
+import type tls from 'node:tls';
 import { MqttClient } from './mqtt';
 import { uploadFile } from './ftp';
-import { mergeReport, parseReport } from './report';
-import { PRINTER_MODELS, type ModelCode } from '$lib/shared/printers/models';
+import { firmwareVersion, mergeReport, parseReport, parseVersions, type Raw } from './report';
+import { printerTlsOptions, verifyPrinterCert } from './tls';
+import {
+	commandDef,
+	replyFailed,
+	type CommandContext,
+	type CommandMap,
+	type CommandName,
+	type CommandOutcome
+} from './commands/registry';
+import type { ProjectFileParams } from './commands/defs/core';
+import { AppError, parse } from '../validation';
+import {
+	PRINTER_MODELS,
+	capabilitiesFor,
+	detectModel,
+	modelShort,
+	type CameraProtocol,
+	type ModelCode,
+	type PrinterModel
+} from '$lib/shared/printers/models';
 import {
 	ACTIVE_PRINTER_STATES,
 	type PrinterSnapshot,
-	type PrinterStatus
-} from '$lib/shared/domain';
+	type PrinterStatus,
+	type VersionModule
+} from '$lib/shared/printers/status';
 
-type Raw = Record<string, unknown>;
-const text = (v: unknown, max = 200) => (typeof v === 'string' ? v.slice(0, max) : '');
-
-/** Turns a raw `print` report into the snapshot the app uses (see report.ts). */
-export function summarize(p: Raw = {}, model: ModelCode = 'N6'): PrinterSnapshot {
-	return parseReport(mergeReport({}, p), {
-		model: PRINTER_MODELS[model],
-		versions: [],
-		accessCodeSet: true
-	});
-}
+export type { ProjectFileParams };
+/** @deprecated The old name of print.project_file's params. */
+export type StartOptions = ProjectFileParams;
+export type PrintControl = 'pause' | 'resume' | 'stop';
 
 export interface PrinterConfig {
+	id: string;
+	model: ModelCode;
 	host: string;
 	serial: string;
 	accessCode: string;
@@ -35,67 +51,127 @@ export interface PrinterConfig {
 	ftpPort?: number;
 	useTls?: boolean;
 	simulated?: boolean;
+	enabled?: boolean;
+	/** SHA-256 of the printer's certificate when it was trusted on first use (tls.ts). */
+	tlsPin?: string | null;
 }
 
-export type PrintControl = 'pause' | 'resume' | 'stop';
-
-export interface StartOptions {
-	/** The name the file was stored under on the printer. */
-	file: string;
-	/** 1-based plate number inside the file. */
-	plate: number;
-	/** Shown on the printer's screen and reported back while it prints. */
-	title: string;
-	md5?: string;
-	useAms: boolean;
-	/** One entry per filament in the file: the AMS slot (0-3 for AMS 1, 4-7 for AMS 2…), -1 unused. */
-	amsMapping: number[];
-	bedType?: string;
-	timelapse?: boolean;
-	bedLeveling?: boolean;
-	flowCalibration?: boolean;
+export interface ConnectionOptions {
+	/**
+	 * This connection was started by the person (Add, Test, the env import), so an unknown certificate
+	 * chain may be trusted on first use and pinned.
+	 */
+	mayPin?: boolean;
+	/** Called with the fingerprint to store when a certificate is pinned. */
+	onPin?: (fingerprint: string) => void;
+	/** CA certificates instead of the bundled Bambu ones (tests). */
+	ca?: (string | Buffer)[];
+	log?: (message: string) => void;
 }
 
-/** What the printer said about a command, when it answers. */
-interface CommandReply {
+const text = (v: unknown, max = 200) => (typeof v === 'string' ? v.slice(0, max) : '');
+const isObject = (v: unknown): v is Raw => !!v && typeof v === 'object' && !Array.isArray(v);
+
+export const DEVELOPER_MODE_OFF =
+	'Developer Mode is off on the printer, so it ignores commands from this app. Turn it on in the printer’s network settings.';
+/** OpenBambuAPI mqtt.md "pushing.pushall": not more often than every 5 minutes on printers that send deltas. */
+const PUSHALL_MIN_MS = 5 * 60_000;
+/** Re-read firmware versions this often. */
+const VERSION_EVERY_MS = 6 * 3600_000;
+/** No message for this long while connected: ask for everything, then reconnect after STALE_CLOSE_MS more. */
+const STALE_MS = 60_000;
+const STALE_CLOSE_MS = 30_000;
+
+/** Turns a raw `print` report into a snapshot (older call sites and tests). */
+export function summarize(p: Raw = {}, model: ModelCode = 'N6'): PrinterSnapshot {
+	return parseReport(mergeReport({}, p), {
+		model: PRINTER_MODELS[model],
+		versions: [],
+		accessCodeSet: true
+	});
+}
+
+/** What the printer answered to a command (any topic). */
+interface Reply {
+	topic: string;
 	command: string;
-	result: string;
-	reason: string;
+	sequence: string;
+	body: Raw;
 }
 
-/** Emits 'update', 'started' {task}, 'finished' {task, ok}. */
+/** Emits 'update' on every status change, 'reply' for command answers, 'log' for mc_print push_info lines. */
 export class BambuPrinter extends EventEmitter {
+	readonly model: PrinterModel;
 	private raw: Raw = {};
-	private snapshot: PrinterSnapshot | null = null;
+	private current: PrinterSnapshot | null = null;
 	private client: MqttClient | null = null;
 	private timer?: NodeJS.Timeout;
+	private versionTimer?: NodeJS.Timeout;
+	private watchdog?: NodeJS.Timeout;
 	private retry = 0;
 	private stopped = true;
-	private lastState = '';
-	private lastTask = '';
+	private lastMessage = 0;
+	private lastPushall = 0;
+	private staleSince = 0;
+	private sequence = 20000 + Math.floor(Math.random() * 10000);
+	versions: VersionModule[] = [];
 	connected = false;
 	lastSeen: string | null = null;
 	error = '';
 	warning = '';
+	trust: 'ca' | 'pinned' | null = null;
 
-	constructor(readonly config: PrinterConfig) {
+	constructor(
+		readonly config: PrinterConfig,
+		private options: ConnectionOptions = {}
+	) {
 		super();
+		this.model = PRINTER_MODELS[config.model] ?? PRINTER_MODELS.N6;
 		// One listener per open tab (live events) plus in-flight commands.
 		this.setMaxListeners(200);
 	}
 
+	get id() {
+		return this.config.id;
+	}
+
 	get name() {
-		return this.config.name ?? 'Bambu Lab printer';
+		return this.config.name || this.model.name;
+	}
+
+	/** The parsed status (unredacted: server code only). */
+	get snapshot(): PrinterSnapshot | null {
+		return this.current;
+	}
+
+	get firmware(): string | null {
+		return firmwareVersion(this.versions);
 	}
 
 	start() {
 		this.stopped = false;
 		this.open();
+		this.watchdog = setInterval(() => this.checkStale(), 10_000);
+		this.watchdog.unref?.();
 		return this;
 	}
 
+	stop() {
+		this.stopped = true;
+		clearTimeout(this.timer);
+		clearInterval(this.versionTimer);
+		clearInterval(this.watchdog);
+		this.client?.end();
+	}
+
+	private log(message: string) {
+		this.options.log?.(`${this.name}: ${message}`);
+	}
+
 	private open() {
-		const { host, port = 8883, useTls = true, serial, accessCode } = this.config;
+		const { host, port = 8883, useTls = true, serial, accessCode, simulated } = this.config;
+		// Simulated printers and plain connections skip the certificate check (tls.ts).
+		const verifyTls = useTls && !simulated;
 		const client = new MqttClient({
 			host,
 			port,
@@ -103,32 +179,32 @@ export class BambuPrinter extends EventEmitter {
 			clientId: `print-lab-${process.pid}-${Math.random().toString(36).slice(2, 8)}`,
 			username: 'bblp',
 			password: accessCode,
-			// The printer presents a self-signed certificate; we check that it names this printer's serial instead.
-			tlsOptions: { rejectUnauthorized: false, checkServerIdentity: () => undefined }
+			tlsOptions: verifyTls
+				? printerTlsOptions(serial, this.options.ca)
+				: { rejectUnauthorized: false, maxVersion: 'TLSv1.2' },
+			verify: verifyTls ? (socket) => this.verify(socket) : undefined
 		});
 		this.client = client;
 		client.on('connect', () => {
-			if (useTls) {
-				const cn = (client.socket as import('node:tls').TLSSocket).getPeerCertificate?.()?.subject
-					?.CN;
-				this.warning =
-					cn && cn !== serial
-						? `Printer certificate names “${cn}”, not the configured serial.`
-						: '';
-			}
 			this.connected = true;
 			this.error = '';
 			this.retry = 0;
+			this.lastMessage = Date.now();
+			this.staleSince = 0;
 			client.subscribe(`device/${serial}/report`);
-			client.publish(`device/${serial}/request`, {
-				pushing: { sequence_id: '0', command: 'pushall' }
-			});
+			// Everything once on connect, then versions (and again every 6 hours).
+			this.requestPushall(true);
+			this.requestVersions();
+			clearInterval(this.versionTimer);
+			this.versionTimer = setInterval(() => this.requestVersions(), VERSION_EVERY_MS);
+			this.versionTimer.unref?.();
 			this.emit('update');
 		});
 		client.on('message', (_topic: string, payload: Buffer) => this.receive(payload));
 		client.on('error', (error: NodeJS.ErrnoException) => (this.error = friendly(error)));
 		client.on('close', () => {
 			this.connected = false;
+			clearInterval(this.versionTimer);
 			this.emit('update');
 			if (this.stopped) return;
 			const delay = Math.min(60_000, 2000 * 2 ** this.retry++);
@@ -137,105 +213,209 @@ export class BambuPrinter extends EventEmitter {
 		client.connect();
 	}
 
+	/** The TLS policy (tls.ts), run before the access code is sent. */
+	private verify(socket: tls.TLSSocket): string | null {
+		const result = verifyPrinterCert(socket, {
+			serial: this.config.serial,
+			pin: this.config.tlsPin ?? null,
+			mayPin: this.options.mayPin
+		});
+		if (!result.ok) {
+			this.trust = null;
+			return result.error;
+		}
+		this.trust = result.trust;
+		if (result.pin) {
+			this.config.tlsPin = result.pin;
+			this.options.mayPin = false;
+			this.options.onPin?.(result.pin);
+			this.log('certificate trusted on first use');
+		}
+		return null;
+	}
+
+	/** Allows pinning a new certificate on the next connection (Settings: "Trust the new certificate"). */
+	trustNextCertificate() {
+		this.config.tlsPin = null;
+		this.options.mayPin = true;
+	}
+
+	private checkStale() {
+		if (!this.connected || !this.client) return;
+		const quiet = Date.now() - this.lastMessage;
+		if (quiet < STALE_MS) return;
+		if (!this.staleSince) {
+			this.staleSince = Date.now();
+			this.requestPushall(false);
+		} else if (Date.now() - this.staleSince >= STALE_CLOSE_MS) {
+			this.log('no reports for a while, reconnecting');
+			this.staleSince = 0;
+			this.client.end();
+		}
+	}
+
+	private requestPushall(force: boolean) {
+		if (!force && this.model.reports === 'delta' && Date.now() - this.lastPushall < PUSHALL_MIN_MS)
+			return;
+		this.lastPushall = Date.now();
+		void this.send('pushing.pushall', {}).catch(() => {});
+	}
+
+	private requestVersions() {
+		void this.send('info.get_version', {}).catch(() => {});
+	}
+
 	private receive(payload: Buffer) {
-		let message: { print?: Raw };
+		let message: Raw;
 		try {
 			message = JSON.parse(payload.toString('utf8'));
 		} catch {
 			return;
 		}
-		if (!message || typeof message.print !== 'object') return;
-		// Answers to commands we sent carry their command name; they are not status.
-		const command = text(message.print.command, 40);
-		if (command && command !== 'push_status') {
-			this.emit('reply', {
-				command,
-				result: text(message.print.result, 40).toLowerCase(),
-				reason: text(message.print.reason, 300) || text(message.print.err_msg, 300),
-				sequence: text(message.print.sequence_id, 40)
-			});
-			return;
+		if (!isObject(message)) return;
+		this.lastMessage = Date.now();
+		this.staleSince = 0;
+		let changed = false;
+		for (const [topic, body] of Object.entries(message)) {
+			if (!isObject(body)) continue;
+			const command = text(body.command, 40);
+			if (topic === 'print' && (!command || command === 'push_status')) {
+				mergeReport(this.raw, body);
+				changed = true;
+				continue;
+			}
+			if (topic === 'mc_print' && command === 'push_info') {
+				this.emit('log', text(body.param, 1000));
+				continue;
+			}
+			if (topic === 'info' && command === 'get_version') {
+				this.versions = parseVersions(body);
+				this.checkModel();
+				changed = true;
+			}
+			if (command)
+				this.emit('reply', {
+					topic,
+					command,
+					sequence: text(body.sequence_id ?? body.sequenceId, 40),
+					body
+				} satisfies Reply);
 		}
-		mergeReport(this.raw, message.print);
-		this.snapshot = parseReport(this.raw, {
-			model: PRINTER_MODELS.N6,
-			versions: [],
-			accessCodeSet: true
+		if (!changed) return;
+		this.current = parseReport(this.raw, {
+			model: this.model,
+			versions: this.versions,
+			accessCodeSet: !!this.config.accessCode
 		});
 		this.lastSeen = new Date().toISOString();
-		const { gcodeState: state, task } = this.snapshot;
-		if (state !== this.lastState) {
-			const from = this.lastState;
-			this.lastState = state;
-			if (ACTIVE_PRINTER_STATES.has(state) && !ACTIVE_PRINTER_STATES.has(from))
-				this.emit('started', { task });
-			// A print ends as FINISH or FAILED; stopping one can also drop straight back to IDLE.
-			if (
-				(state === 'FINISH' || state === 'FAILED' || state === 'IDLE') &&
-				ACTIVE_PRINTER_STATES.has(from)
-			)
-				this.emit('finished', { task: this.lastTask || task, ok: state === 'FINISH' });
-		}
-		if (task) this.lastTask = task;
+		this.current.lastReportAt = this.lastSeen;
 		this.emit('update');
 	}
 
-	status(): PrinterStatus {
+	/** Says so when the printer names another model than the one saved in Settings. */
+	private checkModel() {
+		const found = detectModel({ modules: this.versions });
+		this.warning =
+			found && found !== this.config.model && !(found === 'O1C2' && this.config.model === 'O1C')
+				? `This printer says it is a ${modelShort(found)}, but Settings say ${modelShort(this.config.model)}. Change the model in Settings → Printers.`
+				: '';
+	}
+
+	private context(): CommandContext {
 		return {
-			configured: true,
-			name: this.name,
-			simulated: !!this.config.simulated,
-			connected: this.connected,
-			lastSeen: this.lastSeen,
-			error: this.connected ? '' : this.error,
-			warning: this.warning,
-			printing: !!this.snapshot && ACTIVE_PRINTER_STATES.has(this.snapshot.gcodeState),
-			state: this.snapshot
+			printerId: this.id,
+			model: this.model,
+			caps: capabilitiesFor(this.model.code, this.firmware),
+			status: this.current,
+			firmware: this.firmware
 		};
 	}
 
-	private sequence = 1000;
+	private nextSequence() {
+		// Decimal strings in 20000–29999, like Bambu Studio (STUDIO_START_SEQ_ID); AMS commands hang
+		// with ids above 2^31-1 (ClusterM research/06.02-mqtt.md).
+		this.sequence = this.sequence >= 29999 ? 20000 : this.sequence + 1;
+		return String(this.sequence);
+	}
 
 	/**
-	 * Sends a print command and waits briefly for the printer's answer or for the state to move.
-	 * Resolves with what happened; rejects when the printer refuses or is not connected.
+	 * Runs a typed command (commands/registry.ts): validates params, checks the connection, Developer
+	 * Mode, capabilities and the command's own guard, publishes it, then waits for the printer's
+	 * answer or for live status to show the effect. Resolves 'sent' when the printer stays silent
+	 * (some firmware never answers); rejects with an AppError the UI can show.
 	 */
-	private async command(
-		print: Raw,
-		settled: (state: string) => boolean,
-		timeoutMs = 10_000
-	): Promise<'confirmed' | 'sent'> {
-		if (!this.client || !this.connected) throw new Error('The printer is not connected.');
-		const sequence = String(++this.sequence);
-		const command = String(print.command);
-		return new Promise((resolve, reject) => {
-			const client = this.client!;
+	async send<N extends CommandName>(
+		name: N,
+		params: CommandMap[N] | Record<string, unknown>,
+		o: { signal?: AbortSignal } = {}
+	): Promise<CommandOutcome> {
+		const def = commandDef(name);
+		if (!def) throw new AppError(400, `Unknown printer command “${String(name).slice(0, 60)}”.`);
+		const parsed = parse(def.params, params ?? {});
+		const client = this.client;
+		if (!client || !this.connected) throw new AppError(409, 'The printer is not connected.');
+		const internal = def.topic === 'pushing' || def.topic === 'info';
+		if (!internal && this.current?.developerMode === false)
+			throw new AppError(409, DEVELOPER_MODE_OFF);
+		const ctx = this.context();
+		const missing = (def.requires ?? []).filter((cap) => !ctx.caps[cap]);
+		if (missing.length)
+			throw new AppError(409, `The ${this.model.short} cannot do that (${missing.join(', ')}).`);
+		const refused = def.guard?.(ctx, parsed as never);
+		if (refused) throw new AppError(409, refused);
+		const body = def.build(parsed as never, ctx);
+		const command = String(body.command);
+		const sequence = this.nextSequence();
+		const topic = `device/${this.config.serial}/request`;
+		const message = { [def.topic]: { sequence_id: sequence, ...body } };
+		if (def.reply === 'none') {
+			await client.publish(topic, message, { qos: def.qos ?? 0 });
+			return { outcome: 'sent' };
+		}
+		return new Promise<CommandOutcome>((resolve, reject) => {
 			const finish = (fn: () => void) => {
 				clearTimeout(timer);
 				this.off('reply', onReply);
 				this.off('update', onUpdate);
 				client.off('close', onClose);
+				o.signal?.removeEventListener('abort', onAbort);
 				fn();
 			};
 			const onClose = () =>
-				finish(() => reject(new Error('The printer disconnected before answering.')));
-			const onReply = (r: CommandReply & { sequence: string }) => {
-				if (r.command !== command || (r.sequence && r.sequence !== sequence)) return;
-				if (r.result && r.result !== 'success' && r.result !== 'ok')
-					finish(() => reject(new Error(r.reason || `The printer refused to ${command}.`)));
-				else finish(() => resolve('confirmed'));
+				finish(() => reject(new AppError(409, 'The printer disconnected before answering.')));
+			const onAbort = () => finish(() => reject(new Error('Stopped')));
+			const onReply = (r: Reply) => {
+				if (r.topic !== def.topic || r.command !== command) return;
+				if (r.sequence && r.sequence !== sequence) return;
+				const failed = replyFailed(r.body);
+				if (failed)
+					finish(() =>
+						reject(
+							new AppError(
+								409,
+								failed === 'fail' || failed === 'failed'
+									? `The printer refused to ${command}.`
+									: failed
+							)
+						)
+					);
+				else finish(() => resolve({ outcome: 'confirmed', reply: r.body }));
 			};
 			const onUpdate = () => {
-				if (this.snapshot && settled(this.snapshot.gcodeState)) finish(() => resolve('confirmed'));
+				if (this.current && def.settled?.(this.current, parsed as never))
+					finish(() => resolve({ outcome: 'confirmed' }));
 			};
-			// Some firmware never answers; the command was delivered, and live status will tell.
-			const timer = setTimeout(() => finish(() => resolve('sent')), timeoutMs);
+			const timer = setTimeout(
+				() => finish(() => resolve({ outcome: 'sent' })),
+				def.timeoutMs ?? 10_000
+			);
 			this.on('reply', onReply);
 			this.on('update', onUpdate);
 			client.once('close', onClose);
-			this.client!.publish(`device/${this.config.serial}/request`, {
-				print: { sequence_id: sequence, ...print }
-			});
+			o.signal?.addEventListener('abort', onAbort, { once: true });
+			client
+				.publish(topic, message, { qos: def.qos ?? 0 })
+				.catch((error: Error) => finish(() => reject(new AppError(409, error.message))));
 		});
 	}
 
@@ -246,9 +426,21 @@ export class BambuPrinter extends EventEmitter {
 		onProgress?: (fraction: number) => void,
 		signal?: AbortSignal
 	) {
-		const { host, accessCode, useTls = true } = this.config;
+		const { host, accessCode, useTls = true, serial, simulated } = this.config;
+		const verifyTls = useTls && !simulated;
 		return uploadFile(
-			{ host, password: accessCode, useTls, port: this.config.ftpPort ?? (useTls ? 990 : 21) },
+			{
+				host,
+				password: accessCode,
+				useTls,
+				port: this.config.ftpPort ?? (useTls ? 990 : 21),
+				tls: verifyTls
+					? {
+							options: printerTlsOptions(serial, this.options.ca),
+							verify: (socket) => this.verify(socket)
+						}
+					: undefined
+			},
 			name,
 			data,
 			onProgress,
@@ -257,67 +449,89 @@ export class BambuPrinter extends EventEmitter {
 	}
 
 	/** Starts printing a plate of a file already uploaded with `upload`. */
-	async startPrint(o: StartOptions) {
-		if (this.snapshot && ACTIVE_PRINTER_STATES.has(this.snapshot.gcodeState))
-			throw new Error('The printer is busy with another print.');
-		return this.command(
-			{
-				command: 'project_file',
-				param: `Metadata/plate_${o.plate}.gcode`,
-				url: `ftp:///${o.file}`,
-				file: '',
-				md5: o.md5 ?? '',
-				project_id: '0',
-				profile_id: '0',
-				task_id: '0',
-				subtask_id: '0',
-				subtask_name: o.title.slice(0, 60),
-				bed_type: o.bedType ?? 'auto',
-				timelapse: o.timelapse ?? false,
-				bed_levelling: o.bedLeveling ?? true,
-				flow_cali: o.flowCalibration ?? true,
-				vibration_cali: true,
-				layer_inspect: false,
-				use_ams: o.useAms,
-				ams_mapping: o.amsMapping,
-				// Dual-nozzle printers (H2D, X2D) read this form: AMS unit and slot per filament.
-				ams_mapping2: o.amsMapping.map((slot) =>
-					slot < 0
-						? { ams_id: 255, slot_id: 255 }
-						: slot >= 254
-							? { ams_id: slot, slot_id: 0 }
-							: { ams_id: Math.floor(slot / 4), slot_id: slot % 4 }
-				)
-			},
-			(state) => ACTIVE_PRINTER_STATES.has(state),
-			15_000
-		);
+	async startPrint(o: ProjectFileParams) {
+		return (await this.send('print.project_file', o)).outcome;
 	}
 
 	/** Pauses, resumes or stops the current print. */
 	async control(action: PrintControl) {
-		const state = this.snapshot?.gcodeState ?? '';
-		// While preparing (heating, levelling) the printer accepts the command but ignores it.
-		if (action === 'pause' && state === 'PREPARE')
-			throw new Error('The printer is still preparing; pause once it starts printing.');
-		if (action === 'pause' && state !== 'RUNNING')
-			throw new Error('Only a running print can pause.');
-		if (action === 'resume' && state !== 'PAUSE') throw new Error('Nothing is paused.');
-		if (action === 'stop' && !ACTIVE_PRINTER_STATES.has(state))
-			throw new Error('Nothing is printing.');
-		const settledFor: Record<PrintControl, (s: string) => boolean> = {
-			pause: (s) => s === 'PAUSE',
-			resume: (s) => s === 'RUNNING',
-			stop: (s) => !ACTIVE_PRINTER_STATES.has(s)
-		};
-		return this.command({ command: action, param: '' }, settledFor[action]);
+		return (await this.send(`print.${action}`, {})).outcome;
 	}
 
-	stop() {
-		this.stopped = true;
-		clearTimeout(this.timer);
-		this.client?.end();
+	/** The camera path to use now: the live report decides, else the catalogue default. */
+	camera(): CameraProtocol {
+		const live = this.current?.camera.lanLiveview;
+		if (live === 'rtsps' || live === 'rtsp') return live;
+		if (live === 'local') return 'jpeg6000';
+		if (live === 'disabled') return 'none';
+		return this.model.camera;
 	}
+
+	status(): PrinterStatus {
+		const state = this.current;
+		return {
+			configured: true,
+			id: this.id,
+			name: this.name,
+			model: this.model.code,
+			modelName: this.model.name,
+			caps: capabilitiesFor(this.model.code, this.firmware),
+			camera: this.camera(),
+			enabled: this.config.enabled ?? true,
+			simulated: !!this.config.simulated,
+			connected: this.connected,
+			lastSeen: this.lastSeen,
+			error: this.connected ? '' : this.error,
+			warning:
+				this.warning ||
+				(this.connected && state?.developerMode === false ? DEVELOPER_MODE_OFF : ''),
+			printing: !!state && ACTIVE_PRINTER_STATES.has(state.gcodeState),
+			// The browser never needs the printer's own address inside the RTSP URL.
+			state: state && {
+				...state,
+				camera: {
+					...state.camera,
+					rtspUrl: state.camera.rtspUrl?.replace(/^(rtsps?:\/\/)[^/]+/, '$1printer') ?? null
+				}
+			}
+		};
+	}
+
+	/**
+	 * The merged raw report with serial numbers and addresses removed, for "Download diagnostics"
+	 * (in the fixtures' shape, so people with real printers can contribute test data).
+	 */
+	rawReport(): { model: ModelCode; pushall: Raw; get_version: Raw } {
+		return {
+			model: this.model.code,
+			pushall: redact(structuredClone(this.raw), this.config.serial) as Raw,
+			get_version: {
+				command: 'get_version',
+				module: this.versions.map((m) => ({
+					name: m.name,
+					hw_ver: m.hw,
+					sw_ver: m.sw,
+					product_name: m.product,
+					sn: '**REDACTED**'
+				}))
+			}
+		};
+	}
+}
+
+const IPV4 = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
+function redact(v: unknown, serial: string, key = ''): unknown {
+	if (Array.isArray(v)) return v.map((x) => redact(x, serial, key));
+	if (isObject(v)) {
+		const out: Raw = {};
+		for (const [k, x] of Object.entries(v)) out[k] = redact(x, serial, k);
+		return out;
+	}
+	if (/^(sn|serial|dev_id|.*_sn)$/i.test(key) && typeof v === 'string') return '**REDACTED**';
+	if (key === 'ip' && typeof v === 'number') return 0;
+	if (typeof v === 'string')
+		return v.replace(IPV4, '192.0.2.10').replaceAll(serial, '**REDACTED**');
+	return v;
 }
 
 function friendly(error: NodeJS.ErrnoException) {
@@ -328,17 +542,26 @@ function friendly(error: NodeJS.ErrnoException) {
 	return error.message || 'Printer connection failed.';
 }
 
+/** @deprecated Replaced by the printers registry (PrinterManager); kept for the env-configured printer. */
 export function printerFromEnv(env: Record<string, string | undefined>): BambuPrinter | null {
 	const { BAMBU_HOST: host, BAMBU_SERIAL: serial, BAMBU_ACCESS_CODE: accessCode } = env;
 	if (!host || !serial || !accessCode) return null;
-	return new BambuPrinter({
-		host,
-		serial,
-		accessCode,
-		name: env.BAMBU_NAME || 'Bambu Lab X2D',
-		port: Number(env.BAMBU_PORT || 8883),
-		ftpPort: env.BAMBU_FTP_PORT ? Number(env.BAMBU_FTP_PORT) : undefined,
-		useTls: env.BAMBU_TLS !== 'off',
-		simulated: env.BAMBU_SIMULATED === '1'
-	});
+	const model = (
+		env.BAMBU_MODEL && env.BAMBU_MODEL in PRINTER_MODELS ? env.BAMBU_MODEL : 'N6'
+	) as ModelCode;
+	return new BambuPrinter(
+		{
+			id: 'env',
+			model,
+			host,
+			serial,
+			accessCode,
+			name: env.BAMBU_NAME || PRINTER_MODELS[model].name,
+			port: Number(env.BAMBU_PORT || 8883),
+			ftpPort: env.BAMBU_FTP_PORT ? Number(env.BAMBU_FTP_PORT) : undefined,
+			useTls: env.BAMBU_TLS !== 'off',
+			simulated: env.BAMBU_SIMULATED === '1'
+		},
+		{ mayPin: true }
+	);
 }

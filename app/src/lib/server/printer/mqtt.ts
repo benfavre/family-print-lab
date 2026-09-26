@@ -1,4 +1,6 @@
-// Minimal MQTT 3.1.1 client (QoS 0): enough to read a Bambu Lab printer's reports on the local network.
+// Minimal MQTT 3.1.1 client: enough to talk to a Bambu Lab printer on the local network. QoS 0 and 1
+// (OpenBambuAPI mqtt.md: stop, pause and resume are sent with QoS 1), plus the retain flag for other
+// brokers (home automation publishing).
 import { EventEmitter } from 'node:events';
 import net from 'node:net';
 import tls from 'node:tls';
@@ -7,6 +9,7 @@ export const TYPE = {
 	CONNECT: 1,
 	CONNACK: 2,
 	PUBLISH: 3,
+	PUBACK: 4,
 	SUBSCRIBE: 8,
 	SUBACK: 9,
 	PINGREQ: 12,
@@ -20,6 +23,8 @@ export interface Packet {
 	topic?: string;
 	payload?: Buffer;
 	id?: number;
+	qos?: number;
+	retain?: boolean;
 	clientId?: string;
 	username?: string;
 	password?: string;
@@ -82,15 +87,34 @@ export const encode = {
 		b.writeUInt16BE(id);
 		return packet(TYPE.SUBACK << 4, b);
 	},
-	publish: (topic: string, payload: string | Buffer) =>
-		packet(TYPE.PUBLISH << 4, Buffer.concat([str(topic), Buffer.from(payload)])),
+	publish(
+		topic: string,
+		payload: string | Buffer,
+		o: { qos?: 0 | 1; retain?: boolean; id?: number } = {}
+	) {
+		const qos = o.qos ?? 0;
+		const id = Buffer.alloc(qos ? 2 : 0);
+		if (qos) id.writeUInt16BE(o.id ?? 1);
+		return packet(
+			(TYPE.PUBLISH << 4) | (qos << 1) | (o.retain ? 1 : 0),
+			Buffer.concat([str(topic), id, Buffer.from(payload)])
+		);
+	},
+	puback(id: number) {
+		const b = Buffer.alloc(2);
+		b.writeUInt16BE(id);
+		return packet(TYPE.PUBACK << 4, b);
+	},
 	pingreq: () => Buffer.from([TYPE.PINGREQ << 4, 0]),
 	pingresp: () => Buffer.from([TYPE.PINGRESP << 4, 0]),
 	disconnect: () => Buffer.from([TYPE.DISCONNECT << 4, 0])
 };
 
+/** Largest packet accepted (printer reports are tens of kilobytes). */
+export const MAX_PACKET = 4 * 1024 * 1024;
+
 /** Splits a byte stream into packets; incomplete trailing bytes come back as `rest`. */
-export function decode(buffer: Buffer): { packets: Packet[]; rest: Buffer } {
+export function decode(buffer: Buffer, max = MAX_PACKET): { packets: Packet[]; rest: Buffer } {
 	const packets: Packet[] = [];
 	let offset = 0;
 	while (buffer.length - offset >= 2) {
@@ -105,6 +129,7 @@ export function decode(buffer: Buffer): { packets: Packet[]; rest: Buffer } {
 			multiplier *= 128;
 			if (multiplier > 128 ** 4) throw new Error('Malformed MQTT length.');
 		} while (byte & 128);
+		if (length > max) throw new Error('MQTT packet too large.');
 		if (buffer.length < i + length) break;
 		const header = buffer[offset],
 			body = buffer.subarray(i, i + length),
@@ -115,9 +140,13 @@ export function decode(buffer: Buffer): { packets: Packet[]; rest: Buffer } {
 			const qos = (header >> 1) & 3,
 				topicLength = body.readUInt16BE(0);
 			p.topic = body.subarray(2, 2 + topicLength).toString('utf8');
+			p.qos = qos;
+			p.retain = (header & 1) === 1;
+			if (qos) p.id = body.readUInt16BE(2 + topicLength);
 			p.payload = body.subarray(2 + topicLength + (qos ? 2 : 0));
 		}
-		if (type === TYPE.SUBSCRIBE || type === TYPE.SUBACK) p.id = body.readUInt16BE(0);
+		if (type === TYPE.SUBSCRIBE || type === TYPE.SUBACK || type === TYPE.PUBACK)
+			p.id = body.readUInt16BE(0);
 		if (type === TYPE.SUBSCRIBE) {
 			const tl = body.readUInt16BE(2);
 			p.topic = body.subarray(4, 4 + tl).toString('utf8');
@@ -150,6 +179,11 @@ export interface MqttOptions {
 	username?: string;
 	password?: string;
 	keepalive?: number;
+	/**
+	 * Decides on the TLS peer before anything is written (printer/tls.ts verifyPrinterCert): return
+	 * an error message to refuse the connection, so the access code never reaches an unverified peer.
+	 */
+	verify?: (socket: tls.TLSSocket) => string | null;
 }
 
 /** Emits 'connect', 'message' (topic, payload), 'close' (wasConnected), 'error'. */
@@ -159,14 +193,20 @@ export class MqttClient extends EventEmitter {
 	private buffer: Buffer = Buffer.alloc(0);
 	private nextId = 1;
 	private ping?: NodeJS.Timeout;
+	/** QoS 1 publishes waiting for their PUBACK, by packet id. */
+	private inflight = new Map<number, { resolve: () => void; reject: (e: Error) => void }>();
 
 	constructor(private options: MqttOptions) {
 		super();
 	}
 
 	connect() {
-		const { host, port, useTls = true, tlsOptions = {}, keepalive = 30 } = this.options;
-		const onOpen = () => this.socket!.write(encode.connect(this.options));
+		const { host, port, useTls = true, tlsOptions = {}, keepalive = 30, verify } = this.options;
+		const onOpen = () => {
+			const refused = useTls && verify ? verify(this.socket as tls.TLSSocket) : null;
+			if (refused) return void this.socket!.destroy(new Error(refused));
+			this.socket!.write(encode.connect(this.options));
+		};
 		this.socket = useTls
 			? tls.connect({ host, port, ...tlsOptions }, onOpen)
 			: net.connect({ host, port }, onOpen);
@@ -177,6 +217,9 @@ export class MqttClient extends EventEmitter {
 		this.socket.on('error', (error) => this.emit('error', error));
 		this.socket.on('close', () => {
 			clearInterval(this.ping);
+			for (const waiting of this.inflight.values())
+				waiting.reject(new Error('The printer disconnected before confirming the command.'));
+			this.inflight.clear();
 			const was = this.connected;
 			this.connected = false;
 			this.emit('close', was);
@@ -212,17 +255,49 @@ export class MqttClient extends EventEmitter {
 				);
 				this.emit('connect');
 			}
-			if (p.type === TYPE.PUBLISH) this.emit('message', p.topic, p.payload);
+			if (p.type === TYPE.PUBLISH) {
+				if (p.qos === 1 && p.id !== undefined) this.socket?.write(encode.puback(p.id));
+				this.emit('message', p.topic, p.payload);
+			}
+			if (p.type === TYPE.PUBACK && p.id !== undefined) {
+				this.inflight.get(p.id)?.resolve();
+				this.inflight.delete(p.id);
+			}
 		}
 	}
 
-	subscribe(topic: string) {
-		this.socket?.write(encode.subscribe(this.nextId++, topic));
+	private packetId() {
+		// Packet ids are 16-bit and never 0.
+		this.nextId = (this.nextId % 0xffff) + 1;
+		return this.nextId;
 	}
-	publish(topic: string, payload: unknown) {
-		this.socket?.write(
-			encode.publish(topic, typeof payload === 'string' ? payload : JSON.stringify(payload))
-		);
+
+	subscribe(topic: string) {
+		this.socket?.write(encode.subscribe(this.packetId(), topic));
+	}
+
+	/**
+	 * Publishes a message. QoS 0 resolves once written; QoS 1 resolves when the broker acknowledges it
+	 * (PUBACK) and rejects if the connection closes first.
+	 */
+	publish(
+		topic: string,
+		payload: unknown,
+		o: { qos?: 0 | 1; retain?: boolean } = {}
+	): Promise<void> {
+		const body = typeof payload === 'string' ? payload : JSON.stringify(payload);
+		const socket = this.socket;
+		if (!socket || socket.destroyed || !this.connected)
+			return Promise.reject(new Error('The printer is not connected.'));
+		if (!o.qos) {
+			socket.write(encode.publish(topic, body, { retain: o.retain }));
+			return Promise.resolve();
+		}
+		const id = this.packetId();
+		return new Promise((resolve, reject) => {
+			this.inflight.set(id, { resolve, reject });
+			socket.write(encode.publish(topic, body, { qos: 1, retain: o.retain, id }));
+		});
 	}
 	end() {
 		clearInterval(this.ping);
