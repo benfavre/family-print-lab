@@ -46,6 +46,13 @@ export const NAV: NavItem[] = [
 		key: 'm',
 		icon: 'M5.5 7a2 2 0 1 0 0-4a2 2 0 1 0 0 4zM11 7.5a1.7 1.7 0 1 0 0-3.4a1.7 1.7 0 1 0 0 3.4zM1.8 13c.4-2.4 1.9-3.8 3.7-3.8s3.3 1.4 3.7 3.8M9.6 9.6c.4-.2.9-.3 1.4-.3 1.6 0 2.8 1.2 3.2 3.2',
 		match: (p) => p.startsWith('/family')
+	},
+	{
+		href: resolve('/shop'),
+		label: 'Shop',
+		key: 's',
+		icon: 'M3 5.5h10l-.8 8H3.8zM5.5 5.5V4.5a2.5 2.5 0 0 1 5 0v1',
+		match: (p) => p.startsWith('/shop')
 	}
 ];
 

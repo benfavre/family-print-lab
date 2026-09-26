@@ -52,6 +52,33 @@ export interface RequestSummary {
 	thumbnail?: string | null;
 }
 
+export interface ShopItem {
+	id: string;
+	kind: 'kid-pack' | 'part' | 'model';
+	kindLabel: string;
+	title: string;
+	blurb: string;
+	description: string;
+	price: number | null;
+	plan: boolean;
+	facts: string[];
+	version: number;
+	owned: boolean;
+}
+export interface ShopCatalogue {
+	items: ShopItem[];
+	balance: number;
+	plan: boolean;
+	/** The cloud's website, for "Get credits". */
+	site: string;
+}
+export type LibraryItem = Omit<ShopItem, 'owned'> & {
+	source?: string;
+	name?: string;
+	file?: string;
+	format?: '3mf' | 'stl';
+};
+
 /** What the phone shows about the printer (only with "Share print progress" on). */
 export interface PrinterSummary {
 	state: 'idle' | 'preparing' | 'printing' | 'paused' | 'finished' | 'failed' | 'offline';
@@ -295,6 +322,59 @@ export class CloudLink extends EventEmitter {
 		}
 	}
 
+	// ---------- Shop ----------
+
+	/** The catalogue, with what this account owns, its credits and whether it has the plan. */
+	async shopCatalogue() {
+		return this.deviceJson<ShopCatalogue>('/device/shop');
+	}
+
+	/** Buys with the account's credits (402: not enough). */
+	async buy(itemId: string) {
+		return this.deviceJson<{ balance: number }>(`/device/shop/${encodeURIComponent(itemId)}/buy`, {
+			method: 'POST'
+		});
+	}
+
+	/** What the account owns, with what to install. */
+	async library() {
+		return (await this.deviceJson<{ items: LibraryItem[] }>('/device/library')).items;
+	}
+
+	/** A file from the library (a ready-made model). */
+	async libraryFile(path: string) {
+		if (!path.startsWith('/device/library/')) throw new AppError(400, 'Not a library file.');
+		const response = await this.device(path, { signal: AbortSignal.timeout(120_000) });
+		if (!response.ok) throw new AppError(502, 'Could not download it from Print Lab Cloud.');
+		return Buffer.from(await response.arrayBuffer());
+	}
+
+	private images = new Map<string, Buffer>();
+	/** A shop picture (public), kept in memory so the page loads fast the second time. */
+	async shopImage(itemId: string) {
+		if (!/^[a-z0-9-]{1,60}$/.test(itemId)) throw new AppError(404, 'No such picture.');
+		const cached = this.images.get(itemId);
+		if (cached) return cached;
+		const response = await fetch(`${this.url}/shop/${itemId}.webp`, {
+			signal: AbortSignal.timeout(15_000)
+		}).catch(() => null);
+		if (!response?.ok) throw new AppError(404, 'No such picture.');
+		const image = Buffer.from(await response.arrayBuffer());
+		this.images.set(itemId, image);
+		return image;
+	}
+
+	private async deviceJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+		const response = await this.device(path, { signal: AbortSignal.timeout(20_000), ...init });
+		const data = (await response.json().catch(() => ({}))) as T & { error?: string };
+		if (!response.ok)
+			throw new AppError(
+				response.status === 402 || response.status === 409 ? response.status : 502,
+				data.error ?? `Print Lab Cloud answered ${response.status}.`
+			);
+		return data;
+	}
+
 	// ---------- Encrypted backups (Family plan) ----------
 
 	/** Turns cloud backups on; returns the recovery key (made once, kept on this computer). */
@@ -462,6 +542,10 @@ export class CloudLink extends EventEmitter {
 			void this.syncPacks();
 		} else if (m.type === 'decide') {
 			ws.send(JSON.stringify({ type: 'result', commandId: m.commandId, ...this.decide(m) }));
+		} else if (m.type === 'library') {
+			// Something was bought (here or on the website): kid packs install themselves.
+			void this.syncPacks();
+			this.emit('library');
 		} else if (m.type === 'unlinked') {
 			this.forget('This computer was unlinked in Print Lab Cloud.');
 		}

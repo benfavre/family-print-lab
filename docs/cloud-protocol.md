@@ -75,6 +75,22 @@ known control kinds, no replacing a built-in template), renders them in its Open
 time limit, and applies the kid mode rules to every value. Without the plan, installed packs are
 removed; things already made from them are kept.
 
+## Shop (credits)
+
+The shop sells kid mode packs, customizable parts (OpenSCAD with Customizer annotations) and
+ready-made models (3MF), for the account's credits. All with the bearer token:
+
+- `GET {cloud}/device/shop`: `{"items": [{id, kind, title, blurb, description, price, plan, facts, version, owned}], "balance", "plan", "site"}`.
+- `POST {cloud}/device/shop/{id}/buy`: `{"balance"}`, `402` when the credits do not cover it, `409`
+  when it is already owned. A grown-up confirms first; kid mode cannot reach the app's shop.
+- `GET {cloud}/device/library`: what the account owns, with what to install: `pack` (a kid mode
+  pack, also delivered by `/device/packs`), `name` and `source` (a part), or `file` and `format` (a
+  model, downloaded from `GET {cloud}/device/library/{id}/file`).
+- Pictures are public: `GET {cloud}/shop/{id}.webp` (the app serves them to its page itself).
+
+After any purchase (in the app or on the website) the cloud sends `{"type": "library"}` so linked
+apps refresh.
+
 ## Messages
 
 App → cloud:
@@ -93,6 +109,7 @@ Cloud → app:
 | `{"type": "welcome", "account": "a@b.c", "plan": true}`                                                                                 | Connected; `plan` says whether the Family plan is active (approvals from the phone need it)                |
 | `{"type": "decide", "commandId": "…", "requestId": "…", "version": 1, "decision": "approve" \| "decline", "reply": "…", "by": "a@b.c"}` | A grown-up answered on the phone. The app applies it only if the request is still waiting at that version. |
 | `{"type": "plan", "plan": true}`                                                                                                        | The Family plan started or ended (sent right away, not only on connect)                                    |
+| `{"type": "library"}`                                                                                                                   | Something was bought: fetch packs and the library again                                                    |
 | `{"type": "unlinked"}`                                                                                                                  | The device was removed on the cloud side; the app forgets its token.                                       |
 
 `RequestSummary`:

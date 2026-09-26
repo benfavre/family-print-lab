@@ -48,6 +48,8 @@ export interface CloudSim {
 	setPlan(active: boolean): void;
 	/** Template packs served to Family plan accounts. */
 	setPacks(packs: unknown[]): void;
+	/** The shop: items (with what to install), the account's credits, and files for models. */
+	setShop(shop: { items: SimShopItem[]; credits: number; files?: Record<string, Buffer> }): void;
 	unlink(): void;
 	state(): {
 		devices: { id: string; name: string; account: string }[];
@@ -60,6 +62,15 @@ export interface CloudSim {
 		backups: { id: string; size: number; keyId: string }[];
 	};
 	close(): Promise<void>;
+}
+
+export interface SimShopItem {
+	id: string;
+	kind: 'kid-pack' | 'part' | 'model';
+	title: string;
+	price: number;
+	/** What /device/library adds: { pack }, { name, source } or { file, format }. */
+	content: Record<string, unknown>;
 }
 
 const token = () => randomBytes(24).toString('base64url');
@@ -87,6 +98,11 @@ export function startCloudSim(port = 0, host = '127.0.0.1'): Promise<CloudSim> {
 	}[] = [];
 	let printerMessages = 0;
 	let packs: unknown[] = [];
+	let shop: { items: SimShopItem[]; credits: number; files?: Record<string, Buffer> } = {
+		items: [],
+		credits: 0
+	};
+	const owned = new Set<string>();
 	let plan = true;
 	const waiting = new Map<string, (r: { ok: boolean; error?: string }) => void>();
 	let url = '';
@@ -143,6 +159,9 @@ export function startCloudSim(port = 0, host = '127.0.0.1'): Promise<CloudSim> {
 		setPacks(next) {
 			packs = next;
 		},
+		setShop(next) {
+			shop = next;
+		},
 		setPlan(active) {
 			plan = active;
 			socket?.send(JSON.stringify({ type: 'plan', plan }));
@@ -171,6 +190,51 @@ export function startCloudSim(port = 0, host = '127.0.0.1'): Promise<CloudSim> {
 
 	const server = http.createServer(async (req, res) => {
 		const path = new URL(req.url ?? '/', 'http://x').pathname;
+		if (path.startsWith('/device/shop') || path.startsWith('/device/library')) {
+			if (!bearer(req)) return json(res, 401, { error: 'This device is not linked.' });
+			const pub = (i: SimShopItem) => ({
+				id: i.id,
+				kind: i.kind,
+				kindLabel: i.kind,
+				title: i.title,
+				blurb: 'blurb',
+				description: 'description',
+				price: i.price,
+				plan: false,
+				facts: [],
+				version: 1
+			});
+			if (path === '/device/shop')
+				return json(res, 200, {
+					items: shop.items.map((i) => ({ ...pub(i), owned: owned.has(i.id) })),
+					balance: shop.credits,
+					plan,
+					site: url
+				});
+			const buying = /^\/device\/shop\/([\w-]+)\/buy$/.exec(path);
+			if (buying && req.method === 'POST') {
+				const item = shop.items.find((i) => i.id === buying[1]);
+				if (!item) return json(res, 404, { error: 'Not in the shop.' });
+				if (owned.has(item.id)) return json(res, 409, { error: 'You already have this one.' });
+				if (shop.credits < item.price)
+					return json(res, 402, {
+						error: `You need ${item.price - shop.credits} more credits for this.`
+					});
+				shop.credits -= item.price;
+				owned.add(item.id);
+				socket?.send(JSON.stringify({ type: 'library' }));
+				return json(res, 200, { balance: shop.credits });
+			}
+			if (path === '/device/library')
+				return json(res, 200, {
+					items: shop.items.filter((i) => owned.has(i.id)).map((i) => ({ ...pub(i), ...i.content }))
+				});
+			const file = /^\/device\/library\/([\w-]+)\/file$/.exec(path);
+			const data = file && owned.has(file[1]) ? shop.files?.[file[1]] : undefined;
+			if (!data) return json(res, 404, { error: 'You do not have this one.' });
+			res.writeHead(200, { 'content-type': 'application/octet-stream' });
+			return res.end(data);
+		}
 		if (path === '/device/packs') {
 			if (!bearer(req)) return json(res, 401, { error: 'This device is not linked.' });
 			return json(res, 200, { plan, packs: plan ? packs : [] });
