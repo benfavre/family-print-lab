@@ -74,8 +74,13 @@ const isObject = (v: unknown): v is Raw => !!v && typeof v === 'object' && !Arra
 
 export const DEVELOPER_MODE_OFF =
 	'Developer Mode is off on the printer, so it ignores commands from this app. Turn it on in the printer’s network settings.';
-/** OpenBambuAPI mqtt.md "pushing.pushall": not more often than every 5 minutes on printers that send deltas. */
+/**
+ * OpenBambuAPI mqtt.md "pushing.pushall": a rule of thumb of not polling more often than every 5 minutes
+ * on printers that send deltas; it holds for the watchdog's periodic asks, not for a reconnect.
+ */
 const PUSHALL_MIN_MS = 5 * 60_000;
+/** Bambu Studio DeviceManager.hpp REQUEST_PUSH_MIN_TIME: never twice within 3 s, even when forced. */
+const PUSHALL_FLOOR_MS = 3000;
 /** Re-read firmware versions this often. */
 const VERSION_EVERY_MS = 6 * 3600_000;
 /** No message for this long while connected: ask for everything, then reconnect after STALE_CLOSE_MS more. */
@@ -108,6 +113,7 @@ export class BambuPrinter extends EventEmitter {
 	private timer?: NodeJS.Timeout;
 	private versionTimer?: NodeJS.Timeout;
 	private watchdog?: NodeJS.Timeout;
+	private pushallTimer?: NodeJS.Timeout;
 	private retry = 0;
 	private stopped = true;
 	private lastMessage = 0;
@@ -162,6 +168,7 @@ export class BambuPrinter extends EventEmitter {
 		clearTimeout(this.timer);
 		clearInterval(this.versionTimer);
 		clearInterval(this.watchdog);
+		clearTimeout(this.pushallTimer);
 		this.client?.end();
 	}
 
@@ -193,9 +200,11 @@ export class BambuPrinter extends EventEmitter {
 			this.lastMessage = Date.now();
 			this.staleSince = 0;
 			client.subscribe(`device/${serial}/report`);
-			// Everything on the first connect (the merged report survives reconnects, so later ones keep
-			// to the 5-minute rule), then versions (and again every 6 hours).
-			this.requestPushall(!this.lastPushall);
+			// Everything on every connect: deltas sent while the connection was down are never repeated,
+			// so the merged report is stale until a full one arrives (ha-bambulab bambu_client.py
+			// _on_connect → subscribe_and_request_info publishes PUSH_ALL each time). Then versions (and
+			// again every 6 hours).
+			this.pushallOnConnect();
 			this.requestVersions();
 			clearInterval(this.versionTimer);
 			this.versionTimer = setInterval(() => this.requestVersions(), VERSION_EVERY_MS);
@@ -263,10 +272,23 @@ export class BambuPrinter extends EventEmitter {
 		}
 	}
 
-	/** Asks for a full report; false when the 5-minute rule for delta printers says not yet. */
+	/** A forced pushall now, or as soon as the 3 s floor allows (a quick reconnect must not skip it). */
+	private pushallOnConnect() {
+		clearTimeout(this.pushallTimer);
+		if (this.requestPushall(true)) return;
+		this.pushallTimer = setTimeout(
+			// Timers may fire a millisecond early: try again (it reschedules if the floor still holds).
+			() => this.connected && this.pushallOnConnect(),
+			PUSHALL_FLOOR_MS - (Date.now() - this.lastPushall)
+		);
+		this.pushallTimer.unref?.();
+	}
+
+	/** Asks for a full report; false when the 5-minute rule for delta printers (or the 3 s floor) says not yet. */
 	private requestPushall(force: boolean) {
-		if (!force && this.model.reports === 'delta' && Date.now() - this.lastPushall < PUSHALL_MIN_MS)
-			return false;
+		const since = Date.now() - this.lastPushall;
+		if (since < PUSHALL_FLOOR_MS) return false;
+		if (!force && this.model.reports === 'delta' && since < PUSHALL_MIN_MS) return false;
 		this.lastPushall = Date.now();
 		void this.send('pushing.pushall', {}).catch(() => {});
 		return true;

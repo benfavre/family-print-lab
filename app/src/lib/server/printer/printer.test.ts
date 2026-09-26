@@ -142,7 +142,7 @@ describe('typed commands against the simulator', () => {
 });
 
 describe('reconnecting', () => {
-	it('keeps the merged report and does not ask a delta printer for everything again', async () => {
+	it('keeps the merged report and asks for everything again after reconnecting', async () => {
 		const { sim, printer } = await connect();
 		const pushalls: string[] = [];
 		const send = printer.send.bind(printer);
@@ -156,9 +156,11 @@ describe('reconnecting', () => {
 		await until(() => !printer.connected);
 		await sim.listen(port, '127.0.0.1', sim.ftpPort);
 		await until(() => printer.connected, 8000);
-		// Once on the first connect only: the X2D sends deltas, so pushall at most every 5 minutes
-		// (OpenBambuAPI mqtt.md).
-		expect(pushalls).toEqual(['pushing.pushall']);
+		// Again on the reconnect, although the X2D sends deltas and 5 minutes have not passed: what
+		// changed while it was away is never sent again otherwise. (Within Bambu Studio's 3 s floor of
+		// the last one, it goes out once the floor has passed.)
+		await until(() => pushalls.length >= 2, 4000);
+		expect(pushalls).toEqual(['pushing.pushall', 'pushing.pushall']);
 		expect(printer.snapshot?.gcodeState).toBe('IDLE');
 	}, 12_000);
 });

@@ -673,9 +673,13 @@ larger ids hang the AMS (ClusterM `research/06.02-mqtt.md`). Replies may carry `
 - Handle every top-level key: `print` (status or reply), `info` (`get_version` reply → firmware
   modules), `system`, `camera`, `xcam`, `upgrade`, `pushing` (replies), `mc_print` (`push_info` lines,
   emitted raw as `'log'` for later use).
-- On connect: subscribe, `pushall`, `get_version`. Then `get_version` again every 6 h. The merged raw
-  report survives reconnects, so only the first connect forces `pushall`; later ones keep to the
-  5-minute rule on delta models.
+- On connect: subscribe, `pushall`, `get_version`. Then `get_version` again every 6 h. Every connect
+  forces `pushall`, reconnects included: deltas sent while the connection was down are never repeated,
+  so the merged raw report is stale until a full one arrives (ha-bambulab `bambu_client.py`
+  `_on_connect` → `subscribe_and_request_info` publishes PUSH_ALL on each connect). The only limit on
+  a forced one is Bambu Studio's `REQUEST_PUSH_MIN_TIME` (3 s, `DeviceManager.hpp`); within it the
+  `pushall` is deferred, not dropped. OpenBambuAPI's 5 minutes is a rule of thumb against polling
+  and applies to the watchdog below, not to reconnects.
 - Stale watchdog: no message for 60 s while "connected" → one `pushall` (respecting the 5-minute
   rule on delta models) then close/reconnect after another 30 s without an answer. When the 5-minute
   rule holds the `pushall` back, a quiet delta printer is not stale (it may have nothing to report).
