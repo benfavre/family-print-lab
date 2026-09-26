@@ -546,7 +546,11 @@ Access codes: stored in the table (as the env file stored them). Never sent to t
 (`PrinterInfo.hasAccessCode`), never logged, excluded from `portability.ts` export (import leaves
 printers untouched). They are in the SQLite backups, which the cloud only stores encrypted.
 `tls_pin` holds the SHA-256 fingerprint of the printer's leaf certificate when it was pinned on first
-use (4.2.3); editing `host`, `serial` or pressing "Trust the new certificate" clears it.
+use (4.2.3); editing `serial` or pressing "Trust the new certificate" clears it. Editing `host` alone
+keeps it: the certificate names the serial, not the address, so a printer that got a new DHCP address
+stays trusted (review fix; the first version cleared it on a host change too). A certificate that Test
+trusted is remembered for that serial and address and used when the printer is added or edited to
+match.
 
 #### 4.2.2 Types
 
@@ -669,9 +673,12 @@ larger ids hang the AMS (ClusterM `research/06.02-mqtt.md`). Replies may carry `
 - Handle every top-level key: `print` (status or reply), `info` (`get_version` reply → firmware
   modules), `system`, `camera`, `xcam`, `upgrade`, `pushing` (replies), `mc_print` (`push_info` lines,
   emitted raw as `'log'` for later use).
-- On connect: subscribe, `pushall`, `get_version`. Then `get_version` again every 6 h.
+- On connect: subscribe, `pushall`, `get_version`. Then `get_version` again every 6 h. The merged raw
+  report survives reconnects, so only the first connect forces `pushall`; later ones keep to the
+  5-minute rule on delta models.
 - Stale watchdog: no message for 60 s while "connected" → one `pushall` (respecting the 5-minute
-  rule on delta models) then close/reconnect after another 30 s.
+  rule on delta models) then close/reconnect after another 30 s without an answer. When the 5-minute
+  rule holds the `pushall` back, a quiet delta printer is not stale (it may have nothing to report).
 - `send()` from the command layer (4.4) replaces the private `command()`; `startPrint` and `control`
   become thin wrappers over `send('print.project_file' | 'print.pause' | …)`.
 - `rawReport()` returns the merged raw report with `sn`, `serial`-like fields and IPs redacted, for the
@@ -713,15 +720,19 @@ literal).
   `'cancelled'` transitions to `Cancelled` (defect 6).
 - `jobInput`/`jobPatch` accept `printerId` (nullable; "any printer" when null). `reprintJob` copies it.
 - `PrintFiles.check(jobId, opts)` / `send(jobId, opts)`: `SendOptions` gains `printerId?: string`
-  (default: job's `printerId`, else the primary). One send at a time **per printer**. Model check:
+  (default: job's `printerId`, else the primary). One send at a time **per printer**, and
+  per job (the same job cannot go to two printers at once). Model check:
   `sliced.printerModelId` must equal the printer's `model` (also accept the H2C pair `O1C`/`O1C2`
   either way); the error names both models ("This file was sliced for the P1S. This printer is an X2D.").
-  On send, store `printer_id` and `dispatch` on the job.
+  On send, store `printer_id` and `dispatch` on the job. `SendOptions.amsMapping` has one tray per
+  filament the plate uses (in the plate's order, as `SendPanel` builds it); `projectMapping()` in
+  `printing.ts` turns it into `project_file`'s one entry per project filament by filament id (8.3), and
+  `dispatch.amsMapping` stores that form (entry i = filament i + 1, -1 unused).
 - Waking a printer (contract for queue and home-automation): `SendOptions` also gains `wake?: boolean`.
   With `wake: true` and at least one `beforeDispatch` hook registered, `check()` reports "not
   connected" as a warning-free deferral instead of blocking; the background task then runs
   `hooks.beforeDispatch` **inside `deliver()`** (with the task's `signal`), re-checks connection,
-  model and busy state, and only then uploads. Callers never run `beforeDispatch` themselves (the queue
+  model and busy state (the send's own lock does not count), and only then uploads. Callers never run `beforeDispatch` themselves (the queue
   must not call it separately, or the plug is switched twice). `send()` keeps returning the task it
   starts (from `TaskCenter.start`), so callers can await its outcome.
 - `sliceJob` passes the job's printer model (or the primary's) to `slice()`; `SliceSettings` gains
@@ -739,7 +750,7 @@ All through `api()` in `http.ts`. Kid mode refuses them by default (existing `ki
 | `/api/printers`                  | GET    |                                                                                  | `PrinterStatus[]`                                                                   |
 | `/api/printers`                  | POST   | `printerInput`                                                                   | `{ printer: PrinterInfo }` + workspace                                              |
 | `/api/printers/reorder`          | POST   | `{ ids }`                                                                        | workspace                                                                           |
-| `/api/printers/test`             | POST   | `printerInput` (access code required unless `id` given, then stored one is used) | test result                                                                         |
+| `/api/printers/test`             | POST   | `printerInput` (access code required unless `id` given and the serial is unchanged, then the stored one is used) | test result                                                                         |
 | `/api/printers/discover`         | POST   | `{ ms? }` (≤ 15000)                                                              | `{ printers: DiscoveredPrinter[], warning? }`                                       |
 | `/api/printers/[id]`             | GET    |                                                                                  | `PrinterStatus`                                                                     |
 | `/api/printers/[id]`             | PATCH  | `printerPatch`                                                                   | `{ printer }` + workspace                                                           |
@@ -821,6 +832,13 @@ export function parseReport(
   `device.nozzle.info[]` by `id`; `device.airduct.parts[]` by `id`; `vir_slot[]` by `id`;
   `lights_report[]` by `node`. (ha-bambulab updates AMS/tray/extruder/nozzle per id; `Lights` searches
   by `node`.)
+- Exception: a tray element that carries only `id` (and maybe `state`) replaces the stored tray: the
+  slot is empty now (ha-bambulab `AMSTray.print_update` "metadata only"; Bambu Studio
+  `DevFilaSystem.cpp` `ParseAmsTrayInfo` clears the filament of a tray sent without `tray_type`).
+  Merging it would keep showing the spool that was taken out.
+- Units stay in the merged report after they are unplugged, so `parseReport` leaves out units whose
+  bit in `ams_exist_bits` is 0 (bit = unit id for AMS, AMS Lite and AMS 2 Pro, 12 for the A2L's AMS
+  Lite, `4 + id − 128` for AMS HT; Bambu Studio `ParseAmsInfo`). Without the field every unit counts.
 - All other arrays replace (`hms`, `s_obj`, `stg`, `cols`, `filam_bak`, `ams_mapping`, `mapping`,
   `airduct.modeList`, `new_ver_list`).
 - A `pushall` reply (sequence matching our `pushall`, or any report on a `'full'` model) is still merged,
@@ -1231,6 +1249,11 @@ export class EventBus {
   or `0x0500400E` → cancelled; FAILED → failed; active → IDLE → cancelled), pause reason from stage (16 user, 6 runout,
   others error), layer changes, HMS set differences (by attr+code), AMS tray changes (by `global`,
   comparing type/colour/uuid/remain rounded to 5 %). Table-driven tests cover each rule.
+  Print transitions need a snapshot to compare with: the first report after the app starts (or after a
+  Settings change reconnects the printer) never emits `print.started` for a print already running (the
+  manager links it to a job quietly with `lab.linkStartedTask`), so modules do not announce a print as
+  started on every restart. A print that ended while the app was away (FINISH or FAILED in that first
+  report) is reported once, only while a job is still `Printing` for its task (`jobIdFor` finds it).
 - Wiring (runtime): PrinterManager computes events on each `update` and emits them; the runtime
   subscribes `print.started` → `lab.linkStartedTask`, `print.finished|failed|cancelled` →
   `lab.closePrinterTask` (replacing today's direct `started`/`finished` listeners). `Lab.requestPrint`
@@ -1239,7 +1262,9 @@ export class EventBus {
 - Ordering guarantee (packages rely on it): `emit()` calls listeners synchronously in registration
   order, and the runtime registers its core listeners (`linkStartedTask`, `closePrinterTask`) **before**
   any module starts. So when a module's `print.finished` listener runs, the job is already
-  `Succeeded`/`Failed`/`Cancelled` and `data.jobId` is set whenever the print was linked. A listener
+  `Succeeded`/`Failed`/`Cancelled` and `data.jobId` is set whenever the print was linked (for
+  `print.started`, the runtime's listener fills in `jobId` when it has just linked the task, so later
+  listeners see it). A listener
   that needs async work must not block the emitter (fire and forget with its own error handling).
 
 ### 4.6 Extension registries (make wave-1 additive)
