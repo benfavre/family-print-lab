@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { locateCli, locateEngine, locateSlicers, type SlicerHost } from './locate';
-import { openSlicer } from './engine';
 
 /** A fake machine: `files` are executable unless listed in `plain`. */
 function host(files: string[], o: Partial<SlicerHost> & { plain?: string[] } = {}): SlicerHost {
@@ -91,9 +90,5 @@ describe('locating the slicer', () => {
 			path: 'C:\\Program Files\\Bambu Studio\\bambu-studio.exe'
 		});
 		expect(locateSlicers({}, '/nowhere', host([]))).toEqual([]);
-	});
-
-	it('has no engine to open yet (the slicer-engine package brings it)', async () => {
-		expect(await openSlicer({})).toBeNull();
 	});
 });

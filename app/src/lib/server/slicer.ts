@@ -10,6 +10,7 @@ import path from 'node:path';
 import { readZip, rewriteZip } from './cad/mesh';
 import { AppError } from './validation';
 import { PRINTER_MODELS, type ModelCode } from '$lib/shared/printers/models';
+import { locateCli, type SlicerHost } from './slicer/locate';
 
 type Profile = Record<string, unknown> & { name: string; inherits?: string };
 type Kind = 'machine' | 'process' | 'filament';
@@ -18,26 +19,25 @@ export interface SlicerInfo {
 	available: boolean;
 	path: string | null;
 	version: string | null;
+	/** Where its profiles live (<resourcesDir>/profiles/BBL). */
+	resourcesDir: string | null;
 }
 
-/** Finds Bambu Studio: BAMBU_STUDIO_PATH, then the newest unpacked install in ~/.local/opt. */
-export function findSlicer(env: Record<string, string | undefined> = process.env): SlicerInfo {
-	const candidates: string[] = [];
-	if (env.BAMBU_STUDIO_PATH) candidates.push(env.BAMBU_STUDIO_PATH);
-	const opt = path.join(os.homedir(), '.local/opt');
-	if (fs.existsSync(opt))
-		candidates.push(
-			...fs
-				.readdirSync(opt)
-				.filter((d) => /^bambu-studio-\d/.test(d))
-				.sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))
-				.map((d) => path.join(opt, d, 'AppRun'))
-		);
-	const found = candidates.find((c) => fs.existsSync(c));
+/**
+ * The stock Bambu Studio (or OrcaSlicer) command line this file drives, found by slicer/locate.ts:
+ * BAMBU_STUDIO_PATH, ORCA_SLICER_PATH, then the usual install places on each platform.
+ */
+export function findSlicer(
+	env: Record<string, string | undefined> = process.env,
+	cwd?: string,
+	host?: SlicerHost
+): SlicerInfo {
+	const found = locateCli(env, cwd, host);
 	return {
 		available: !!found,
-		path: found ?? null,
-		version: found?.match(/bambu-studio-([\d.]+)/)?.[1] ?? null
+		path: found?.path ?? null,
+		version: found?.path.match(/(?:bambu-studio|orca-slicer)-v?([\d.]+)/i)?.[1] ?? null,
+		resourcesDir: found?.resourcesDir ?? null
 	};
 }
 
@@ -95,8 +95,11 @@ function* walk(dir: string): Generator<string> {
 }
 
 const books = new Map<string, ProfileBook>();
-function book(bin: string) {
-	const root = path.join(path.dirname(bin), 'resources/profiles/BBL');
+/** An install's resources folder: next to the binary, unless locate.ts found it elsewhere (macOS). */
+const resourcesOf = (bin: string) => path.join(path.dirname(bin), 'resources');
+
+function book(resources: string) {
+	const root = path.join(resources, 'profiles/BBL');
 	let b = books.get(root);
 	if (!b) books.set(root, (b = new ProfileBook(root)));
 	return b;
@@ -137,8 +140,12 @@ const BED_TYPES: Record<string, string> = {
 };
 
 /** Picks the Bambu Studio profiles closest to a job's settings. */
-export function chooseProfiles(bin: string, s: SliceSettings): SliceChoice {
-	const b = book(bin);
+export function chooseProfiles(
+	bin: string,
+	s: SliceSettings,
+	resources = resourcesOf(bin)
+): SliceChoice {
+	const b = book(resources);
 	const printer = PRINTER_MODELS[s.model] ?? PRINTER_MODELS.N6;
 	// Bambu Studio's machine presets are "<model name> <nozzle> nozzle".
 	const machine = `${printer.name} ${s.nozzle || '0.4'} nozzle`;
@@ -215,8 +222,9 @@ export async function slice(opts: {
 	const found = findSlicer(opts.env);
 	if (!found.path) throw new AppError(503, 'Bambu Studio is not installed. See Integrations.');
 	const bin = found.path;
-	const choice = chooseProfiles(bin, opts.settings);
-	const b = book(bin);
+	const resources = found.resourcesDir ?? resourcesOf(bin);
+	const choice = chooseProfiles(bin, opts.settings, resources);
+	const b = book(resources);
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'print-lab-slice-'));
 	try {
 		const write = (file: string, p: Profile) => {

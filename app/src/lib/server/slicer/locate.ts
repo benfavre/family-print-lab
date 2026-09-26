@@ -68,7 +68,11 @@ const realHost = (): SlicerHost => ({
 /** "linux-x64", "darwin-arm64", "darwin-x64", "win32-x64". */
 export const platformKey = (h: Pick<SlicerHost, 'platform' | 'arch'>) => `${h.platform}-${h.arch}`;
 
-/** Walks up from `cwd` to the repository root (it has slicer/UPSTREAM.md, or at least slicer/upstream.lock). */
+/**
+ * Walks up from `cwd` to the repository root (it has slicer/UPSTREAM.md, or at least slicer/upstream.lock).
+ * app/tools/lib/upstream.ts has its own repoRoot: tools/ is build-time only and never bundled into the
+ * server, and this one takes a fake host for tests.
+ */
 export function findRepo(cwd: string, host: SlicerHost = realHost()): string | null {
 	let dir = path.resolve(cwd);
 	for (;;) {

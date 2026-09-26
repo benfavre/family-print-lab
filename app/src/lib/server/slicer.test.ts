@@ -1,4 +1,7 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { MODEL_CODES } from '$lib/shared/printers/models';
 import { chooseProfiles, findSlicer, slice } from './slicer';
 import { readSliced } from './printer/sliced';
 import { renderScad } from './cad/openscad';
@@ -59,4 +62,39 @@ describe.runIf(slicer.available)('slicing with Bambu Studio', () => {
 		expect(file.plates[0].filaments[0]).toMatchObject({ type: 'PLA', color: '#FF7A2F' });
 		expect(file.thumbnails.get(1)?.equals(png)).toBe(true);
 	}, 120_000);
+});
+
+// Bambu Studio's profiles at the pin, from an upstream checkout (slicer/scripts/upstream.sh fetch, or
+// PRINTLAB_UPSTREAM_DIR). The slicer update workflow has one, so a new pin that renames a preset fails
+// here instead of breaking slicing for that printer.
+const upstream =
+	process.env.PRINTLAB_UPSTREAM_DIR ??
+	path.resolve(import.meta.dirname, '../../../../slicer/.upstream');
+const pinned = fs.existsSync(path.join(upstream, 'resources/profiles/BBL.json'));
+
+describe.runIf(pinned)('Bambu Studio profiles at the pinned tag', () => {
+	it.each(MODEL_CODES)('has machine, process, filament and plate presets for %s', (model) => {
+		for (const material of ['PLA', 'PETG', 'TPU'])
+			expect(
+				chooseProfiles(
+					'',
+					{
+						model,
+						nozzle: '0.4',
+						layerHeight: '0.20',
+						material,
+						supports: 'None',
+						infill: 15,
+						plate: 'Textured PEI'
+					},
+					path.join(upstream, 'resources')
+				),
+				`${model} ${material}`
+			).toMatchObject({
+				machine: expect.stringMatching(/ 0\.4 nozzle$/),
+				process: expect.stringMatching(/^0\.20mm /),
+				filament: expect.stringContaining(material),
+				bedType: 'Textured PEI Plate'
+			});
+	});
 });
