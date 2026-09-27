@@ -3,6 +3,7 @@
 // and stdout; stdout is kept for protocol lines only, so at startup the real stdout is set aside and
 // everything else that prints to stdout (upstream's logging included) goes to stderr.
 #include <clocale>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -43,6 +44,18 @@ void set_stdout_aside() {
 // from its own (PrintConfig.cpp "Initializing StaticPrintConfigs"), and that line must not reach the
 // protocol stream, which main() would set aside too late.
 __attribute__((constructor(101))) void set_stdout_aside_early() { set_stdout_aside(); }
+#elif defined(_MSC_VER)
+// The library segment runs after CRT initialisation (stdio is available), before ordinary C++
+// static constructors such as PrintConfig's logger. main() is too late on MSVC as well as GCC.
+// https://learn.microsoft.com/en-us/cpp/preprocessor/init-seg
+#pragma warning(push)
+#pragma warning(disable : 4073)
+#pragma init_seg(lib)
+struct EarlyStdout {
+	EarlyStdout() { set_stdout_aside(); }
+};
+EarlyStdout early_stdout;
+#pragma warning(pop)
 #endif
 
 } // namespace

@@ -1,0 +1,12 @@
+execute_process(COMMAND "${ENGINE}" --version
+    RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE logs TIMEOUT 30)
+if(NOT result EQUAL 0)
+    message(FATAL_ERROR "Engine startup failed: ${result}\n${logs}")
+endif()
+string(REPLACE "\r\n" "\n" output "${output}")
+if(NOT output MATCHES "^printlab-slicer [^\n]+\n$")
+    message(FATAL_ERROR "Non-protocol startup output reached stdout: ${output}")
+endif()
+if(NOT logs MATCHES "printlab startup fixture")
+    message(FATAL_ERROR "The static initializer's output did not reach stderr: ${logs}")
+endif()
