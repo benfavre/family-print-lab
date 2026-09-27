@@ -13,6 +13,14 @@ test.beforeEach(async ({ context }) => {
 test('the slicer workspace: plates, objects, a modifier, plate settings, undo, and the project file', async ({
 	page
 }) => {
+	// This case exercises editing without a slicer, including on hosts with a native bundle.
+	await page.route('**/api/slicer-ui/info', async (route) => {
+		const response = await route.fetch();
+		await route.fulfill({
+			response,
+			json: { ...(await response.json()), engine: null, version: null, capabilities: [] }
+		});
+	});
 	const shaderErrors: string[] = [];
 	page.on('console', (message) => {
 		if (message.type() === 'error' && /shader|WebGLProgram/i.test(message.text()))
