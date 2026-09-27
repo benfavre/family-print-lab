@@ -1,5 +1,6 @@
 #include "methods.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <thread>
 
@@ -54,6 +55,16 @@ std::vector<std::string> string_list(const Json &j, const std::string &where) {
 
 void register_methods(Server &server, Facade &facade, const EngineOptions &options) {
 	std::vector<std::string> caps = facade.capabilities();
+	// Protocol methods this engine does not implement yet: named, so a client that calls one anyway hears
+	// CAPABILITY_MISSING (protocol.ts), not METHOD_NOT_FOUND. The capability is never reported, so the
+	// handler is never reached.
+	for (const auto &m : std::vector<std::pair<std::string, std::string>>{
+	         {"project.open", "project.open"}, {"project.save", "project.save"}, {"preview.get", "preview.v1"}})
+		if (std::find(caps.begin(), caps.end(), m.second) == caps.end())
+			server.add(m.first, {m.second, false, [](const Json &, CallContext &) -> Json {
+				                     throw EngineError(err::CAPABILITY_MISSING, "This version of the slicer cannot do that yet.");
+			                     }});
+
 	if (options.test_methods) caps.push_back("test.wait");
 	server.set_capabilities(caps);
 	auto started = std::make_shared<bool>(false);

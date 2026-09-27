@@ -2,6 +2,7 @@
 // config over the project's, filament_map filled for the extruders, Print::apply, validate, process
 // with a status callback, export_gcode with a GCodeProcessorResult, then the G-code checks it reports.
 // Progress comes from Print's status callback; $/cancel calls Print::cancel().
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <fstream>
@@ -69,6 +70,17 @@ PlateStats UpstreamFacade::slice(const std::string &project_id, int plate_index,
 	std::vector<int> &maps = config.option<ConfigOptionInts>("filament_map", true)->values;
 	maps.resize(filament_count, 1);
 	for (size_t i = 0; i < plate->filament_maps.size() && i < maps.size(); ++i) maps[i] = plate->filament_maps[i];
+	// Nozzle volume per extruder and per filament, as BambuStudio.cpp sets them before Print::apply
+	// (~6948-6970): standard flow unless the printer's preset says otherwise, each filament on its
+	// extruder's volume type.
+	int extruders = 1;
+	if (auto *n = config.option<ConfigOptionFloatsNullable>("nozzle_diameter")) extruders = std::max<int>(1, n->values.size());
+	std::vector<int> &volumes = config.option<ConfigOptionEnumsGeneric>("nozzle_volume_type", true)->values;
+	if (volumes.size() < static_cast<size_t>(extruders)) volumes.resize(extruders, nvtStandard);
+	std::vector<int> &volume_maps = config.option<ConfigOptionInts>("filament_volume_map", true)->values;
+	volume_maps.resize(filament_count, volumes[0]);
+	for (int i = 0; i < filament_count; ++i) volume_maps[i] = volumes[std::clamp(maps[i], 1, extruders) - 1];
+	restore_enum_maps(config);
 
 	Print print;
 	std::vector<SliceWarning> warnings;

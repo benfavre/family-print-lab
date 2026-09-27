@@ -32,6 +32,14 @@ Transform from_transform3d(const Slic3r::Transform3d &m);
  */
 Slic3r::DynamicPrintConfig to_config(const ConfigMap &map, const std::string &scratch_dir);
 ConfigMap from_config(const Slic3r::ConfigBase &config);
+/**
+ * Points every enum-list option back at its keys. Upstream's defaults for these options are built
+ * without them (PrintConfig.cpp `new ConfigOptionEnumsGeneric{…}`; Config.hpp's initializer-list
+ * constructor even initialises keys_map from itself), and apply() copies values only, so a config
+ * made from DynamicPrintConfig::full_print_config() crashes when G-code export serialises it. The GUI
+ * never meets this: its configs always come from preset files.
+ */
+void restore_enum_maps(Slic3r::ConfigBase &config);
 
 // ---- the facade
 

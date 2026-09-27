@@ -26,10 +26,35 @@
 #include "rpc/server.hpp"
 #include "version.hpp"
 
+namespace {
+
+/** The original stdout, kept for protocol lines; -1 until it is set aside. */
+int g_proto = -1;
+
+void set_stdout_aside() {
+	if (g_proto >= 0) return;
+	std::fflush(stdout);
+	g_proto = dup_fd(1);
+	dup2_fd(2, 1);
+}
+
+#if defined(__GNUC__)
+// Before every other static initialiser (101 is the first priority open to programs): libslic3r logs
+// from its own (PrintConfig.cpp "Initializing StaticPrintConfigs"), and that line must not reach the
+// protocol stream, which main() would set aside too late.
+__attribute__((constructor(101))) void set_stdout_aside_early() { set_stdout_aside(); }
+#endif
+
+} // namespace
+
 int main(int argc, char **argv) {
+	// Protocol on the original stdout; anything else printed to stdout lands on stderr.
+	set_stdout_aside();
+	int proto = g_proto;
 	if (argc > 1 && (std::strcmp(argv[1], "--version") == 0)) {
-		std::printf("printlab-slicer %s (%s %s)\n", PRINTLAB_ENGINE_VERSION, PRINTLAB_UPSTREAM_NAME, PRINTLAB_UPSTREAM_TAG);
-		return 0;
+		std::string line = std::string("printlab-slicer ") + PRINTLAB_ENGINE_VERSION + " (" + PRINTLAB_UPSTREAM_NAME + " " +
+		                   PRINTLAB_UPSTREAM_TAG + ")\n";
+		return write_fd(proto, line.data(), static_cast<unsigned>(line.size())) > 0 ? 0 : 1;
 	}
 	// Numbers in JSON and in upstream's config files use '.', whatever the user's locale.
 	std::setlocale(LC_NUMERIC, "C");
@@ -37,10 +62,6 @@ int main(int argc, char **argv) {
 	std::signal(SIGPIPE, SIG_IGN); // the app went away: writes fail and the read loop ends
 #endif
 
-	// Protocol on the original stdout; anything else printed to stdout lands on stderr.
-	std::fflush(stdout);
-	int proto = dup_fd(1);
-	dup2_fd(2, 1);
 #ifdef _WIN32
 	_setmode(proto, _O_BINARY);
 	_setmode(0, _O_BINARY);

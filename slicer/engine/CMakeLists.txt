@@ -81,6 +81,9 @@ if (PRINTLAB_WITH_UPSTREAM)
     # CMakeLists.txt) to make its targets visible to our targets too.
     set(Boost_USE_STATIC_LIBS ON)
     find_package(Boost 1.83.0 REQUIRED COMPONENTS system filesystem thread log locale regex chrono atomic date_time iostreams)
+    # The same for cereal: libslic3r links the imported target `cereal`, which otherwise ends up on
+    # our link line as a plain -lcereal (header-only, so there is no such library).
+    find_package(cereal REQUIRED)
     add_subdirectory("${PRINTLAB_UPSTREAM_DIR}" upstream EXCLUDE_FROM_ALL)
     find_package(ZLIB REQUIRED)
     target_compile_definitions(printlab_features PRIVATE PRINTLAB_HAVE_ZLIB)
@@ -92,8 +95,17 @@ if (PRINTLAB_WITH_UPSTREAM)
         src/facade/upstream/arrange_orient.cpp
         src/facade/upstream/slice.cpp
         src/facade/upstream/export.cpp
-        src/facade/upstream/facade.cpp)
-    target_link_libraries(printlab_facade PUBLIC printlab_rpc printlab_features libslic3r cereal)
+        src/facade/upstream/facade.cpp
+        src/facade/upstream/link_shims.cpp)
+    # libslic3r's MD5 calls (bbs_3mf.cpp, utils.cpp) come from OpenSSL, which upstream only links
+    # through the GUI; the deps build has it.
+    find_package(OpenSSL REQUIRED)
+    target_link_libraries(printlab_facade PUBLIC printlab_rpc printlab_features libslic3r cereal OpenSSL::Crypto)
+    # Upstream adds its source tree, bundled libraries (boost::nowide, libigl, Eigen) and generated
+    # platform headers with include_directories() in its own top-level CMakeLists.txt, which does not
+    # reach this directory: the facade takes the same list from there.
+    get_directory_property(_upstream_includes DIRECTORY "${PRINTLAB_UPSTREAM_DIR}" INCLUDE_DIRECTORIES)
+    target_include_directories(printlab_facade PRIVATE ${_upstream_includes})
     target_compile_definitions(printlab_facade PRIVATE PRINTLAB_UPSTREAM_RESOURCES="${PRINTLAB_UPSTREAM_DIR}/resources")
 else ()
     add_library(printlab_facade STATIC src/facade/null_facade.cpp)

@@ -476,6 +476,12 @@ cmd_build() {
 	PRINTLAB_UPSTREAM_DIR="$UP" PRINTLAB_SLICER_BUILD_DIR="$BUILD" bash "$SLICER/scripts/build-deps.sh" -j "$jobs"
 	[ $deps_only = 1 ] && return 0
 	engine="$BUILD/engine"
+	# libslic3r stamps its version header with the configure time (string(TIMESTAMP) in
+	# src/libslic3r/CMakeLists.txt), so every re-configure (a new patch, a lock change) would rebuild all
+	# of it. CMake takes the time from SOURCE_DATE_EPOCH when set: the pinned commit's time keeps the
+	# header, and the build, unchanged.
+	SOURCE_DATE_EPOCH="$(g log -1 --format=%ct printlab-base)"
+	export SOURCE_DATE_EPOCH
 	cmake -S "$SLICER/engine" -B "$engine" -DPRINTLAB_UPSTREAM_DIR="$UP" \
 		-DCMAKE_PREFIX_PATH="$BUILD/deps/usr/local" -DCMAKE_BUILD_TYPE=Release
 	nice -n 10 cmake --build "$engine" -j "$jobs" --target printlab-slicer test_json test_rpc test_thumbnails test_facade

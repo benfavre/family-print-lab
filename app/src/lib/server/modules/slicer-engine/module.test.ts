@@ -123,6 +123,51 @@ describe('slicing jobs through the module', () => {
 		expect(lab.getJob(jobId)).toMatchObject({ status: 'Succeeded', printerId: p1s.info.id });
 	}, 30_000);
 
+	// With a real engine build (upstream.sh test sets PRINTLAB_SLICER_PATH): the same job through
+	// Print Lab Slicer, printed by the simulated P1S.
+	it.runIf(!!process.env.PRINTLAB_SLICER_PATH)(
+		'slices a job with Print Lab Slicer and the simulated P1S prints it to Succeeded',
+		async ({ skip }) => {
+			t = await startTestLab({
+				fleet: ['C12'],
+				modules: ['slicer-engine'],
+				speed: 1200,
+				env: { PRINTLAB_SLICER_PATH: process.env.PRINTLAB_SLICER_PATH }
+			});
+			const engine = await t.rt.module('slicer-engine')!.open();
+			if (!engine?.has('slice')) skip(); // a protocol-only build cannot slice
+			const { lab, models, printing, tasks } = t.rt;
+			const p1s = t.printer('C12');
+			const profileId = lab.createProfile({ name: 'Alex', color: 'blue' });
+			const projectId = lab.createProject({ profileId, title: 'Desk hook' });
+			const cube = await renderScad('cube([20, 20, 10]);');
+			const modelId = models.importFile(projectId, 'Hook', writeStl(cube.soup!), 'stl');
+			const jobId = lab.createJob({
+				projectId,
+				modelVersionId: models.detail(modelId).current!.id,
+				printerId: p1s.info.id,
+				material: 'PLA'
+			});
+			const task = printing.sliceJob(jobId);
+			const done = await until(
+				() => tasks.list().find((x) => x.id === task.id && x.status !== 'running'),
+				120_000
+			);
+			expect(done).toMatchObject({ status: 'done' });
+			const sliced = lab.getJob(jobId)!.sliced!;
+			expect(sliced).toMatchObject({ printerModelId: 'C12', source: 'app' });
+			const file = readSliced(fs.readFileSync(printing.file(sliced.file)));
+			expect(file.plates[0].layers).toBe(50);
+			expect(file.thumbnails.get(1)?.length).toBeGreaterThan(0);
+
+			const finished = t.nextEvent('print.finished', (e) => e.printerId === p1s.info.id, 60_000);
+			printing.send(jobId, { printerId: p1s.info.id, useAms: false, amsMapping: [] });
+			await finished;
+			expect(lab.getJob(jobId)).toMatchObject({ status: 'Succeeded', printerId: p1s.info.id });
+		},
+		200_000
+	);
+
 	it('shows the slicer on the Integrations page and slices a test cube there', async () => {
 		t = await startTestLab({
 			fleet: ['C12'],

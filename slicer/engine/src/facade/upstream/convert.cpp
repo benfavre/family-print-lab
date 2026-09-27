@@ -65,4 +65,17 @@ ConfigMap from_config(const ConfigBase &config) {
 	return out;
 }
 
+void restore_enum_maps(ConfigBase &config) {
+	const ConfigDef *defs = config.def();
+	if (!defs) return;
+	for (const std::string &key : config.keys()) {
+		ConfigOption *opt = config.option(key);
+		if (!opt || opt->type() != coEnums) continue;
+		const ConfigOptionDef *def = defs->get(key);
+		if (!def || !def->enum_keys_map) continue;
+		if (def->nullable) static_cast<ConfigOptionEnumsGenericNullable *>(opt)->keys_map = def->enum_keys_map;
+		else static_cast<ConfigOptionEnumsGeneric *>(opt)->keys_map = def->enum_keys_map;
+	}
+}
+
 } // namespace printlab::upstream

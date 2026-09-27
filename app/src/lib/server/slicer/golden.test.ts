@@ -74,14 +74,14 @@ describe.runIf(!!BIN)('golden slices', () => {
 		slicing = engine.has('slice');
 	});
 	afterAll(async () => {
+		// The tag before closing: a closed engine has no info.
+		const upstreamTag = engine?.info.upstream.tag;
 		await engine?.close();
 		if (process.env.GOLDEN_UPDATE === '1' && Object.keys(measured).length) {
 			const reason = process.env.GOLDEN_REASON;
 			if (!reason) throw new Error('Set GOLDEN_REASON to say why the golden values change.');
 			golden.cases = golden.cases.map((c) => ({ ...c, ...measured[c.name] }));
-			golden.reasons.push(
-				`${new Date().toISOString().slice(0, 10)} ${engine?.info.upstream.tag}: ${reason}`
-			);
+			golden.reasons.push(`${new Date().toISOString().slice(0, 10)} ${upstreamTag}: ${reason}`);
 			fs.writeFileSync(FILE, `${JSON.stringify(golden, null, '\t')}\n`);
 		}
 	});

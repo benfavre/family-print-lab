@@ -1,5 +1,6 @@
 // The upstream facade: projects held in memory by id, each with its full config (the resolved
 // presets' combined config plus the project's own settings), and the capabilities this build offers.
+#include <cstdlib>
 #include <fstream>
 
 #include <boost/filesystem.hpp>
@@ -22,6 +23,10 @@ UpstreamFacade::UpstreamFacade() {
 #ifdef PRINTLAB_UPSTREAM_RESOURCES
 	resources_dir_ = PRINTLAB_UPSTREAM_RESOURCES;
 #endif
+	// libslic3r logs at trace level until told otherwise, a flood on stderr while slicing: warnings and
+	// worse (0 fatal … 5 trace, Utils.hpp set_logging_level), or PRINTLAB_ENGINE_LOG_LEVEL.
+	const char *level = std::getenv("PRINTLAB_ENGINE_LOG_LEVEL");
+	set_logging_level(level && *level >= '0' && *level <= '5' ? static_cast<unsigned>(*level - '0') : 2);
 }
 
 EngineIdentity UpstreamFacade::identity() const {
@@ -83,6 +88,7 @@ SyncResult UpstreamFacade::project_sync(const std::string &project_id, const Pro
 	DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
 	config.apply(to_config(full, scratch()), true);
 	config.normalize_fdm();
+	restore_enum_maps(config);
 	for (const SceneObject &o : next.objects)
 		for (const Part &p : o.parts) try {
 				mesh(next, p.mesh);

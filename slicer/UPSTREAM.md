@@ -189,10 +189,25 @@ The patch queue holds two build fixes, both marked upstreamable, both proven by 
   `service.ts` (what jobs call) through both, and the protocol conformance tests against the real
   protocol-only binary.
 - The protocol layer, the thumbnails and their tests build and pass everywhere (`--no-upstream`).
-- The facade (`engine/src/facade/upstream/`) type-checks against the pinned headers. The full build
-  (dependencies, then libslic3r and the engine) was run on the development machine; see the package
-  report for how far it got. Golden values in `tests/golden/expected.json` are recorded on the first
-  working build (`GOLDEN_UPDATE=1 GOLDEN_REASON='first engine build' upstream.sh test`).
+- The full engine builds, links and runs on Linux x64 (Ubuntu 22.04, GCC 11, `-j 2`: about 75
+  minutes for the dependencies and about two hours for libslic3r and the engine). ctest passes
+  (`test_facade` slices a cube for the P1S), the protocol conformance tests pass, the golden boxes
+  for the X1C, P1S, A1 mini, H2D and X2D slice to the recorded layer counts and nozzle diameters, and
+  a job sliced by the engine prints to Succeeded on the simulated P1S
+  (`modules/slicer-engine/module.test.ts`). No real printer has printed its files yet.
+- What linking needed: libslic3r calls a few things upstream only builds with the GUI (nanosvg,
+  `Slic3r::Http` and `BBL_Encrypt` for LogSink's encrypted logs, OpenSSL's MD5), so
+  `facade/upstream/link_shims.cpp` compiles nanosvg and gives the other two no-op bodies: the engine
+  opens no network connection. Upstream's enum-list option defaults carry no keys (`restore_enum_maps`
+  in `convert.cpp`), and `nozzle_volume_type` / `filament_volume_map` are set per plate as the CLI does.
+- Known problem: the time estimate (and, less, the filament weight) differs between identical runs,
+  often absurd (`prediction` of -2147483648 in `slice_info.config`, `M73 R-2147483648`): something in
+  the G-code processor's path reads memory the facade leaves unset. Layers, toolpaths and the file
+  itself are stable. Until it is found the golden `seconds` and `grams` stay null. A build with
+  `-fsanitize=address,undefined` (or valgrind, not installed on the development machine) is the next
+  step.
+- A re-configure used to rebuild all of libslic3r, because its version header carries the configure
+  time; `upstream.sh build` now sets `SOURCE_DATE_EPOCH` to the pinned commit's time.
 - Not done yet: `project.open`/`project.save` (slicer-3mf's work), `preview.get`, `config.validate`
   beyond upstream's own validation, multi-extruder filament grouping (the H2D/X2D auto map the CLI
   does through its GUI plate list), and the wipe tower placeholder when arranging.
@@ -204,5 +219,7 @@ On a bigger machine, from the repository root:
 ```
 slicer/scripts/upstream.sh fetch
 slicer/scripts/upstream.sh build -j 16
-GOLDEN_UPDATE=1 GOLDEN_REASON='first engine build' slicer/scripts/upstream.sh test
+slicer/scripts/upstream.sh test
+# once the time estimate is repeatable:
+GOLDEN_UPDATE=1 GOLDEN_REASON='time and weight recorded' slicer/scripts/upstream.sh test
 ```
