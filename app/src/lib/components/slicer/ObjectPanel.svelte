@@ -21,6 +21,7 @@
 	import SettingsEditor from './SettingsEditor.svelte';
 	import LayerHeightEditor from './LayerHeightEditor.svelte';
 	import CutPanel from './CutPanel.svelte';
+	import SimplifyPanel from './SimplifyPanel.svelte';
 
 	// The selected object (or part): name, position, rotation and scale, filament, its own settings,
 	// height ranges, variable layer height, parts and modifiers, and painting.
@@ -402,7 +403,8 @@
 				{/if}
 			</details>
 		{/if}
-		{#if !part}<CutPanel {ws} object={obj} instance={inst} />{/if}
+		{#if !part}<CutPanel {ws} object={obj} instance={inst} />
+			<SimplifyPanel {ws} object={obj} />{/if}
 	</section>
 {/if}
 
