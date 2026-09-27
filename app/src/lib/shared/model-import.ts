@@ -303,20 +303,49 @@ export function withCredit(description: string, credit: string, max = 4000) {
 	return `${fitted}${sep}${credit}`;
 }
 
+const ENTITIES: Record<string, string> = {
+	nbsp: ' ',
+	amp: '&',
+	lt: '<',
+	gt: '>',
+	quot: '"',
+	apos: "'"
+};
+
+/** Decodes the named entities above and numeric ones (`&#39;`, `&#x27;`); anything else is kept. */
+export function decodeEntities(s: string) {
+	return s.replace(/&(#x[0-9a-f]{1,6}|#\d{1,7}|[a-z]+);/gi, (whole, name: string) => {
+		if (name[0] !== '#') return ENTITIES[name.toLowerCase()] ?? whole;
+		const n =
+			name[1] === 'x' || name[1] === 'X' ? parseInt(name.slice(2), 16) : Number(name.slice(1));
+		return n > 0 && n <= 0x10ffff && (n < 0xd800 || n > 0xdfff) ? String.fromCodePoint(n) : whole;
+	});
+}
+
+/** A link from a site's answer, kept only when it is a plain https link (never javascript: or data:). */
+export function httpsLink(input: unknown): string | null {
+	if (typeof input !== 'string') return null;
+	try {
+		const url = new URL(input);
+		return url.protocol === 'https:' && !url.username && !url.password ? url.href : null;
+	} catch {
+		return null;
+	}
+}
+
+/** Whether the credit can be added to a text of up to `max` characters without shortening it. */
+export const creditFits = (text: string, credit: string, max = 4000) =>
+	text.includes(credit) || (text.trim() ? text.trim().length + 2 : 0) + credit.length <= max;
+
 /** HTML (Printables, Thingiverse descriptions) to short plain text. */
 export function plainText(html: string, max = 1500) {
-	const text = html
-		.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '')
-		.replace(/<br\s*\/?>/gi, '\n')
-		.replace(/<\/(p|h\d|li|div)>/gi, '\n')
-		.replace(/<[^>]+>/g, '')
-		.replace(/&nbsp;/g, ' ')
-		.replace(/&amp;/g, '&')
-		.replace(/&lt;/g, '<')
-		.replace(/&gt;/g, '>')
-		.replace(/&quot;/g, '"')
-		.replace(/&#0?39;|&apos;/g, "'")
-		.replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+	const text = decodeEntities(
+		html
+			.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '')
+			.replace(/<br\s*\/?>/gi, '\n')
+			.replace(/<\/(p|h\d|li|div)>/gi, '\n')
+			.replace(/<[^>]+>/g, '')
+	)
 		.replace(/[ \t]+/g, ' ')
 		.replace(/ *\n */g, '\n')
 		.replace(/\n{3,}/g, '\n\n')

@@ -22,7 +22,7 @@
 		(el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
 
 	function dragover(e: DragEvent) {
-		if (!wanted(e)) return;
+		if (!wanted(e) || ui.profileLocked) return;
 		e.preventDefault();
 		if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
 		dragging = true;
@@ -32,9 +32,11 @@
 
 	function drop(e: DragEvent) {
 		dragging = false;
-		if (e.defaultPrevented || !wanted(e) || !e.dataTransfer) return;
-		e.preventDefault();
+		if (e.defaultPrevented || !wanted(e) || !e.dataTransfer || ui.profileLocked) return;
 		const all = [...e.dataTransfer.files];
+		// Text dropped into a field stays that field's business.
+		if (!all.length && editable(e.target)) return;
+		e.preventDefault();
 		const models = all.filter((f) => meshFormat(f.name));
 		if (models.length) return importWindows.addFiles(models);
 		if (all.length)
@@ -47,7 +49,7 @@
 	}
 
 	function paste(e: ClipboardEvent) {
-		if (editable(e.target) || document.querySelector('dialog[open]')) return;
+		if (ui.profileLocked || editable(e.target) || document.querySelector('dialog[open]')) return;
 		const text = e.clipboardData?.getData('text')?.trim() ?? '';
 		if (!parseModelLink(text)) return;
 		e.preventDefault();

@@ -76,6 +76,24 @@ test('the link window explains which links it takes, and the server refuses loca
 	);
 	await dialog.getByRole('button', { name: 'Cancel' }).click();
 	await expect(dialog).toHaveCount(0);
+
+	// A model link pasted anywhere opens the window with it filled in, and asks nothing until Look up.
+	const lookups: string[] = [];
+	page.on('request', (r) => r.url().includes('/api/imports/url') && lookups.push(r.url()));
+	await page.evaluate(() => {
+		const data = new DataTransfer();
+		data.setData('text/plain', 'https://www.printables.com/model/3161-3d-benchy');
+		document.body.dispatchEvent(
+			new ClipboardEvent('paste', { clipboardData: data, bubbles: true })
+		);
+	});
+	await expect(dialog.getByLabel('Model page link')).toHaveValue(
+		'https://www.printables.com/model/3161-3d-benchy'
+	);
+	await expect(dialog.getByRole('button', { name: 'Look up' })).toBeFocused();
+	expect(lookups).toEqual([]);
+	await dialog.getByRole('button', { name: 'Cancel' }).click();
+	await expect(dialog).toHaveCount(0);
 	// The server refuses other sites too, before any request leaves the machine.
 	const res = await page.request.post('/api/imports/url', {
 		data: { url: 'https://192.168.1.1/model/1' }

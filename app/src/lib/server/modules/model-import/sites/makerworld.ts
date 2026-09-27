@@ -7,6 +7,7 @@
 // shows a bot check to servers; the preview then falls back to what the link itself says.
 import {
 	classifyLicence,
+	decodeEntities,
 	plainText,
 	type ImportPreview,
 	type ModelLink
@@ -28,24 +29,21 @@ interface Design {
 const DROP_NOTE =
 	'MakerWorld only gives files to signed-in browsers. Download the model there, then drop the file here.';
 
-function decode(s: string) {
-	return s
-		.replace(/&quot;/g, '"')
-		.replace(/&#0?39;|&apos;/g, "'")
-		.replace(/&lt;/g, '<')
-		.replace(/&gt;/g, '>')
-		.replace(/&amp;/g, '&');
+/** `<meta property="og:title" content="…">` in either attribute order, either quote. */
+function meta(html: string, name: string) {
+	for (const tag of html.match(/<meta\b[^>]*>/gi) ?? []) {
+		const attr = (key: string) =>
+			tag
+				.match(new RegExp(`\\b${key}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i'))
+				?.slice(1)
+				.find((v) => v !== undefined);
+		if ((attr('property') ?? attr('name'))?.toLowerCase() === name)
+			return decodeEntities(attr('content') ?? '').trim();
+	}
+	return '';
 }
 
-/** `<meta property="og:title" content="…">` in either attribute order. */
-function meta(html: string, name: string) {
-	const re = new RegExp(
-		`<meta[^>]+(?:property|name)=["']${name}["'][^>]*content=["']([^"']*)["']|<meta[^>]+content=["']([^"']*)["'][^>]*(?:property|name)=["']${name}["']`,
-		'i'
-	);
-	const m = html.match(re);
-	return m ? decode(m[1] ?? m[2] ?? '').trim() : '';
-}
+const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
 
 function nextDesign(html: string): Design | null {
 	const m = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
@@ -80,16 +78,19 @@ export function titleFromLink(link: ModelLink) {
 /** Builds the preview from the page HTML (pure; tested with saved pages). */
 export function makerworldPreview(link: ModelLink, html: string | null): ImportPreview {
 	const design = html ? nextDesign(html) : null;
-	const creator = design?.designCreator;
+	const creator = {
+		name: str(design?.designCreator?.name),
+		handle: str(design?.designCreator?.handle)
+	};
 	const title =
-		design?.title?.trim() ||
+		str(design?.title) ||
 		(html && meta(html, 'og:title').replace(/\s*[|-]\s*MakerWorld.*$/i, '')) ||
 		titleFromLink(link);
-	const licence = design?.license?.trim() || null;
+	const licence = str(design?.license) || null;
 	const terms = classifyLicence(licence);
 	const pictures = [
 		design?.coverUrl,
-		...(design?.designExtension?.design_pictures ?? []).map((p) => p?.url),
+		...[design?.designExtension?.design_pictures ?? []].flat().map((p) => p?.url),
 		html ? meta(html, 'og:image') : undefined
 	].filter(onCdn);
 	return {
@@ -97,14 +98,14 @@ export function makerworldPreview(link: ModelLink, html: string | null): ImportP
 		id: link.id,
 		url: link.url,
 		title,
-		author: creator?.name || creator?.handle || null,
-		authorUrl: creator?.handle
+		author: creator.name || creator.handle || null,
+		authorUrl: creator.handle
 			? `https://makerworld.com/@${encodeURIComponent(creator.handle)}`
 			: null,
 		licence,
 		licenceUrl: terms.url,
 		terms,
-		description: plainText(design?.summary || (html ? meta(html, 'og:description') : '')),
+		description: plainText(str(design?.summary) || (html ? meta(html, 'og:description') : '')),
 		images: [...new Set(pictures)].slice(0, 12),
 		files: [],
 		downloadable: false,

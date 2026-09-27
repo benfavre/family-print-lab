@@ -10,6 +10,7 @@ import type { ModelStore } from '$lib/server/models';
 import { SketchStore } from '$lib/server/sketches';
 import { AppError, parse } from '$lib/server/validation';
 import {
+	creditFits,
 	creditText,
 	parseModelLink,
 	SITE_NAME,
@@ -116,6 +117,7 @@ export class ImportService {
 			throw new AppError(400, p.note ?? 'Files from this model cannot be downloaded here.');
 
 		const credit = creditText(p);
+		const skipped: ImportResult['skipped'] = [];
 		let projectId = body.projectId ?? null;
 		let created = false;
 		if (projectId) {
@@ -126,21 +128,35 @@ export class ImportService {
 				.from(projectSources)
 				.where(and(eq(projectSources.projectId, projectId), eq(projectSources.url, p.url)))
 				.get();
-			// Every field is sent: the patch schema fills left-out fields with their defaults.
-			if (!known && !project.description.includes(credit))
+			const has = project.description.includes(credit) || project.notes.includes(credit);
+			if (!known && !has) {
+				// The family's own text is never shortened to make room: the credit goes in the
+				// description, else the notes, else only in the project's sources (said so below).
+				const inDescription = creditFits(project.description, credit);
+				const inNotes = !inDescription && creditFits(project.notes, credit);
+				if (!inDescription && !inNotes)
+					skipped.push({
+						name: 'Credits',
+						reason:
+							'The project description and notes are full, so the credit is kept with the project’s sources only.'
+					});
+				// Every field is sent: the patch schema fills left-out fields with their defaults.
 				this.d.lab.updateProject(projectId, {
 					version: project.version,
 					profileId: project.profileId,
 					title: project.title,
 					status: project.status,
 					category: project.category,
-					description: withCredit(project.description, credit),
-					notes: project.notes,
+					description: inDescription
+						? withCredit(project.description, credit)
+						: project.description,
+					notes: inNotes ? withCredit(project.notes, credit) : project.notes,
 					url: project.url || p.url,
 					files: project.files,
 					material: project.material,
 					pinned: project.pinned
 				});
+			}
 		} else {
 			if (!body.profileId) throw new AppError(400, 'Choose who the project is for.');
 			projectId = this.d.lab.createProject({
@@ -152,7 +168,6 @@ export class ImportService {
 			created = true;
 		}
 
-		const skipped: ImportResult['skipped'] = [];
 		const modelIds: string[] = [];
 		for (const file of chosen) {
 			try {

@@ -4,6 +4,8 @@ import {
 	creditText,
 	fileFormat,
 	parseModelLink,
+	creditFits,
+	httpsLink,
 	plainText,
 	withCredit
 } from './model-import';
@@ -169,5 +171,32 @@ describe('helpers', () => {
 			'Hi & bye\nOne\nTwo'
 		);
 		expect(plainText('a'.repeat(50), 10)).toBe(`${'a'.repeat(9)}…`);
+		// Numeric entities out of range are kept as they are instead of throwing.
+		expect(plainText('It&#x27;s &#99999999; &#65; &#xD800; &copy;')).toBe(
+			"It's &#99999999; A &#xD800; &copy;"
+		);
+	});
+});
+
+describe('site links and credit room', () => {
+	it('keeps only plain https links from site answers', () => {
+		expect(httpsLink('https://www.thingiverse.com/CreativeTools')).toBe(
+			'https://www.thingiverse.com/CreativeTools'
+		);
+		for (const bad of [
+			'javascript:alert(1)',
+			'data:text/html,x',
+			'http://a.b',
+			'https://u:p@a.b',
+			7,
+			null
+		])
+			expect(httpsLink(bad), String(bad)).toBeNull();
+	});
+	it('knows when a credit fits without shortening anything', () => {
+		expect(creditFits('', 'c'.repeat(4000))).toBe(true);
+		expect(creditFits('a'.repeat(1998), 'c'.repeat(2000))).toBe(true);
+		expect(creditFits('a'.repeat(1999), 'c'.repeat(2000))).toBe(false);
+		expect(creditFits(`${'a'.repeat(3990)}\n\nCredits`, 'Credits')).toBe(true);
 	});
 });

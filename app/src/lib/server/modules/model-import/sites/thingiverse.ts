@@ -7,18 +7,19 @@ import { AppError } from '$lib/server/validation';
 import {
 	classifyLicence,
 	fileFormat,
+	httpsLink,
 	plainText,
 	type ImportPreview,
 	type ModelLink
 } from '$lib/shared/model-import';
-import { HOSTS, type Fetcher } from '../fetch';
+import { FetchStatusError, HOSTS, type Fetcher } from '../fetch';
 import type { LoadedModel, Site } from './types';
 
 const API = 'https://api.thingiverse.com';
 
 export interface ThingData {
 	id: number;
-	name: string;
+	name?: string | null;
 	public_url?: string | null;
 	creator?: { name?: string | null; public_url?: string | null } | null;
 	license?: string | null;
@@ -27,7 +28,7 @@ export interface ThingData {
 }
 export interface ThingFile {
 	id: number;
-	name: string;
+	name?: string | null;
 	size?: number | null;
 	download_url?: string | null;
 	/** On cdn.thingiverse.com; null for files outside the printable list (file_schema). */
@@ -75,7 +76,7 @@ export function thingiversePreview(
 		url: link.url,
 		title: thing.name?.trim() || `Thingiverse thing ${thing.id}`,
 		author: thing.creator?.name || null,
-		authorUrl: thing.creator?.public_url || null,
+		authorUrl: httpsLink(thing.creator?.public_url),
 		licence: thing.license || null,
 		licenceUrl: terms.url,
 		terms,
@@ -83,9 +84,9 @@ export function thingiversePreview(
 		images: images.map(imageUrl).filter(onCdn).slice(0, 12),
 		files: files.map((f) => ({
 			id: String(f.id),
-			name: f.name,
+			name: f.name || `File ${f.id}`,
 			size: f.size ?? null,
-			format: fileFormat(f.name)
+			format: fileFormat(f.name ?? '')
 		})),
 		downloadable: true,
 		note: null
@@ -119,6 +120,13 @@ async function getJson<T>(fetch: Fetcher, path: string, token: string, signal?: 
 		kind: 'json',
 		headers: { authorization: `Bearer ${token}` },
 		signal
+	}).catch((error) => {
+		if (error instanceof FetchStatusError && error.upstream === 401)
+			throw new AppError(
+				400,
+				'Thingiverse did not accept the app token. Check it in Integrations → Model links.'
+			);
+		throw error;
 	});
 	try {
 		return JSON.parse(res.body.toString('utf8')) as T;

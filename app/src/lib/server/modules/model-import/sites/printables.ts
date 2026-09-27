@@ -23,12 +23,12 @@ const DOWNLOAD_MUTATION = `mutation GetDownloadLink($id: ID!, $printId: ID!, $fi
 
 interface PrintFile {
 	id: string;
-	name: string;
+	name: string | null;
 	fileSize: number | null;
 }
 export interface PrintData {
 	id: string;
-	name: string;
+	name: string | null;
 	slug: string | null;
 	summary: string | null;
 	description: string | null;
@@ -62,16 +62,16 @@ export function printablesPreview(link: ModelLink, print: PrintData): ImportPrev
 		...(print.otherFiles ?? []).map((f) => ({ ...f, kind: 'other' }))
 	].map((f) => ({
 		id: `${f.kind}:${f.id}`,
-		name: f.name,
+		name: f.name || `File ${f.id}`,
 		size: f.fileSize ?? null,
-		format: fileFormat(f.name)
+		format: fileFormat(f.name ?? '')
 	}));
 	const handle = print.user?.handle;
 	return {
 		site: 'printables',
 		id: print.id,
 		url: `https://www.printables.com/model/${print.id}${print.slug ? `-${print.slug}` : ''}`,
-		title: print.name.trim() || `Printables model ${print.id}`,
+		title: print.name?.trim() || `Printables model ${print.id}`,
 		author: print.user?.publicUsername || handle || null,
 		authorUrl: handle ? `https://www.printables.com/@${encodeURIComponent(handle)}` : null,
 		licence,
@@ -125,7 +125,11 @@ export const printables: Site = {
 			async download(fileId, fetch, signal) {
 				const [kind, id] = fileId.split(':');
 				const answer = await graphql<{
-					getDownloadLink: { ok: boolean; output: { link: string } | null } | null;
+					getDownloadLink: {
+						ok: boolean;
+						errors?: { messages?: string[] | null }[] | null;
+						output: { link: string } | null;
+					} | null;
 				}>(
 					fetch,
 					{
@@ -141,8 +145,14 @@ export const printables: Site = {
 					signal
 				);
 				const url = answer.getDownloadLink?.output?.link;
-				if (!answer.getDownloadLink?.ok || !url)
-					throw new AppError(502, 'Printables did not give a download link for this file.');
+				if (!answer.getDownloadLink?.ok || !url) {
+					// e.g. "files_cannot_be_downloaded" (seen from the live API for a file id that is not the model's)
+					const why = answer.getDownloadLink?.errors?.flatMap((e) => e.messages ?? []).join(', ');
+					throw new AppError(
+						502,
+						`Printables did not give a download link for this file${why ? ` (${why})` : ''}.`
+					);
+				}
 				return (await fetch(url, { allow: HOSTS.printablesFiles, kind: 'model', signal })).body;
 			}
 		};

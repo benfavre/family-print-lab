@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { eq } from 'drizzle-orm';
 import { startTestLab, type TestLab } from '$lib/server/testing/harness';
@@ -8,7 +10,7 @@ import { integrations } from '$lib/server/integrations';
 import { kidAccess } from '$lib/server/kid/session';
 import { ImportService } from './service';
 import { fixture, scriptedFetch, tinyPng, TRIANGLE_STL, type Answer } from './testing';
-import { findFfmpeg, toPng, isPng, pngSize } from './pictures';
+import { findFfmpeg, toPng, isPng, pngSize, pictureDemuxer } from './pictures';
 
 let t: TestLab;
 let profileId: string;
@@ -150,6 +152,34 @@ describe('model import', () => {
 		expect(imports.sources(projectId)).toHaveLength(1);
 	});
 
+	it('never shortens the family’s own text to fit the credit', async () => {
+		const full = 'x'.repeat(3990);
+		const input = (projectId: string) => ({
+			url: 'https://www.printables.com/model/3161',
+			projectId,
+			files: [],
+			pictures: false
+		});
+		const notesFree = t.rt.lab.createProject({ profileId, title: 'Full', description: full });
+		const { imports } = service(printablesAnswers());
+		expect((await imports.confirm(input(notesFree))).skipped).toEqual([]);
+		let project = t.rt.lab.snapshot().projects.find((p) => p.id === notesFree)!;
+		expect(project.description).toBe(full);
+		expect(project.notes.startsWith('Credits\n“3D BENCHY” by Prusa Research')).toBe(true);
+
+		const bothFull = t.rt.lab.createProject({
+			profileId,
+			title: 'Fuller',
+			description: full,
+			notes: full
+		});
+		const result = await imports.confirm(input(bothFull));
+		expect(result.skipped).toEqual([{ name: 'Credits', reason: expect.stringMatching(/sources/) }]);
+		project = t.rt.lab.snapshot().projects.find((p) => p.id === bothFull)!;
+		expect([project.description, project.notes]).toEqual([full, full]);
+		expect(imports.sources(bothFull)).toHaveLength(1);
+	});
+
 	it('Thingiverse: with a token, credits and the STL; the PDF cannot be chosen', async () => {
 		const api = 'https://api.thingiverse.com/things/763622';
 		const { imports } = service(
@@ -251,8 +281,43 @@ describe('model import', () => {
 	});
 });
 
+describe('pictures', () => {
+	it('names the demuxer from the first bytes, never from what the site says', () => {
+		expect(pictureDemuxer(tinyPng())).toBe('png_pipe');
+		expect(pictureDemuxer(Buffer.from('ffd8ffe000104a46', 'hex'))).toBe('jpeg_pipe');
+		expect(pictureDemuxer(Buffer.from('RIFF\x10\x00\x00\x00WEBPVP8 ', 'latin1'))).toBe('webp_pipe');
+		expect(pictureDemuxer(Buffer.from('GIF89a\x01\x00'))).toBe('gif_pipe');
+		expect(pictureDemuxer(Buffer.from('#EXTM3U\n#EXTINF:1,\nfile:///etc/passwd\n'))).toBeNull();
+		expect(pictureDemuxer(Buffer.from('ffconcat version 1.0\nfile /etc/passwd\n'))).toBeNull();
+	});
+
+	it('runs ffmpeg with a forced demuxer and pipes only, and not at all for other files', async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fpl-ffmpeg-'));
+		const log = path.join(dir, 'args');
+		const fake = path.join(dir, 'ffmpeg');
+		fs.writeFileSync(fake, `#!/bin/sh\necho "$@" >> '${log}'\nexit 1\n`, { mode: 0o755 });
+		try {
+			expect(await toPng(Buffer.from('#EXTM3U\nhttp://192.168.1.1/\n'), fake)).toBeNull();
+			expect(fs.existsSync(log)).toBe(false);
+			expect(await toPng(Buffer.from('ffd8ffe0', 'hex'), fake)).toBeNull();
+			const args = fs.readFileSync(log, 'utf8');
+			expect(args).toContain('-protocol_whitelist pipe -f jpeg_pipe -i pipe:0');
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});
+
 const ffmpeg = findFfmpeg();
 describe.skipIf(!ffmpeg)('pictures with ffmpeg', () => {
+	it('refuses a playlist behind a JPEG header', async () => {
+		const trick = Buffer.concat([
+			Buffer.from('ffd8ffe0', 'hex'),
+			Buffer.from('\n#EXTM3U\n#EXTINF:1,\nfile:///etc/hostname\n')
+		]);
+		expect(await toPng(trick, ffmpeg)).toBeNull();
+	});
+
 	it('converts a JPEG to a PNG no wider than 1600 px', async () => {
 		const jpeg = execFileSync(ffmpeg!, [
 			'-hide_banner',

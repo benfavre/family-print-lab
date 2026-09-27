@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseModelLink, type ModelLink } from '$lib/shared/model-import';
 import { AppError } from '$lib/server/validation';
+import { FetchStatusError } from '../fetch';
 import { fixture, fixtureJson, scriptedFetch } from '../testing';
 import { printables, printablesImage, printablesPreview, type PrintData } from './printables';
 import { thingiverse, thingiversePreview, type ThingData, type ThingFile } from './thingiverse';
@@ -91,6 +92,24 @@ describe('Printables', () => {
 		]);
 	});
 
+	it('passes on why Printables will not give a file', async () => {
+		const site = scriptedFetch({
+			'graphql:PrintProfile': { type: 'application/json', body: fixture('printables-3161.json') },
+			// The live API's answer for a file it will not hand out (2026-09-27).
+			'graphql:GetDownloadLink': {
+				type: 'application/json',
+				body: '{"data":{"getDownloadLink":{"ok":false,"errors":[{"field":"non_field_error","messages":["files_cannot_be_downloaded"]}],"output":null}}}'
+			}
+		});
+		const loaded = await printables.load(link('https://www.printables.com/model/3161'), {
+			fetch: site.fetch,
+			thingiverseToken: ''
+		});
+		await expect(loaded.download('stl:49068', site.fetch)).rejects.toThrow(
+			'Printables did not give a download link for this file (files_cannot_be_downloaded).'
+		);
+	});
+
 	it('says so when the model does not exist', async () => {
 		const site = scriptedFetch({
 			'graphql:PrintProfile': { type: 'application/json', body: '{"data":{"print":null}}' }
@@ -157,6 +176,33 @@ describe('Thingiverse', () => {
 	});
 });
 
+describe('Thingiverse token', () => {
+	it('says in plain words when the token is refused', async () => {
+		const site = scriptedFetch({
+			'https://api.thingiverse.com/things/763622': () => {
+				throw new FetchStatusError(401, 'api.thingiverse.com');
+			}
+		});
+		await expect(
+			thingiverse.load(link('https://www.thingiverse.com/thing:763622'), {
+				fetch: site.fetch,
+				thingiverseToken: 'wrong'
+			})
+		).rejects.toThrow(/did not accept the app token/);
+	});
+
+	it('names files the API leaves unnamed', () => {
+		const p = thingiversePreview(
+			link('https://www.thingiverse.com/thing:1'),
+			{ id: 1, name: null },
+			[{ id: 7, name: null }],
+			[]
+		);
+		expect(p.title).toBe('Thingiverse thing 1');
+		expect(p.files).toEqual([{ id: '7', name: 'File 7', size: null, format: null }]);
+	});
+});
+
 describe('MakerWorld', () => {
 	const l = link('https://makerworld.com/en/models/1116432-cute-cat-planter');
 
@@ -192,6 +238,11 @@ describe('MakerWorld', () => {
 		expect(bare.title).toBe('Cute cat planter');
 		expect(bare.note).toMatch(/did not let this app read the page/);
 		expect(titleFromLink(link('https://makerworld.com/en/models/5'))).toBe('MakerWorld model 5');
+		const quoted = makerworldPreview(
+			l,
+			`<meta content='Dan&#39;s "big" rocket | MakerWorld' property='og:title'><meta name="og:description" content="It's fun">`
+		);
+		expect(quoted).toMatchObject({ title: `Dan's "big" rocket`, description: "It's fun" });
 	});
 
 	it('keeps going when MakerWorld shows a bot check', async () => {

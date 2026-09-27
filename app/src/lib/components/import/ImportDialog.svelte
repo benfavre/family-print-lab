@@ -38,6 +38,7 @@
 	let dropping = $state(false);
 	let over = $state(false);
 	let fileInput = $state<HTMLInputElement>();
+	let lookupButton = $state<HTMLButtonElement>();
 	let controller: AbortController | null = null;
 
 	const recognised = $derived(parseModelLink(url));
@@ -45,6 +46,10 @@
 		[...lab.ws.projects].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 	);
 	const resultProject = $derived(result ? lab.project(result.projectId) : undefined);
+	// The drop zone: for sites that do not give files to this app, or when a chosen file failed.
+	const needsDrop = $derived(
+		!!preview && !!result && (!preview.downloadable || result.modelIds.length < chosen.length)
+	);
 
 	async function lookUp(e?: SubmitEvent) {
 		e?.preventDefault();
@@ -139,9 +144,10 @@
 	const toggle = (id: string) =>
 		(chosen = chosen.includes(id) ? chosen.filter((x) => x !== id) : [...chosen, id]);
 
-	// A link handed over by a paste or a drop is looked up at once.
+	// A link handed over by a paste or a drop is filled in, not looked up: nothing is asked of the site
+	// until Look up is pressed (Enter does it, as the button has the focus).
 	onMount(() => {
-		if (parseModelLink(url)) void lookUp();
+		if (recognised) requestAnimationFrame(() => lookupButton?.focus());
 	});
 </script>
 
@@ -168,7 +174,7 @@
 					>Printables, Thingiverse or MakerWorld. The app asks the site only when you press Look up.</small
 				></label
 			>
-			<button class="secondary" disabled={looking || !url.trim()}
+			<button class="secondary" bind:this={lookupButton} disabled={looking || !url.trim()}
 				>{looking ? 'Looking…' : 'Look up'}</button
 			>
 		</form>
@@ -275,10 +281,10 @@
 			</p>
 			{#if result.skipped.length}
 				<ul class="skipped">
-					{#each result.skipped as s (s.name)}<li><b>{s.name}</b>: {s.reason}</li>{/each}
+					{#each result.skipped as s, i (i)}<li><b>{s.name}</b>: {s.reason}</li>{/each}
 				</ul>
 			{/if}
-			{#if preview && !preview.downloadable}
+			{#if needsDrop}
 				<div
 					class="drop"
 					class:over

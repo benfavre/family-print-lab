@@ -38,6 +38,8 @@
 				});
 				if (!res) return;
 				projectId = res.id;
+				// A retry after a failed upload adds to this project instead of making another.
+				target = projectId;
 			}
 			const act = actions(app);
 			let added = 0;
@@ -63,7 +65,7 @@
 		</header>
 		{#if files.length > 1}
 			<ul class="dropped">
-				{#each files as f (f.name)}<li>{f.name} <small>{bytes(f.size)}</small></li>{/each}
+				{#each files as f, i (i)}<li>{f.name} <small>{bytes(f.size)}</small></li>{/each}
 			</ul>
 		{/if}
 		<label class="field"
