@@ -109,10 +109,9 @@ export function textFrame(
 		return [v[0] / l, v[1] / l, v[2] / l];
 	};
 	const n = unit(normal);
-	const ref = Math.abs(n[2]) < 0.9 ? [0, 0, 1] : [0, 1, 0];
+	const ref = Math.abs(n[2]) < 0.9 ? [0, 0, 1] : [0, n[2] < 0 ? -1 : 1, 0];
 	const d = ref[0] * n[0] + ref[1] * n[1] + ref[2] * n[2];
-	let u =
-		n[2] < -0.9 ? [0, -1, 0] : unit([ref[0] - d * n[0], ref[1] - d * n[1], ref[2] - d * n[2]]);
+	let u = unit([ref[0] - d * n[0], ref[1] - d * n[1], ref[2] - d * n[2]]);
 	let r = [u[1] * n[2] - u[2] * n[1], u[2] * n[0] - u[0] * n[2], u[0] * n[1] - u[1] * n[0]]; // u × n
 	const a = (angle * Math.PI) / 180,
 		c = Math.cos(a),
