@@ -65,6 +65,11 @@ jobs:
           esac
       - name: Dependency target discovery and build option tests
         run: bash slicer/tests/build.test.sh
+      - name: Windows protocol and startup preflight
+        if: runner.os == 'Windows'
+        run: |
+          slicer/scripts/upstream.sh build --no-upstream -j 4
+          slicer/scripts/upstream.sh test --no-upstream --native-only
       - name: Bambu Studio at the pin, with our patch queue
         run: slicer/scripts/upstream.sh fetch
       - name: Headless Windows runtime copy regression
