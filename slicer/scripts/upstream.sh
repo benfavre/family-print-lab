@@ -526,6 +526,9 @@ cmd_build() {
 	mkdir -p "$dist/resources/profiles"
 	cp "$binary" "$dist/"
 	case "$plat" in
+	darwin-*)
+		python3 "$SLICER/scripts/bundle-macos-runtime.py" --engine "$binary" --destination "$dist"
+		;;
 	win32-*)
 		cmake "-DENGINE=$binary" "-DPREFIX=$BUILD/deps/usr/local" "-DDESTINATION=$dist" \
 			-P "$SLICER/scripts/bundle-windows-runtime.cmake"
