@@ -26,6 +26,10 @@
 	onMount(() => {
 		try {
 			scene = new SlicerScene(host, {
+				onTextFace: (hit) => {
+					ws.textPlacement = hit;
+					ws.textTarget = null;
+				},
 				onMeasure: (point) => (measurePoints = addMeasurePoint(measurePoints, point)),
 				onPick: (pick, additive, partId) =>
 					ws.select(
@@ -65,6 +69,10 @@
 	});
 	$effect(() => {
 		scene?.setMeasure(measuring, measurePoints);
+	});
+	$effect(() => {
+		if (ws.paint || ws.layFace || ws.tab !== 'prepare') ws.textTarget = null;
+		scene?.setTextPick(ws.textTarget);
 	});
 	let framed = false;
 	$effect(() => {

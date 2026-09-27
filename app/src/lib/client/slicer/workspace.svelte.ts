@@ -54,6 +54,8 @@ import {
 import { binaryStl, primitiveSoup, PRIMITIVE_LABEL } from './primitives';
 import { plateResult } from './results';
 
+import type { TextPlacement } from '$lib/shared/slicer/text';
+
 export type Gizmo = 'translate' | 'rotate' | 'scale' | null;
 
 export interface PaintSettings {
@@ -83,6 +85,8 @@ export class WorkspaceState {
 	gizmo = $state<Gizmo>('translate');
 	snapping = $state(true);
 	layFace = $state(false);
+	textTarget = $state.raw<Pick | null>(null);
+	textPlacement = $state.raw<TextPlacement | null>(null);
 	paint = $state<PaintSettings | null>(null);
 	layerHeightOverlay = $state(false);
 	tab = $state<'prepare' | 'preview'>('prepare');

@@ -21,6 +21,7 @@
 	import SettingsEditor from './SettingsEditor.svelte';
 	import LayerHeightEditor from './LayerHeightEditor.svelte';
 	import CutPanel from './CutPanel.svelte';
+	import TextPanel from './TextPanel.svelte';
 	import BooleanPanel from './BooleanPanel.svelte';
 	import SimplifyPanel from './SimplifyPanel.svelte';
 
@@ -405,8 +406,11 @@
 				{/if}
 			</details>
 		{/if}
-		{#if !part}<CutPanel {ws} object={obj} instance={inst} />
-			<SimplifyPanel {ws} object={obj} />{/if}
+		{#if !part}
+			<CutPanel {ws} object={obj} instance={inst} />
+			<SimplifyPanel {ws} object={obj} />
+			<TextPanel {ws} object={obj} instance={inst} />
+		{/if}
 	</section>
 {/if}
 
