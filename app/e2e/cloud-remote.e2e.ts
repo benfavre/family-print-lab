@@ -7,6 +7,8 @@ const PRINTER_SIM = 'http://127.0.0.1:18661';
 test('the phone sees every printer and pauses a print with the phone key', async ({ page }) => {
 	const ws = await page.request.get('/api/workspace').then((r) => r.json());
 	if (!ws.parentPin) await page.request.post('/api/parent/pin', { data: { pin: '2468' } });
+	// Leave the link as other tests expect it, even when this one fails.
+	await page.request.post('/api/cloud/unlink', { data: {} });
 
 	// Link this computer (the phone e2e may have linked and unlinked before).
 	await page.goto('/family');
@@ -30,7 +32,8 @@ test('the phone sees every printer and pauses a print with the phone key', async
 	await dialog.getByRole('button', { name: 'Done' }).click();
 
 	// Remote control needs the PIN too.
-	await page.getByLabel(/Allow pause, resume and stop/).check();
+	// (The box stays unticked until the PIN is accepted, so click rather than check.)
+	await page.getByLabel(/Allow pause, resume and stop/).click();
 	await dialog.getByLabel('Parent PIN').fill('2468');
 	await dialog.getByRole('button', { name: 'Turn on' }).click();
 	await expect(page.getByLabel(/Allow pause, resume and stop/)).toBeChecked();
@@ -78,8 +81,10 @@ test('the phone sees every printer and pauses a print with the phone key', async
 	expect(
 		after.activity.some((a: { message: string }) => /^Paused .+ from the phone/.test(a.message))
 	).toBe(true);
+});
 
-	// Tidy up for other tests.
-	await page.request.post(`${PRINTER_SIM}/api/stop`, { data: {} });
-	await page.request.post('/api/cloud/unlink', { data: {} });
+// Other tests expect an unlinked computer and an idle X2D, even when this one fails.
+test.afterEach(async ({ request }) => {
+	await request.post(`${PRINTER_SIM}/api/stop`, { data: {} });
+	await request.post('/api/cloud/unlink', { data: {} });
 });
