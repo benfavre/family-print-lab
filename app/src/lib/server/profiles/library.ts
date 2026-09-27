@@ -10,7 +10,8 @@
 //   - bundle(): process, then printer, then the filaments (one filament applied whole, several merged
 //     key by key: vectors appended in filament order, scalars from the first), then the bookkeeping
 //     keys (print/filament/printer_settings_id, filament_ids, inherits_group,
-//     different_settings_to_system), as PresetBundle::full_fff_config does (~3255–3545) without the
+//     different_settings_to_system, compatible_machine/process_expression_group,
+//     print_compatible_printers), as PresetBundle::full_fff_config does (~3255–3545) without the
 //     per-extruder variant expansion, which the engine applies from the *_extruder_variant keys.
 import fs from 'node:fs';
 import { AppError } from '../validation';
@@ -59,6 +60,13 @@ export function nozzleVariant(nozzle: string | number | null | undefined): strin
 	const n = Number(nozzle);
 	return Number.isFinite(n) && n > 0 ? String(n) : '0.4';
 }
+
+/** The <kind>_settings_id keys full_fff_config writes (never "different" settings). */
+const SETTINGS_IDS: Record<PresetKind, string> = {
+	printer: 'printer_settings_id',
+	process: 'print_settings_id',
+	filament: 'filament_settings_id'
+};
 
 /** Keys removed from the combined config (full_fff_config erases them). */
 const BUNDLE_ERASED = [
@@ -396,9 +404,13 @@ export class ProfileLibrary implements ProfileService {
 		);
 	}
 
-	/** The Bambu filament preset closest to a material as written on a job ("PLA Matte", "PETG HF"). */
+	/**
+	 * The system filament preset closest to a material as written on a job ("PLA Matte", "PETG HF",
+	 * "PLA-CF"): its filament_type as written, else the base type, else a type starting with it ("PA" →
+	 * "PA6-CF"); Bambu's own presets first, then Generic ones (the A1 mini has no Bambu ABS, for one).
+	 */
 	pickFilament(filaments: PresetSummary[], material: string): PresetSummary | undefined {
-		const wanted = (material || 'PLA').toUpperCase();
+		const wanted = (material || 'PLA').trim().toUpperCase();
 		const type = wanted.match(/PLA|PETG|ABS|ASA|TPU|PCTG|PC|PA|PET|PVA|HIPS/)?.[0] ?? 'PLA';
 		const words = wanted
 			.replace(type, '')
@@ -411,26 +423,56 @@ export class ProfileLibrary implements ProfileService {
 			(/(CF|GF|Aero|Support|Silk|Glow|Marble|Sparkle|Metal|Galaxy|Wood|Translucent)/.test(f.name)
 				? 5
 				: 0);
-		return filaments
-			.filter(
-				(f) =>
-					f.source === 'system' &&
-					/^Bambu /.test(f.name) &&
-					(f.filamentType ?? '').toUpperCase() === type
-			)
-			.sort((a, b) => score(b) - score(a) || a.name.localeCompare(b.name))[0];
+		const system = filaments.filter((f) => f.source === 'system');
+		const typeOf = (f: PresetSummary) => (f.filamentType ?? '').toUpperCase();
+		const full = wanted.split(/\s+/)[0];
+		for (const fits of [
+			(f: PresetSummary) => typeOf(f) === full,
+			(f: PresetSummary) => typeOf(f) === type,
+			(f: PresetSummary) => typeOf(f).startsWith(type)
+		])
+			for (const vendor of [/^Bambu /, /^Generic /]) {
+				const best = system
+					.filter((f) => vendor.test(f.name) && fits(f))
+					.sort((a, b) => score(b) - score(a) || a.name.localeCompare(b.name))[0];
+				if (best) return best;
+			}
+		return undefined;
 	}
 
 	defaults(model: ModelCode, nozzle: string, material?: string): PresetSelection {
 		const printer = this.printerFor(model, nozzle);
 		const ref: PresetRef = { kind: 'printer', name: printer.name, source: 'system' };
-		const system = (s: PresetSummary) => s.source === 'system';
-		const processes = this.compatible(ref, 'process').filter(system);
-		const wantedProcess = first(printer.config.default_print_profile);
-		const process =
-			processes.find((p) => p.name === wantedProcess) ?? this.pickProcess(processes, 0.2);
+		return { printer: ref, ...this.defaultsFor(ref, material) };
+	}
+
+	/**
+	 * The default process and filament for any printer preset (a user one too): the printer's
+	 * default_print_profile and default_filament_profile, else the model's default materials, else the
+	 * nearest "Standard" 0.2 mm process and the closest filament to `material`.
+	 */
+	defaultsFor(
+		printerRef: PresetRef,
+		material?: string
+	): { process: PresetRef; filaments: PresetRef[] } {
+		return {
+			process: this.defaultProcess(printerRef),
+			filaments: [this.defaultFilament(printerRef, material)]
+		};
+	}
+
+	defaultProcess(printerRef: PresetRef): PresetRef {
+		const printer = this.resolve(printerRef);
+		const processes = this.compatible(printerRef, 'process').filter((s) => s.source === 'system');
+		const wanted = first(printer.config.default_print_profile);
+		const process = processes.find((p) => p.name === wanted) ?? this.pickProcess(processes, 0.2);
 		if (!process) throw new AppError(422, `Bambu Studio has no print preset for ${printer.name}.`);
-		const filaments = this.compatible(ref, 'filament').filter(system);
+		return { kind: 'process', name: process.name, source: 'system' };
+	}
+
+	defaultFilament(printerRef: PresetRef, material?: string): PresetRef {
+		const printer = this.resolve(printerRef);
+		const filaments = this.compatible(printerRef, 'filament').filter((s) => s.source === 'system');
 		const byName = (names: string[]) =>
 			names.map((n) => filaments.find((f) => f.name === n)).find(Boolean);
 		const filament = material
@@ -440,16 +482,32 @@ export class ProfileLibrary implements ProfileService {
 					this.need().models.get(first(printer.config.printer_model))?.defaultMaterials ?? []
 				) ??
 				this.pickFilament(filaments, 'PLA'));
-		if (!filament)
+		if (!filament) {
+			const short = Object.values(PRINTER_MODELS).find(
+				(m) => m.name === first(printer.config.printer_model)
+			)?.short;
 			throw new AppError(
 				422,
-				`Bambu Studio has no ${material || 'PLA'} filament preset for the ${PRINTER_MODELS[model].short}.`
+				`Bambu Studio has no ${material || 'PLA'} filament preset for ${short ? `the ${short}` : printer.name}.`
 			);
-		return {
-			printer: ref,
-			process: { kind: 'process', name: process.name, source: 'system' },
-			filaments: [{ kind: 'filament', name: filament.name, source: 'system' }]
-		};
+		}
+		return { kind: 'filament', name: filament.name, source: 'system' };
+	}
+
+	/** Whether a preset exists now (a user preset may be deleted, a system one gone after an update). */
+	exists(ref: PresetRef): boolean {
+		if (ref.source === 'user') {
+			const u = ref.userPresetId
+				? this.users.get(ref.userPresetId)
+				: this.users.byName(ref.kind, ref.name);
+			return u?.kind === ref.kind;
+		}
+		return ref.source === 'system' && !!this.vendorSet()?.get(ref.kind, ref.name)?.instantiable;
+	}
+
+	/** Whether a process or filament preset suits a printer preset (is_compatible_with_printer). */
+	suits(ref: PresetRef, printer: PresetRef): boolean {
+		return this.isCompatible(this.resolve(ref).config, this.printerOf(printer));
 	}
 
 	/** A filament preset for an AMS tray's tray_info_idx (Bambu filament_id), compatible with the printer. */
@@ -472,11 +530,26 @@ export class ProfileLibrary implements ProfileService {
 		return { ...r, config, origin };
 	}
 
-	/** Keys a preset (plus overrides) changes from its system parent, for different_settings_to_system. */
-	private dirty(ref: PresetRef, over: ConfigMap | undefined): string[] {
-		const keys = new Set(ref.source === 'user' ? this.diff(ref).map((d) => d.key) : []);
-		for (const k of Object.keys(over ?? {})) keys.add(k);
-		return [...keys].sort();
+	/**
+	 * Keys a preset (plus overrides) changes from its system preset, for different_settings_to_system:
+	 * a system preset is compared with itself, a user preset with the system preset it inherits
+	 * (get_selected_preset_parent, dirty_options_without_option_list with ignore_settings_list).
+	 */
+	private dirty(ref: PresetRef, resolved: ResolvedPreset, over: ConfigMap | undefined): string[] {
+		let base: ConfigMap | null;
+		let keys: string[];
+		if (ref.source === 'user') {
+			const u = this.userPreset(ref);
+			base = u.inherits ? (this.vendorSet()?.get(u.kind, u.inherits)?.config ?? null) : null;
+			keys = [...Object.keys(u.config), ...Object.keys(over ?? {})];
+		} else {
+			base = this.systemPreset(ref.kind, ref.name).config;
+			keys = Object.keys(over ?? {});
+		}
+		const ignored = new Set(['inherits', ...Object.values(SETTINGS_IDS), ...META_KEYS]);
+		return [...new Set(keys)]
+			.filter((k) => !ignored.has(k) && !same(resolved.config[k], base?.[k]))
+			.sort();
 	}
 
 	private inheritsOf(ref: PresetRef): string {
@@ -528,11 +601,23 @@ export class ProfileLibrary implements ProfileService {
 		];
 		if (someNonEmpty(inherits)) full.inherits_group = inherits;
 		const different = [
-			this.dirty(selection.process, overrides.process).join(';'),
-			...selection.filaments.map((f, i) => this.dirty(f, overrides.filaments?.[i]).join(';')),
-			this.dirty(selection.printer, overrides.printer).join(';')
+			this.dirty(selection.process, process, overrides.process).join(';'),
+			...selection.filaments.map((f, i) =>
+				this.dirty(f, filaments[i], overrides.filaments?.[i]).join(';')
+			),
+			this.dirty(selection.printer, printer, overrides.printer).join(';')
 		];
 		if (someNonEmpty(different)) full.different_settings_to_system = different;
+		// The conditions of the print and filament presets, and the print preset's printer list.
+		const condition = (r: ResolvedPreset, key: string) => first(r.config[key]);
+		const machine = [process, ...filaments].map((r) =>
+			condition(r, 'compatible_printers_condition')
+		);
+		if (someNonEmpty(machine)) full.compatible_machine_expression_group = machine;
+		const prints = filaments.map((r) => condition(r, 'compatible_prints_condition'));
+		if (someNonEmpty(prints)) full.compatible_process_expression_group = prints;
+		const printPrinters = arr(process.config.compatible_printers);
+		if (printPrinters.length) full.print_compatible_printers = printPrinters;
 		const v = this.vendor();
 		return {
 			printer,

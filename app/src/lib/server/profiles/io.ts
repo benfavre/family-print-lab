@@ -36,6 +36,8 @@ const USER_META = new Set([
 ]);
 export const BUNDLE_STRUCTURE = 'bundle_structure.json';
 const MAX_FILES = 200;
+/** One preset file, unpacked (G-code templates make the biggest ones about 100 kB). */
+const MAX_PRESET_BYTES = 4 * 1024 * 1024;
 
 /** "v02.08.02.61" → "02.08.02.61" (the version field Bambu Studio checks with Semver::parse). */
 export const versionOf = (tag: string) =>
@@ -88,12 +90,18 @@ export function importPresets(
 	const isZip = file.data.subarray(0, 2).toString('latin1') === 'PK';
 	if (isZip) {
 		let entries: Map<string, Buffer>;
+		let count = 0;
 		try {
-			entries = readZip(file.data, (n) => (/\.json$/i.test(n) ? 'all' : false));
+			// Counted while listing, and each file capped, so a small zip cannot unpack into gigabytes.
+			entries = readZip(
+				file.data,
+				(n) => (/\.json$/i.test(n) ? (++count > MAX_FILES ? false : 'all') : false),
+				MAX_PRESET_BYTES
+			);
 		} catch {
 			throw new AppError(400, 'That bundle could not be read.');
 		}
-		if (entries.size > MAX_FILES) throw new AppError(413, 'That bundle holds too many presets.');
+		if (count > MAX_FILES) throw new AppError(413, 'That bundle holds too many presets.');
 		for (const [name, data] of entries) {
 			if (name.split('/').pop() === BUNDLE_STRUCTURE) continue;
 			try {
@@ -236,7 +244,8 @@ export function filamentBundle(
 	for (const u of store.list('filament').filter((x) => filamentName(x.name) === alias)) {
 		const r = lib.resolve({ kind: 'filament', name: u.name, source: 'user', userPresetId: u.id });
 		const v = r.config.filament_vendor;
-		const vendor = (Array.isArray(v) ? v[0] : v) || 'Generic';
+		// The vendor names a folder in the zip: no path separators or dot-only names.
+		const vendor = safeName((Array.isArray(v) ? v[0] : v) || '').replace(/^\.+$/, '_') || 'Generic';
 		const path = `${vendor}/${fileName(u.name)}`;
 		entries.push([path, Buffer.from(JSON.stringify(presetJson(u, tag), null, 4))]);
 		byVendor.set(vendor, [...(byVendor.get(vendor) ?? []), path]);

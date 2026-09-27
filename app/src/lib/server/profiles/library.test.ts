@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { VendorError, VendorProfiles } from './vendor';
 import { ProfileLibrary, mergeValue, nozzleVariant } from './library';
 import type { PresetRef } from '$lib/shared/slicer/project';
-import type { PresetKind, UserPreset } from '$lib/shared/slicer/profiles';
+import type { PresetKind, PresetSummary, UserPreset } from '$lib/shared/slicer/profiles';
 import { FIXTURE, memoryUsers } from './__fixtures__/helpers';
 
 const X1C = 'Bambu Lab X1 Carbon 0.4 nozzle';
@@ -207,6 +207,64 @@ describe('defaults', () => {
 		expect(() => lib.defaults('BL-P001', '0.4', 'ABS')).toThrow(/no ABS filament preset/);
 	});
 
+	it('matches a material by its full type, then its base type, then Generic presets', () => {
+		const f = (name: string, filamentType: string): PresetSummary => ({
+			kind: 'filament',
+			name,
+			source: 'system',
+			id: name,
+			inherits: null,
+			instantiable: true,
+			compatiblePrinters: [],
+			compatibleCondition: null,
+			filamentType
+		});
+		const list = [
+			f('Bambu PLA Basic @X', 'PLA'),
+			f('Bambu PLA-CF @X', 'PLA-CF'),
+			f('Bambu PA6-CF @X', 'PA6-CF'),
+			f('Generic ABS @X', 'ABS')
+		];
+		expect(lib.pickFilament(list, 'PLA-CF')?.name).toBe('Bambu PLA-CF @X');
+		expect(lib.pickFilament(list, 'PLA Matte')?.name).toBe('Bambu PLA Basic @X');
+		expect(lib.pickFilament(list, 'PA')?.name).toBe('Bambu PA6-CF @X');
+		expect(lib.pickFilament(list, 'ABS')?.name).toBe('Generic ABS @X');
+		expect(lib.pickFilament(list, 'TPU')).toBe(undefined);
+		expect(
+			lib.pickFilament([{ ...list[0], source: 'user' }], 'PLA'),
+			'user presets are never a default'
+		).toBe(undefined);
+	});
+
+	it('gives any printer preset, a user one too, its default process and filament', () => {
+		const users = memoryUsers([
+			{
+				id: 'my-x1c',
+				kind: 'printer',
+				name: 'My X1C',
+				inherits: X1C,
+				config: { printer_notes: 'mine' },
+				updatedAt: ''
+			}
+		]);
+		const withUser = library(users);
+		const ref: PresetRef = {
+			kind: 'printer',
+			name: 'My X1C',
+			source: 'user',
+			userPresetId: 'my-x1c'
+		};
+		expect(withUser.defaultsFor(ref)).toEqual({
+			process: sys('process', '0.20mm Standard @BBL X1C'),
+			filaments: [sys('filament', 'Bambu PLA Basic @BBL X1C')]
+		});
+		expect(withUser.suits(sys('process', '0.20mm Standard @BBL X1C'), ref)).toBe(true);
+		expect(withUser.suits(sys('process', '0.20mm Standard @BBL A1M'), ref)).toBe(false);
+		expect(withUser.exists(ref)).toBe(true);
+		expect(withUser.exists({ ...ref, kind: 'process' })).toBe(false);
+		expect(withUser.exists(sys('process', 'fdm_process_common')), 'a base').toBe(false);
+	});
+
 	it('picks a process by layer height, Standard first', () => {
 		const list = lib.compatible(sys('printer', X1C), 'process');
 		expect(lib.pickProcess(list, 0.12)?.name).toBe('0.12mm Fine @BBL X1C');
@@ -320,6 +378,32 @@ describe('user presets', () => {
 		]);
 		expect(b.full).not.toHaveProperty('compatible_printers');
 		expect(b.vendor).toEqual({ tag: 'v02.08.02.61', version: '01.00.00.01' });
+	});
+
+	it('counts only real changes as different, and keeps the presets’ conditions and printer list', () => {
+		const b = lib.bundle(
+			{
+				printer: sys('printer', X1C),
+				process: sys('process', '0.20mm Standard @BBL X1C'),
+				filaments: [sys('filament', 'Bambu PLA Basic @BBL X1C')]
+			},
+			// 15% is what the preset has already: not a difference (dirty_options compares values).
+			{ process: { sparse_infill_density: '15%', wall_loops: '4' } }
+		);
+		expect(b.full.different_settings_to_system).toEqual(['wall_loops', '', '']);
+		expect(b.full.print_compatible_printers).toEqual([X1C]);
+		expect(b.full).not.toHaveProperty('compatible_machine_expression_group');
+		const mini = lib.bundle({
+			printer: sys('printer', 'Bambu Lab A1 mini 0.4 nozzle'),
+			process: sys('process', '0.16mm Mini only @Test'),
+			filaments: [sys('filament', 'Bambu PLA Basic @BBL A1M')]
+		});
+		expect(mini.full.compatible_machine_expression_group).toEqual([
+			'printer_model == "Bambu Lab A1 mini" and nozzle_diameter[0] == 0.4',
+			''
+		]);
+		expect(mini.full).not.toHaveProperty('print_compatible_printers');
+		expect(mini.full).not.toHaveProperty('compatible_printers_condition');
 	});
 
 	it('merges several filaments key by key: vectors appended, scalars from the first', () => {

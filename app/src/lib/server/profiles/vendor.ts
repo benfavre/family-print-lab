@@ -8,8 +8,11 @@
 //   - `instantiation: "false"` presets are bases: kept for inheritance, not selectable. A nameless or
 //     "gcode" named non-instantiable file is a pure include (its own keys only, under its list name);
 //   - filament presets inherit `filament_id` from their parent, and one without it is an error;
-//   - printer presets whose printer_model is not a listed model, or whose printer_variant is not one of
-//     that model's nozzle_diameter variants, are dropped ("not installed").
+//   - a printer preset whose printer_model is not a listed model, or whose printer_variant is not one of
+//     that model's nozzle_diameter variants, fails the whole vendor upstream (its "will be ignored" log
+//     line is followed by a ConfigurationError). Here it is dropped with a warning instead, so one odd
+//     file in PRINTLAB_PROFILES_DIR does not hide every preset; the pinned BBL set has none.
+//   - names already in the name → config map keep their first definition (std::map::emplace).
 // Keys no preset in the chain sets keep the engine's built-in defaults (libslic3r's PrintConfigDef),
 // which are not modelled here; everything a system preset writes is. "nil" array entries are kept as
 // they are: the slicer reads them as "use the printer's value".
@@ -234,7 +237,7 @@ export class VendorProfiles {
 				}
 			}
 			if (typeof data.description === 'string') description = data.description;
-			if (description) descriptions.set(name, description);
+			if (description && !descriptions.has(name)) descriptions.set(name, description);
 			for (const [k, v] of Object.entries(own)) {
 				config[k] = v;
 				origin[k] = name || item.name;
@@ -245,11 +248,13 @@ export class VendorProfiles {
 					// Pure included file: its own keys only, under its list name.
 					const byOwn: Record<string, string> = {};
 					for (const k of Object.keys(own)) byOwn[k] = item.name;
-					maps.set(item.name, { config: own, origin: byOwn, chain: [item.name] });
+					if (!maps.has(item.name))
+						maps.set(item.name, { config: own, origin: byOwn, chain: [item.name] });
 					continue;
 				}
-				maps.set(name, { config, origin, chain: [name, ...base.chain] });
-				if (kind === 'filament' && filamentId) filamentIds.set(name, filamentId);
+				if (!maps.has(name)) maps.set(name, { config, origin, chain: [name, ...base.chain] });
+				if (kind === 'filament' && filamentId && !filamentIds.has(name))
+					filamentIds.set(name, filamentId);
 				this.presets[kind].set(name, {
 					kind,
 					name,
@@ -281,10 +286,10 @@ export class VendorProfiles {
 			if (kind === 'filament') {
 				if (!filamentId)
 					throw new VendorError(`Can not find filament_id for ${name}.`, item.subPath);
-				filamentIds.set(name, filamentId);
+				if (!filamentIds.has(name)) filamentIds.set(name, filamentId);
 			}
 			const chain = [name, ...base.chain];
-			maps.set(name, { config, origin, chain });
+			if (!maps.has(name)) maps.set(name, { config, origin, chain });
 			this.presets[kind].set(name, {
 				kind,
 				name,

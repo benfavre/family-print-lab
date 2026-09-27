@@ -49,11 +49,15 @@
 		}
 	}
 
+	// Only the latest request fills the list (switching printer or kind quickly).
+	let listSeq = 0;
 	async function loadList() {
+		const seq = ++listSeq;
 		if (!model) return (presets = []);
 		const r = await getJson<PresetSummary[]>(
 			`/api/slicer/profiles?${query({ kind, model, nozzle })}`
 		);
+		if (seq !== listSeq) return;
 		presets = r.data ?? [];
 		listError = r.error ?? '';
 	}
@@ -137,7 +141,9 @@
 
 	{#if loadError}
 		<p class="warn">{loadError}</p>
-	{:else if overview?.missing}
+	{:else if !overview}
+		<p class="panel-empty">Loading…</p>
+	{:else if overview.missing}
 		<p class="warn">{overview.missing}</p>
 		<pre class="cmd">bun run profiles:fetch</pre>
 	{/if}

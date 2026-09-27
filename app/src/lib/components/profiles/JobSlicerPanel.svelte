@@ -21,6 +21,7 @@
 	let process = $state('');
 	let filament = $state('');
 	let rows = $state<{ key: string; value: string }[]>([]);
+	let replaced = $state(false);
 
 	const summary = $derived.by(() => {
 		if (!saved) return 'Printer defaults';
@@ -41,8 +42,15 @@
 		view = r.data;
 		error = r.error ?? r.data?.error ?? '';
 		const s = r.data?.settings ?? {};
+		// A choice that no longer suits the job's printer is replaced when slicing; say so and offer
+		// the printer's presets instead.
+		const known = (list: JobSliceView['processes'], k: string) => !k || !!find(list, k);
 		process = key(s.process);
 		filament = key(s.filaments?.[0]);
+		replaced =
+			!!r.data && (!known(r.data.processes, process) || !known(r.data.filaments, filament));
+		if (r.data && !known(r.data.processes, process)) process = '';
+		if (r.data && !known(r.data.filaments, filament)) filament = '';
 		rows = Object.entries(s.overrides?.process ?? {}).map(([k, v]) => ({
 			key: k,
 			value: Array.isArray(v) ? v.join(',') : v
@@ -98,6 +106,11 @@
 		<div class="body">
 			{#if error}<p class="warn">{error}</p>{/if}
 			{#if view && !view.error}
+				{#if replaced}
+					<p class="hint">
+						A preset picked before does not suit this job’s printer, so the printer’s own is used.
+					</p>
+				{/if}
 				<label class="field"
 					>Process
 					<select bind:value={process}>

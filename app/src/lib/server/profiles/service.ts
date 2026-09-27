@@ -217,7 +217,12 @@ export class SlicerProfiles {
 		return empty ? {} : s;
 	}
 
-	/** The presets and overrides a job slices with. */
+	/**
+	 * The presets and overrides a job slices with. A preset that no longer exists, or that does not suit
+	 * the job's printer (the job moved to another printer), is replaced like Bambu Studio replaces an
+	 * incompatible preset when the printer changes: filaments by the same Bambu filament in the
+	 * printer's variant, anything else by the printer's default.
+	 */
 	forJob(jobId: string): JobSlice {
 		const job = this.jobRow(jobId);
 		const spool = this.spoolRow(job.spoolId);
@@ -226,14 +231,18 @@ export class SlicerProfiles {
 		const nozzle = job.nozzle || '0.4';
 		const material = job.material || spool?.material || 'PLA';
 		const lib = this.profiles;
-		const base = lib.defaults(model, nozzle, material);
-		// A deleted user preset falls back to the default, like a missing one.
-		const alive = <T extends PresetRef>(r: T | null | undefined): T | null => {
-			if (!r || r.source !== 'user') return r ?? null;
-			return this.store.get(r.userPresetId ?? '') || this.store.byName(r.kind, r.name) ? r : null;
+		const alive = <T extends PresetRef>(r: T | null | undefined): T | null =>
+			r && r.kind && lib.exists(r) ? r : null;
+		const printer: PresetRef = alive(s.printer) ?? {
+			kind: 'printer',
+			name: lib.printerFor(model, nozzle).name,
+			source: 'system'
 		};
-		const printer = alive(s.printer) ?? base.printer;
+		// Defaults are only worked out for what is missing (a job may pick a filament for a material
+		// the printer has no preset for).
+
 		let process = alive(s.process);
+		if (process && !lib.suits(process, printer)) process = null;
 		if (!process) {
 			const layer = Number(job.layerHeight);
 			const picked =
@@ -243,15 +252,20 @@ export class SlicerProfiles {
 							layer
 						)
 					: undefined;
-			process = picked ? { kind: 'process', name: picked.name, source: 'system' } : base.process;
+			process = picked
+				? { kind: 'process', name: picked.name, source: 'system' }
+				: lib.defaultProcess(printer);
 		}
-		const chosen = (s.filaments ?? []).map(alive).filter((r): r is PresetRef => !!r);
+		const chosen = (s.filaments ?? [])
+			.map((r) => alive(r))
+			.map((r) => (r ? this.forPrinter(r, printer) : null));
 		const spoolPreset = alive(spool?.filamentPreset);
+		const fromSpool = spoolPreset ? this.forPrinter(spoolPreset, printer) : null;
 		const filaments = chosen.length
-			? chosen
-			: spoolPreset
-				? [this.forPrinter(spoolPreset, printer)]
-				: base.filaments;
+			? chosen.map(
+					(r, i) => r ?? (i === 0 ? fromSpool : null) ?? lib.defaultFilament(printer, material)
+				)
+			: [fromSpool ?? lib.defaultFilament(printer, material)];
 
 		// The job's own fields, as slicer.ts applies them to the command line's presets.
 		const fromJob: ConfigMap = {};
@@ -281,16 +295,20 @@ export class SlicerProfiles {
 	}
 
 	/**
-	 * A spool's system filament preset for another printer: the same Bambu filament (filament_id) in
-	 * that printer's variant ("Bambu PLA Basic @BBL X1C" → "… @BBL A1M"), else as it is.
+	 * A filament preset for another printer: itself when it suits the printer, else the same Bambu
+	 * filament (filament_id) in that printer's variant ("Bambu PLA Basic @BBL X1C" → "… @BBL A1M"),
+	 * else null.
 	 */
-	private forPrinter(ref: PresetRef, printer: PresetRef): PresetRef {
-		if (ref.source !== 'system') return ref;
-		const list = this.profiles.compatible(printer, 'filament').filter((f) => f.source === 'system');
-		if (list.some((f) => f.name === ref.name)) return ref;
+	private forPrinter(ref: PresetRef, printer: PresetRef): PresetRef | null {
+		if (this.profiles.suits(ref, printer)) return ref;
+		if (ref.source !== 'system') return null;
 		const id = this.profiles.vendorSet()?.get('filament', ref.name)?.filamentId;
-		const same = id ? list.find((f) => f.filamentId === id) : undefined;
-		return same ? { kind: 'filament', name: same.name, source: 'system' } : ref;
+		const same = id
+			? this.profiles
+					.compatible(printer, 'filament')
+					.find((f) => f.source === 'system' && f.filamentId === id)
+			: undefined;
+		return same ? { kind: 'filament', name: same.name, source: 'system' } : null;
 	}
 
 	/** The flat config a job slices with (slicer-engine calls this when both are present). */

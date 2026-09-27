@@ -67,6 +67,13 @@
 			0
 		)
 	);
+	/** Settings added by name that the preset does not have yet (they show up in the tabs once saved). */
+	const added = $derived.by(() => {
+		const known = new Set(
+			(detail?.pages ?? []).flatMap((p) => p.groups.flatMap((g) => g.keys.map((k) => k.key)))
+		);
+		return Object.keys(edits).filter((k) => !known.has(k));
+	});
 	const dirty = $derived(
 		Object.keys(edits).length > 0 || removed.length > 0 || (!!user && name !== user.name)
 	);
@@ -88,7 +95,8 @@
 		edit(key, newValue);
 		newKey = '';
 		newValue = '';
-		onlyChanged = true;
+		// A setting the preset already has is edited in its tab: show the changes to find it.
+		if (!added.includes(key)) onlyChanged = true;
 	}
 
 	/** What a user preset stores after this edit: its keys, minus the reset ones, plus the edits. */
@@ -220,7 +228,37 @@
 				</fieldset>
 			{/each}
 		{:else}
-			<p class="panel-empty">{onlyChanged ? 'Nothing changed yet.' : 'No setting matches.'}</p>
+			<p class="panel-empty">
+				{onlyChanged
+					? added.length
+						? 'No other changes.'
+						: 'Nothing changed yet.'
+					: 'No setting matches.'}
+			</p>
+		{/if}
+
+		{#if added.length}
+			<fieldset>
+				<legend>Added by name</legend>
+				{#each added as key (key)}
+					<div class="row changed">
+						<code class="key">{key}</code>
+						<ValueInput value={edits[key]} label={key} onchange={(v) => edit(key, v)} />
+						<span class="was">
+							<button
+								class="mini icon"
+								aria-label="Remove {key}"
+								title="Remove"
+								onclick={() => {
+									const rest = { ...edits };
+									delete rest[key];
+									edits = rest;
+								}}>×</button
+							>
+						</span>
+					</div>
+				{/each}
+			</fieldset>
 		{/if}
 
 		<details class="add">

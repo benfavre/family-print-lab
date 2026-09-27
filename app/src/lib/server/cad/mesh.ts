@@ -137,11 +137,13 @@ function zipEntries(buf: Buffer): ZipEntry[] {
 
 /**
  * Reads the entries of a zip whose names match `want` (3MF meshes by default). `head` entries are only
- * partly inflated (their first bytes), for peeking at large files such as G-code.
+ * partly inflated (their first bytes), for peeking at large files such as G-code. `maxEntryBytes` caps
+ * each inflated entry (inflating more throws).
  */
 export function readZip(
 	buf: Buffer,
-	want: (name: string) => 'all' | 'head' | false = (n) => (/\.model$/i.test(n) ? 'all' : false)
+	want: (name: string) => 'all' | 'head' | false = (n) => (/\.model$/i.test(n) ? 'all' : false),
+	maxEntryBytes = 512 * 1024 * 1024
 ): Map<string, Buffer> {
 	const files = new Map<string, Buffer>();
 	for (const e of zipEntries(buf)) {
@@ -160,7 +162,7 @@ export function readZip(
 		else
 			files.set(
 				e.name,
-				e.method === 0 ? e.raw : zlib.inflateRawSync(e.raw, { maxOutputLength: 512 * 1024 * 1024 })
+				e.method === 0 ? e.raw : zlib.inflateRawSync(e.raw, { maxOutputLength: maxEntryBytes })
 			);
 	}
 	return files;

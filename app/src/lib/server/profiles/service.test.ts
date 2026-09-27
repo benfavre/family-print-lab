@@ -4,7 +4,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { RequestEvent } from '@sveltejs/kit';
 import { startTestLab, type TestLab } from '../testing/harness';
-import { readZip } from '../cad/mesh';
+import { readZip, writeZip } from '../cad/mesh';
 import { FIXTURE } from './__fixtures__/helpers';
 import type { SlicerProfiles } from './service';
 import * as presetsRoute from '../../../routes/api/slicer/presets/+server';
@@ -239,6 +239,19 @@ describe('user presets over the API', () => {
 		expect(junk.status).toBe(400);
 	});
 
+	it('refuses bundles that would unpack into too much', async () => {
+		const many = writeZip(
+			Array.from({ length: 201 }, (_, i) => [`process/p${i}.json`, Buffer.from('{}')])
+		);
+		const tooMany = await call(importRoute.POST, { method: 'POST', raw: many });
+		expect(tooMany.status).toBe(413);
+		// One small entry that inflates past the per-preset limit (a zip bomb).
+		const bomb = writeZip([['process/big.json', Buffer.alloc(8 * 1024 * 1024, 32)]]);
+		expect(bomb.length).toBeLessThan(100_000);
+		const r = await call(importRoute.POST, { method: 'POST', raw: bomb });
+		expect(r.status).toBe(400);
+	});
+
 	it('round-trips a printer bundle (.bbscfg) with the presets that suit the printer', async () => {
 		const printer = (
 			await call(presetsRoute.POST, {
@@ -303,6 +316,15 @@ describe('user presets over the API', () => {
 			filament_settings_id: ['Bambu PLA Basic @My A1M'],
 			nozzle_temperature: ['215']
 		});
+		// A vendor name never becomes a path outside its folder in the zip.
+		const odd = s.createUser({
+			kind: 'filament',
+			name: 'Odd PLA @X',
+			config: { filament_vendor: ['../..'], filament_type: ['PLA'] }
+		});
+		const names = [...readZip(s.exportUser(odd.id, true).data, () => 'all').keys()];
+		expect(names).toContain('.._../Odd PLA @X.json');
+		expect(names.every((n) => !n.split('/').includes('..'))).toBe(true);
 	});
 });
 
@@ -408,6 +430,39 @@ describe('a job’s slicer settings', () => {
 			body: { process: { kind: 'process', name: 'Nope', source: 'system' } }
 		});
 		expect(bad.status).toBe(404);
+	});
+
+	it('replaces presets that do not suit the job’s printer, as Bambu Studio does on a printer change', () => {
+		// Chosen while the job was meant for an X1C; it now prints on the A1 mini.
+		s.setJobSettings(jobId, {
+			process: { kind: 'process', name: '0.20mm Standard @BBL X1C', source: 'system' },
+			filaments: [{ kind: 'filament', name: 'Bambu PLA Basic @BBL X1C', source: 'system' }]
+		});
+		const j = s.forJob(jobId).selection;
+		expect(j.process.name).toBe('0.16mm Mini only @Test');
+		expect(j.filaments.map((f) => f.name)).toEqual(['Bambu PLA Basic @BBL A1M']);
+		// A filament with no equivalent for this printer falls back to the default.
+		s.setJobSettings(jobId, {
+			filaments: [{ kind: 'filament', name: 'Bambu PETG HF @BBL X1C', source: 'system' }]
+		});
+		expect(s.forJob(jobId).selection.filaments[0].name).toBe('Bambu PLA Basic @BBL A1M');
+		s.setJobSettings(jobId, {});
+	});
+
+	it('needs no default when the job picks its presets (a material the printer has no preset for)', () => {
+		const lab = t.rt.lab;
+		const projectId = lab.snapshot().projects[0].id;
+		const abs = lab.createJob({
+			projectId,
+			printerId: t.printer('N1').info.id,
+			material: 'ABS'
+		}) as unknown as string;
+		expect(s.jobView(abs).error).toMatch(/no ABS filament preset for the A1 mini/);
+		s.setJobSettings(abs, {
+			filaments: [{ kind: 'filament', name: 'Generic PLA', source: 'system' }]
+		});
+		expect(s.forJob(abs).selection.filaments[0].name).toBe('Generic PLA');
+		expect(s.jobView(abs).error).toBe(null);
 	});
 
 	it('shows why presets are unavailable instead of failing', async () => {
