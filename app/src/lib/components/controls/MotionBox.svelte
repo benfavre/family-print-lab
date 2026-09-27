@@ -12,18 +12,22 @@
 	} from '$lib/shared/controls';
 	import type { PrinterStatus } from '$lib/shared/domain';
 
-	// Home, jog pad and extruder, idle only (Bambu Studio's device page layout: X/Y pad, Z, E).
+	// Home, jog pad and extruder, idle only (Bambu Studio's device page layout: X/Y pad, Z, E). The
+	// arrows send what Studio's do (StatusPanel.cpp on_axis_ctrl_xy: up = Y+, left = X−; on_axis_ctrl_z_up
+	// = Z−, down = Z+); the command flips Y and Z on the A-series like Studio, so the arrows keep
+	// meaning the same movement on every printer.
 	let { printer, offline }: { printer: PrinterStatus; offline: string | null } = $props();
 	const app = useApp();
 	const t = $derived(controlTarget(printer));
 	const home = $derived(offline ?? homeReason(t));
 	let step = $state(10);
-	let nozzle = $state<0 | 1>(0);
 	let busy = $state(false);
 	const steps = $derived(jogSteps(t, 'X'));
 	const zStep = $derived(Math.min(step, 10));
 	const dual = $derived(dualNozzle(t));
-	const extrude = $derived(offline ?? extrudeReason(t, nozzle));
+	// Only the nozzle in use moves filament (Bambu Studio on_axis_ctrl_e_*).
+	const extrude = $derived(offline ?? extrudeReason(t));
+	const inUse = $derived((printer.state?.activeNozzle ?? 0) === 0 ? 'right' : 'left');
 
 	async function run(name: string, params: Record<string, unknown> = {}) {
 		busy = true;
@@ -49,18 +53,21 @@
 			<button
 				class="mini"
 				disabled={!!jogWhy('Y') || busy}
-				title={jogWhy('Y') ?? `Y +${step} mm`}
-				onclick={() => jog('Y', 1)}>Y+</button
+				aria-label="Up {step} mm"
+				title={jogWhy('Y') ?? `Up ${step} mm`}
+				onclick={() => jog('Y', 1)}>↑</button
 			>
 			<span></span>
 			<button
 				class="mini"
 				disabled={!!jogWhy('X') || busy}
-				title={jogWhy('X') ?? `X −${step} mm`}
-				onclick={() => jog('X', -1)}>X−</button
+				aria-label="Left {step} mm"
+				title={jogWhy('X') ?? `Left ${step} mm`}
+				onclick={() => jog('X', -1)}>←</button
 			>
 			<button
 				class="mini home"
+				aria-label="Home"
 				disabled={!!home || busy}
 				title={home ?? 'Home all axes'}
 				onclick={async () => {
@@ -77,46 +84,48 @@
 			<button
 				class="mini"
 				disabled={!!jogWhy('X') || busy}
-				title={jogWhy('X') ?? `X +${step} mm`}
-				onclick={() => jog('X', 1)}>X+</button
+				aria-label="Right {step} mm"
+				title={jogWhy('X') ?? `Right ${step} mm`}
+				onclick={() => jog('X', 1)}>→</button
 			>
 			<span></span>
 			<button
 				class="mini"
 				disabled={!!jogWhy('Y') || busy}
-				title={jogWhy('Y') ?? `Y −${step} mm`}
-				onclick={() => jog('Y', -1)}>Y−</button
+				aria-label="Down {step} mm"
+				title={jogWhy('Y') ?? `Down ${step} mm`}
+				onclick={() => jog('Y', -1)}>↓</button
 			>
 			<span></span>
 		</div>
-		<div class="col" role="group" aria-label="Move the bed">
+		<div class="col" role="group" aria-label="Move Z">
 			<button
 				class="mini"
+				aria-label="Z up {zStep} mm"
 				disabled={!!jogWhy('Z') || busy}
-				title={jogWhy('Z') ?? `Z +${zStep} mm`}
-				onclick={() => jog('Z', 1)}>Z+</button
+				title={jogWhy('Z') ?? `Z up ${zStep} mm`}
+				onclick={() => jog('Z', -1)}>Z ↑</button
 			>
 			<button
 				class="mini"
+				aria-label="Z down {zStep} mm"
 				disabled={!!jogWhy('Z') || busy}
-				title={jogWhy('Z') ?? `Z −${zStep} mm`}
-				onclick={() => jog('Z', -1)}>Z−</button
+				title={jogWhy('Z') ?? `Z down ${zStep} mm`}
+				onclick={() => jog('Z', 1)}>Z ↓</button
 			>
 		</div>
 		<div class="col" role="group" aria-label="Move filament">
 			<button
 				class="mini"
 				disabled={!!extrude || busy}
-				title={extrude ?? 'Pull 10 mm of filament back'}
-				onclick={() => run('print.set_extrusion_length', { length: -10, ...(dual && { nozzle }) })}
-				>Retract</button
+				title={extrude ?? `Pull 10 mm of filament back${dual ? ` (${inUse} nozzle)` : ''}`}
+				onclick={() => run('print.set_extrusion_length', { length: -10 })}>Retract</button
 			>
 			<button
 				class="mini"
 				disabled={!!extrude || busy}
-				title={extrude ?? 'Push 10 mm of filament out'}
-				onclick={() => run('print.set_extrusion_length', { length: 10, ...(dual && { nozzle }) })}
-				>Extrude</button
+				title={extrude ?? `Push 10 mm of filament out${dual ? ` (${inUse} nozzle)` : ''}`}
+				onclick={() => run('print.set_extrusion_length', { length: 10 })}>Extrude</button
 			>
 		</div>
 	</div>
@@ -127,12 +136,7 @@
 				<button aria-pressed={step === s} onclick={() => (step = s)}>{s} mm</button>
 			{/each}
 		</div>
-		{#if dual}
-			<div class="seg" role="group" aria-label="Nozzle to extrude with">
-				<button aria-pressed={nozzle === 0} onclick={() => (nozzle = 0)}>Right</button>
-				<button aria-pressed={nozzle === 1} onclick={() => (nozzle = 1)}>Left</button>
-			</div>
-		{/if}
+		{#if dual}<span class="label">Filament moves through the {inUse} nozzle.</span>{/if}
 	</div>
 	{#if !home && extrude}<small class="why"
 			>{extrude === `Heat the nozzle above ${EXTRUDE_MIN_TEMP} °C first.`

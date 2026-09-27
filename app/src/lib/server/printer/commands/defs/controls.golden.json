@@ -435,19 +435,36 @@
 		}
 	},
 	{
+		"name": "print.buzzer_ctrl",
+		"model": "O1D",
+		"params": {
+			"mode": 2
+		},
+		"source": "ha-bambulab commands.py BUZZER_SET_BEEPING",
+		"qos": 1,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "buzzer_ctrl",
+				"mode": 2,
+				"reason": ""
+			}
+		}
+	},
+	{
 		"name": "print.ams_change_filament",
 		"model": "N6",
 		"params": {
 			"tray": 1
 		},
-		"source": "Bambu Studio command_ams_change_filament: target = ams*4+slot, PETG 240-260",
+		"source": "Bambu Studio command_ams_change_filament: target = ams*4+slot; nothing loaded, so both temperatures -1 (on_ams_load_curr)",
 		"qos": 0,
 		"payload": {
 			"print": {
 				"sequence_id": "SEQ",
 				"command": "ams_change_filament",
 				"curr_temp": -1,
-				"tar_temp": 250,
+				"tar_temp": -1,
 				"ams_id": 0,
 				"target": 1,
 				"slot_id": 1
@@ -458,16 +475,39 @@
 		"name": "print.ams_change_filament",
 		"model": "N6",
 		"params": {
+			"tray": 1
+		},
+		"source": "Bambu Studio on_ams_load_curr: loaded tray and target known, so their midpoints (PETG 240-260)",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "ams_change_filament",
+				"curr_temp": 215,
+				"tar_temp": 250,
+				"ams_id": 0,
+				"target": 1,
+				"slot_id": 1
+			}
+		},
+		"status": {
+			"activeTray": 0
+		}
+	},
+	{
+		"name": "print.ams_change_filament",
+		"model": "N6",
+		"params": {
 			"tray": 0
 		},
-		"source": "tray index 0: target = ams_id",
+		"source": "tray index 0: target = ams_id; nothing loaded, so both temperatures -1",
 		"qos": 0,
 		"payload": {
 			"print": {
 				"sequence_id": "SEQ",
 				"command": "ams_change_filament",
 				"curr_temp": -1,
-				"tar_temp": 215,
+				"tar_temp": -1,
 				"ams_id": 0,
 				"target": 0,
 				"slot_id": 0
@@ -500,13 +540,13 @@
 		"params": {
 			"tray": 255
 		},
-		"source": "older printers: external spool is 254",
+		"source": "older printers: external spool is 254; its own range for both temperatures (on_ams_load_curr virtual tray)",
 		"qos": 0,
 		"payload": {
 			"print": {
 				"sequence_id": "SEQ",
 				"command": "ams_change_filament",
-				"curr_temp": 215,
+				"curr_temp": 255,
 				"tar_temp": 255,
 				"ams_id": 254,
 				"target": 254,
@@ -696,6 +736,58 @@
 				"sequence_id": "SEQ",
 				"command": "gcode_line",
 				"param": "G1 X10\nM400\n"
+			}
+		}
+	},
+	{
+		"name": "print.set_extrusion_length",
+		"model": "N6",
+		"params": {
+			"length": -10
+		},
+		"source": "Bambu Studio on_axis_ctrl_e_up_10: command_extruder_control with the extruder in use",
+		"qos": 0,
+		"status": {
+			"activeNozzle": 1
+		},
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "set_extrusion_length",
+				"extruder_index": 1,
+				"length": -10
+			}
+		}
+	},
+	{
+		"name": "system.set_door_stat",
+		"model": "N6",
+		"params": {
+			"mode": 0
+		},
+		"source": "Bambu Studio DeviceManager.cpp command_set_door_open_check",
+		"qos": 0,
+		"payload": {
+			"system": {
+				"sequence_id": "SEQ",
+				"command": "set_door_stat",
+				"config": 0
+			}
+		}
+	},
+	{
+		"name": "system.set_door_stat",
+		"model": "N6",
+		"params": {
+			"mode": 2
+		},
+		"source": "Bambu Studio DeviceManager.cpp command_set_door_open_check",
+		"qos": 0,
+		"payload": {
+			"system": {
+				"sequence_id": "SEQ",
+				"command": "set_door_stat",
+				"config": 2
 			}
 		}
 	}

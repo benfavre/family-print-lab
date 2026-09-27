@@ -4,10 +4,12 @@
 	import { controlTarget, runCommand } from '$lib/client/modules/controls/commands';
 	import {
 		DETECTOR_LABELS,
+		DOOR_CHECK_LABELS,
 		PRINT_OPTION_LABELS,
 		detectorReason,
 		offlineReason,
 		type Detector,
+		type DoorCheck,
 		type HaltSensitivity,
 		type PrintOptionName,
 		type PrintOptions
@@ -22,20 +24,29 @@
 	const s = $derived(printer.state ?? null);
 	const offline = $derived(offlineReason(printer));
 	let options = $state<PrintOptions | null>(null);
+	let loaded = $state(false);
+	const DOOR_MODES: DoorCheck[] = [0, 1, 2];
 	let busy = $state('');
 
 	onMount(() => {
 		const abort = new AbortController();
 		fetch(`/api/printers/${printer.id}/print-options`, { signal: abort.signal })
 			.then((r) => (r.ok ? r.json() : null))
-			.then((o: PrintOptions | null) => (options = o))
+			.then((o: PrintOptions | null) => {
+				options = o;
+				loaded = true;
+			})
 			.catch(() => {
 				/* offline; the live channel fills it in */
+				loaded = true;
 			});
 		const off = app.lab.onLive<{ printerId: string; options: PrintOptions }>(
 			'controls:options',
 			(d) => {
-				if (d.printerId === printer.id) options = d.options;
+				if (d.printerId === printer.id) {
+					options = d.options;
+					loaded = true;
+				}
 			}
 		);
 		return () => {
@@ -84,8 +95,10 @@
 <section class="panel">
 	<h2 class="panel-title">Print checks</h2>
 	{#if offline}<p class="panel-empty">{offline}</p>{/if}
-	{#if !detectors.length && !optionList.length}
-		<p class="panel-empty">This printer reports no checks the app can switch.</p>
+	{#if !detectors.length && !optionList.length && !options?.doorCheck.supported}
+		<p class="panel-empty">
+			{loaded ? 'This printer reports no checks the app can switch.' : 'Reading the checks…'}
+		</p>
 	{/if}
 	<ul class="checks">
 		{#each detectors as d (d)}
@@ -148,6 +161,31 @@
 				>
 			</li>
 		{/each}
+		{#if options?.doorCheck.supported}
+			<li>
+				<label class="sens door"
+					><span
+						><strong>Door opened while printing</strong><small
+							>What the printer does when someone opens the door.</small
+						></span
+					>
+					<select
+						value={options.doorCheck.mode ?? ''}
+						disabled={!!offline || busy === 'door'}
+						aria-label="Door opened while printing"
+						onchange={(e) =>
+							run('door', 'system.set_door_stat', {
+								mode: Number(e.currentTarget.value) as DoorCheck
+							})}
+					>
+						{#if options.doorCheck.mode === null}<option value="" disabled>—</option>{/if}
+						{#each DOOR_MODES as mode (mode)}
+							<option value={mode}>{DOOR_CHECK_LABELS[mode]}</option>
+						{/each}
+					</select></label
+				>
+			</li>
+		{/if}
 	</ul>
 </section>
 
@@ -179,6 +217,10 @@
 		margin: 4px 0 0 24px;
 		align-items: center !important;
 		color: var(--text-2);
+	}
+	.door {
+		margin: 0;
+		justify-content: space-between;
 	}
 	.sens select {
 		padding: 2px 6px;

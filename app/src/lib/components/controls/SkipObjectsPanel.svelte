@@ -3,16 +3,18 @@
 	import { controlTarget, runCommand } from '$lib/client/modules/controls/commands';
 	import { offlineReason, skipReason, type PlateObjects } from '$lib/shared/controls';
 	import type { PrinterStatus } from '$lib/shared/domain';
+	import PlatePickMap from './PlatePickMap.svelte';
 
 	// Skip objects on the plate being printed, like Bambu Handy: pick them in the list or on the plate
-	// map (drawn from the sliced file's first-layer boxes). Prints sent from elsewhere only show what the
-	// printer says is skipped already.
+	// map (the sliced file's top view with its pick image, or else its first-layer boxes). Prints sent
+	// from elsewhere only show what the printer says is skipped already.
 	let { printer }: { printer: PrinterStatus } = $props();
 	const app = useApp();
 	const t = $derived(controlTarget(printer));
 	const s = $derived(printer.state ?? null);
 	const reason = $derived(offlineReason(printer) ?? skipReason(t));
 	let data = $state<PlateObjects | null>(null);
+	let failed = $state('');
 	let picked = $state<number[]>([]);
 	let busy = $state(false);
 	/** Refetch when the print or its skipped list changes. */
@@ -22,13 +24,22 @@
 		void key;
 		const abort = new AbortController();
 		fetch(`/api/printers/${printer.id}/objects`, { signal: abort.signal })
-			.then((r) => (r.ok ? r.json() : null))
-			.then((d: PlateObjects | null) => {
-				data = d;
-				picked = picked.filter((id) => d?.objects.some((o) => o.id === id && !o.skipped));
+			.then(async (r) => {
+				if (!r.ok)
+					throw new Error(
+						((await r.json().catch(() => null)) as { error?: string } | null)?.error ??
+							'The objects on the plate could not be read.'
+					);
+				return r.json() as Promise<PlateObjects>;
 			})
-			.catch(() => {
-				/* superseded or offline; the next change asks again */
+			.then((d) => {
+				data = d;
+				failed = '';
+				picked = picked.filter((id) => d.objects.some((o) => o.id === id && !o.skipped));
+			})
+			.catch((error: Error) => {
+				// Superseded requests are aborted on purpose; anything else is shown.
+				if (error.name !== 'AbortError') failed = error.message;
 			});
 		return () => abort.abort();
 	});
@@ -79,7 +90,9 @@
 		{#if data?.objects.length}<span class="count">{left.length} of {data.objects.length} left</span
 			>{/if}
 	</header>
-	{#if !data}
+	{#if !data && failed}
+		<p class="panel-empty">{failed}</p>
+	{:else if !data}
 		<p class="panel-empty">Looking for the objects on the plate…</p>
 	{:else if data.source === 'report'}
 		<p class="panel-empty">
@@ -91,7 +104,16 @@
 		<p class="panel-empty">The sliced file does not list the objects on this plate.</p>
 	{:else}
 		<div class="skip">
-			{#if map}
+			{#if data.pickMap && printer.id}
+				<PlatePickMap
+					printerId={printer.id}
+					version={s?.task ?? ''}
+					objects={data.objects}
+					{picked}
+					disabled={!!reason}
+					{toggle}
+				/>
+			{:else if map}
 				<svg
 					class="plate-map"
 					viewBox={map.viewBox}

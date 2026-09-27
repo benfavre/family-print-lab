@@ -110,7 +110,12 @@ describe('printer controls on the simulated fleet', () => {
 						{ id: 139, name: 'rocket', bbox: [20, 30, 60, 80] },
 						{ id: 522, name: 'stand' }
 					],
-					{ model: 'C12', picture: Buffer.from('png') }
+					{
+						model: 'C12',
+						picture: Buffer.from('png'),
+						top: Buffer.from('top'),
+						pick: Buffer.from('pick')
+					}
 				),
 				'rockets.gcode.3mf'
 			);
@@ -130,12 +135,15 @@ describe('printer controls on the simulated fleet', () => {
 				source: 'file',
 				plate: 1,
 				picture: true,
+				pickMap: true,
 				objects: [
 					{ id: 139, name: 'rocket', skipped: false, bbox: [20, 30, 60, 80] },
 					{ id: 522, name: 'stand', skipped: false }
 				]
 			});
 			expect(controls.platePicture(p1s.info.id)?.toString()).toBe('png');
+			expect(controls.platePicture(p1s.info.id, 'pick')?.toString()).toBe('pick');
+			expect(controls.platePicture(p1s.info.id, 'top')?.toString()).toBe('top');
 			const before = state('C12').remainingMinutes ?? 0;
 			expect((await send('C12', 'print.skip_objects', { ids: [522] })).outcome).toBe('confirmed');
 			await until(() => state('C12').skippedObjects.includes(522));
@@ -143,7 +151,12 @@ describe('printer controls on the simulated fleet', () => {
 			await until(() => (state('C12').remainingMinutes ?? 0) < before);
 			await send('C12', 'print.stop');
 			await until(() => state('C12').gcodeState === 'FAILED');
-			expect(controls.objects(p1s.info.id)).toMatchObject({ source: 'report', objects: [] });
+			expect(controls.objects(p1s.info.id)).toMatchObject({
+				source: 'report',
+				objects: [],
+				pickMap: false
+			});
+			expect(controls.platePicture(p1s.info.id, 'pick')).toBeNull();
 		}
 	);
 
@@ -165,6 +178,26 @@ describe('printer controls on the simulated fleet', () => {
 			enabled: false
 		});
 		await until(() => state('N6').xcam.firstLayer === false);
+		// The door-open check on the X2D (fun bit 12); the P1S does not report one.
+		await send('N6', 'system.set_door_stat', { mode: 2 });
+		await until(() => controls.options(x2d).doorCheck.mode === 2);
+		expect(controls.options(x2d).doorCheck.supported).toBe(true);
+		await send('N6', 'system.set_door_stat', { mode: 1 });
+		await until(() => controls.options(x2d).doorCheck.mode === 1);
+		await expect(send('C12', 'system.set_door_stat', { mode: 1 })).rejects.toThrow(/door check/);
+	});
+
+	it('never runs a G-code line the simulator only saw part of', async () => {
+		// The core logs 200 characters of a batch: here the cut lands inside the last line, which must
+		// not run as "M140 S5".
+		const filler = ['G4 P10', ...Array.from({ length: 23 }, () => 'G4 P1')];
+		expect([...filler, 'M140 S55'].join(' · ').length).toBe(201);
+		await send('N1', 'print.gcode_line:custom', { lines: [...filler, 'M140 S55'] });
+		await new Promise((r) => setTimeout(r, 300));
+		expect(state('N1').bedTarget).not.toBe(5);
+		await send('N1', 'print.gcode_line:custom', { lines: ['M140 S35', ...filler] });
+		await until(() => state('N1').bedTarget === 35);
+		await send('N1', 'print.set_bed_temp', { temp: 0 });
 	});
 
 	it('guards custom G-code while printing and runs it when idle', async () => {

@@ -4,6 +4,7 @@
 	import { SPEED_LABELS } from '$lib/shared/printers/stages';
 	import {
 		AIRDUCT_MODES,
+		CHAMBER_HEAT_SWITCH,
 		FAN_LABELS,
 		LIGHT_LABELS,
 		SPEED_LEVELS,
@@ -165,10 +166,10 @@
 				if (
 					t.caps.airductMode &&
 					s?.airductMode !== 1 &&
-					temp >= 40 &&
+					temp >= CHAMBER_HEAT_SWITCH &&
 					!(await app.ui.ask(
 						'Switch to heating mode?',
-						'Above 40 °C the printer switches its airduct to heating mode to keep the chamber warm.',
+						`Above ${CHAMBER_HEAT_SWITCH} °C the printer switches its airduct to heating mode to keep the chamber warm.`,
 						'Heat the chamber'
 					))
 				)

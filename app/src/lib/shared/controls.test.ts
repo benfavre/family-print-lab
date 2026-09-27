@@ -3,12 +3,14 @@ import {
 	calibrationSteps,
 	detectorReason,
 	fanReason,
+	gcodeCommand,
 	gcodeLines,
 	gcodeReason,
 	jogSteps,
 	lightReason,
 	newFanProtocol,
 	offlineReason,
+	pickId,
 	tempReason,
 	type ControlTarget
 } from './controls';
@@ -95,5 +97,30 @@ describe('which controls a printer has', () => {
 		expect(gcodeReason(running, ['M104 S210'])).toBeNull();
 		expect(gcodeReason(target('N1'), ['M500'])).toBeNull();
 		expect(gcodeReason(target('N1'), [])).toMatch(/at least one/);
+		expect(gcodeReason(target('N1'), ['M112'])).toMatch(/emergency stop/);
+		expect(gcodeReason(target('N1'), ['M104 S200 ; 200°'])).toMatch(/plain printable/);
+		expect(gcodeReason(target('N1'), Array(51).fill('G4'))).toMatch(/at most 50/);
+		expect(gcodeReason(target('N1'), ['G1'.padEnd(257, '0')])).toMatch(/256 characters/);
+	});
+
+	it('reads identify ids from pick image pixels the way Bambu Studio paints them', () => {
+		// identify_id 0x0a0b0c → r 0x0c, g 0x0b, b 0x0a (GLCanvas3D.cpp render_thumbnail).
+		expect(pickId(0x0c, 0x0b, 0x0a, 255)).toBe(0x0a0b0c);
+		expect(pickId(139, 0, 0, 255)).toBe(139);
+		expect(pickId(0, 0, 0, 0)).toBeNull();
+		expect(pickId(139, 0, 0, 128)).toBeNull();
+	});
+
+	it('finds the command word of a G-code line however it is written', () => {
+		expect(gcodeCommand('G28')).toBe('G28');
+		expect(gcodeCommand('  g028 x y')).toBe('G28');
+		expect(gcodeCommand('N120 M84*47')).toBe('M84');
+		expect(gcodeCommand('M500;save')).toBe('M500');
+		expect(gcodeCommand('G0 X1')).toBe('G0');
+		expect(gcodeCommand('G00')).toBe('G0');
+		expect(gcodeCommand('G29.1')).toBe('G29.1');
+		expect(gcodeCommand('T1')).toBe('T1');
+		expect(gcodeCommand('; comment')).toBeNull();
+		expect(gcodeCommand('hello')).toBeNull();
 	});
 });

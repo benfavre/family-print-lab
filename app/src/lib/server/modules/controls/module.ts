@@ -9,13 +9,15 @@ import { isActive, type PlateObjects, type PrintOptions } from '$lib/shared/cont
 import { parsePrintOptions } from './options';
 import { readPlateObjects, type PlateContents } from './plate';
 
+export type PlateImage = 'plate' | 'top' | 'pick';
+
 export interface ControlsService {
 	/** Print options as the printer last reported them. */
 	options(printerId: string): PrintOptions;
 	/** Objects on the plate being printed, with what is skipped already. */
 	objects(printerId: string): PlateObjects;
-	/** The plate picture from the job's sliced file, when there is one. */
-	platePicture(printerId: string): Buffer | null;
+	/** A picture from the job's sliced file: the plate, its top view or the top view's pick image. */
+	platePicture(printerId: string, which?: PlateImage): Buffer | null;
 }
 
 declare module '../../modules' {
@@ -102,6 +104,7 @@ export default defineModule({
 						objects: [],
 						bboxAll: null,
 						picture: false,
+						pickMap: false,
 						skipped
 					};
 				return {
@@ -110,11 +113,13 @@ export default defineModule({
 					objects: c.objects.map((o) => ({ ...o, skipped: o.skipped || skipped.includes(o.id) })),
 					bboxAll: c.bboxAll,
 					picture: !!c.picture,
+					pickMap: !!c.pick,
 					skipped
 				};
 			},
-			platePicture(printerId) {
-				return contents(printerId)?.picture ?? null;
+			platePicture(printerId, which = 'plate') {
+				const c = contents(printerId);
+				return (which === 'top' ? c?.top : which === 'pick' ? c?.pick : c?.picture) ?? null;
 			}
 		};
 	}

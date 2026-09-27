@@ -6,7 +6,7 @@ import ControlsPanel from '$lib/components/controls/ControlsPanel.svelte';
 import SkipObjectsPanel from '$lib/components/controls/SkipObjectsPanel.svelte';
 import DetectorsPanel from '$lib/components/controls/DetectorsPanel.svelte';
 import { trayLabel } from '$lib/shared/printing';
-import { isActive } from '$lib/shared/controls';
+import { isActive, offlineReason } from '$lib/shared/controls';
 import { runCommand } from './commands';
 
 export default defineUi({
@@ -44,7 +44,7 @@ export default defineUi({
 			show: (tray, p) =>
 				!!tray.type &&
 				!tray.active &&
-				!!p.connected &&
+				!offlineReason(p) &&
 				!!p.caps?.amsSwitchCommand &&
 				!isActive(p.state ?? null),
 			run: async ({ tray, printer, app }) => {
@@ -71,7 +71,10 @@ export default defineUi({
 			order: 11,
 			label: 'Unload',
 			show: (tray, p) =>
-				tray.active && !!p.connected && !!p.caps?.amsSwitchCommand && !isActive(p.state ?? null),
+				tray.active &&
+				!offlineReason(p) &&
+				!!p.caps?.amsSwitchCommand &&
+				!isActive(p.state ?? null),
 			run: async ({ printer, app }) => {
 				if (
 					!(await app.ui.ask(

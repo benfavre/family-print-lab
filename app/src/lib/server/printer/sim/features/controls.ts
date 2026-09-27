@@ -16,6 +16,8 @@ const CALIBRATION_STAGES: [number, number][] = [
 	[1 << 3, 25] // motor noise
 ];
 const STAGE_SECONDS = 120;
+/** features/core.ts logs at most this much of a gcode_line. */
+const CORE_GCODE_LOG_LIMIT = 200;
 /** Fan part ids (Bambu Studio DevFan.h AIR_FUN) → the classic report field. */
 const FAN_FIELDS: Record<number, string> = {
 	1: 'cooling_fan_speed',
@@ -130,6 +132,21 @@ function handle(
 		light.mode = msg.led_mode;
 		return { result: 'success' };
 	}
+	if (topic === 'system' && msg.command === 'set_door_stat') {
+		// Door-open check in cfg bits 20–21 (Bambu Studio DeviceManager.cpp ~4421), where fun bit 12 says so.
+		const mode = Number(msg.config);
+		if (
+			typeof s.cfg !== 'string' ||
+			typeof s.fun !== 'string' ||
+			!((BigInt(`0x${s.fun}`) >> 12n) & 1n)
+		)
+			return { result: 'failed', reason: 'No door check on this printer' };
+		if (![0, 1, 2].includes(mode)) return { result: 'failed', reason: 'Unknown door check' };
+		s.cfg = ((BigInt(`0x${s.cfg}`) & ~(3n << 20n)) | (BigInt(mode) << 20n))
+			.toString(16)
+			.toUpperCase();
+		return { result: 'success' };
+	}
 	if (topic === 'xcam' && msg.command === 'xcam_control_set') {
 		s.xcam ??= {};
 		s.xcam[msg.module_name] = !!msg.control;
@@ -238,9 +255,12 @@ export const controls: SimFeature = {
 		const log = sim.log;
 		sim.log = (m: string) => {
 			log(m);
-			const lines = m.match(/^G-code: (.*)$/)?.[1];
-			if (!lines) return;
-			for (const line of lines.split(' · '))
+			const text = m.match(/^G-code: (.*)$/)?.[1];
+			if (!text) return;
+			const lines = text.split(' · ');
+			// The core cuts the logged text at 200 characters; a cut last line ("M104 S2") is not run.
+			if (text.length >= CORE_GCODE_LOG_LIMIT) lines.pop();
+			for (const line of lines)
 				try {
 					gcode(sim, line);
 				} catch (error) {

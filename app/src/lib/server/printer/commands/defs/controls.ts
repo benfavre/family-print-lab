@@ -26,6 +26,8 @@ import {
 	dualNozzle,
 	extrudeReason,
 	fanReason,
+	GCODE_MAX_LINE,
+	GCODE_MAX_LINES,
 	gcodeReason,
 	homeReason,
 	jogReason,
@@ -40,6 +42,7 @@ import {
 	type CalibrationChoice,
 	type ControlTarget,
 	type Detector,
+	type DoorCheck,
 	type FanName,
 	type HaltSensitivity,
 	type LightNode,
@@ -72,6 +75,7 @@ declare module '../registry' {
 			sensitivity?: HaltSensitivity;
 		};
 		'print.gcode_line:custom': { lines: string[] };
+		'system.set_door_stat': { mode: DoorCheck };
 	}
 }
 
@@ -79,7 +83,7 @@ const none = z.strictObject({}) as unknown as z.ZodType<Record<string, never>>;
 const target = (ctx: CommandContext): ControlTarget => ctx;
 const gcode = (lines: string) => ({ command: 'gcode_line', param: lines });
 
-/** Midpoint of a tray's nozzle range, or -1 when unknown (Bambu Studio StatusPanel.cpp on_ams_load_curr). */
+/** Midpoint of a tray's nozzle range, or -1 when unknown (Bambu Studio StatusPanel.cpp on_ams_load_curr ~4940). */
 const midTemp = (t: PrinterTray | undefined) =>
 	t?.tempMin && t.tempMax ? Math.floor((t.tempMin + t.tempMax) / 2) : -1;
 
@@ -276,10 +280,15 @@ export default [
 			length: z.union([z.literal(10), z.literal(-10)]),
 			nozzle: nozzleId.optional()
 		}),
-		guard: (ctx, o) => extrudeReason(target(ctx), o.nozzle ?? 0),
+		guard: (ctx, o) => extrudeReason(target(ctx), o.nozzle),
+		// Bambu Studio sends the extruder in use (GetCurrentExtder()->GetExtId()).
 		build: (o, ctx) =>
 			newProtocol(ctx.status)
-				? { command: 'set_extrusion_length', extruder_index: o.nozzle ?? 0, length: o.length }
+				? {
+						command: 'set_extrusion_length',
+						extruder_index: o.nozzle ?? ctx.status?.activeNozzle ?? 0,
+						length: o.length
+					}
 				: gcode(`M83 \nG0 E${o.length.toFixed(1)} F900\n`),
 		risk: 'safe'
 	}),
@@ -303,7 +312,11 @@ export default [
 		params: z.strictObject({ mode: z.union([z.literal(0), z.literal(1), z.literal(2)]) }),
 		requires: ['fireAlarmBuzzer'],
 		guard: (ctx) => buzzerReason(target(ctx)),
-		build: (o) => ({ command: 'buzzer_ctrl', mode: o.mode }),
+		// Silence is Studio's exact form; alarm and beeping only exist in ha-bambulab, with `reason`.
+		build: (o) =>
+			o.mode === 0
+				? { command: 'buzzer_ctrl', mode: 0 }
+				: { command: 'buzzer_ctrl', mode: o.mode, reason: '' },
 		qos: 1,
 		risk: 'safe'
 	}),
@@ -342,10 +355,19 @@ export default [
 			// Bambu Studio: target = ams_id * 4 + slot for AMS units (ams_id < 16), else the ams id (tray
 			// index 0 is special-cased the same way).
 			const index = amsId < 16 ? amsId * 4 + slot_id : 0;
+			// Temperatures as on_ams_load_curr works them out: an external spool uses its own range for
+			// both; an AMS tray sends -1 for both unless a tray is loaded now and the target is known.
+			const wanted = trayOf(ctx, o.tray);
+			const loaded = trayOf(ctx, ctx.status?.activeTray ?? null);
+			const [curr, tar] = external
+				? [midTemp(wanted), midTemp(wanted)]
+				: loaded && wanted
+					? [midTemp(loaded), midTemp(wanted)]
+					: [-1, -1];
 			return {
 				command: 'ams_change_filament',
-				curr_temp: midTemp(trayOf(ctx, ctx.status?.activeTray ?? null)),
-				tar_temp: midTemp(trayOf(ctx, o.tray)),
+				curr_temp: curr,
+				tar_temp: tar,
 				ams_id: amsId,
 				target: index === 0 ? amsId : index,
 				slot_id: external ? 0 : slot_id
@@ -484,6 +506,19 @@ export default [
 		risk: 'safe'
 	}),
 	defineCommand({
+		name: 'system.set_door_stat',
+		topic: 'system',
+		source:
+			'Bambu Studio DeviceManager.cpp command_set_door_open_check ~4897 (config 0 nothing, 1 warn, 2 pause the print), offered when is_support_door_open_check (fun bit 12, ~4453) as PrintOptionsDialog.cpp does',
+		params: z.strictObject({ mode: z.union([z.literal(0), z.literal(1), z.literal(2)]) }),
+		guard: (ctx) =>
+			ctx.status && ctx.status.firmwareSupport.doorOpenCheck !== true
+				? `The ${ctx.model.short} does not report a door check.`
+				: null,
+		build: (o) => ({ command: 'set_door_stat', config: o.mode }),
+		risk: 'safe'
+	}),
+	defineCommand({
 		name: 'print.gcode_line:custom',
 		topic: 'print',
 		source:
@@ -493,16 +528,14 @@ export default [
 				.array(
 					z
 						.string()
-						.max(256)
+						.max(GCODE_MAX_LINE)
 						.regex(/^[\x20-\x7e]*$/, 'G-code lines must be plain printable text.')
 				)
 				.min(1)
-				.max(50)
+				.max(GCODE_MAX_LINES)
 		}),
-		guard: (ctx, o) =>
-			o.lines.some((l) => /^\s*M112\b/i.test(l))
-				? 'M112 is an emergency stop; it needs the printer restarted afterwards.'
-				: gcodeReason(target(ctx), o.lines),
+		// M112 always, the blocklist while printing (line numbers, comments and leading zeros included).
+		guard: (ctx, o) => gcodeReason(target(ctx), o.lines),
 		build: (o) => gcode(`${o.lines.join('\n')}\n`),
 		timeoutMs: 5000,
 		risk: 'parent'

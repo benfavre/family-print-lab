@@ -13,12 +13,8 @@
 	let text = $state('');
 	let busy = $state(false);
 	const lines = $derived(gcodeLines(text));
-	const reason = $derived(
-		offline ??
-			(lines.length > 50 ? 'Send at most 50 lines at a time.' : null) ??
-			(lines.some((l) => l.length > 256) ? 'Lines can be up to 256 characters.' : null) ??
-			gcodeReason(t, lines)
-	);
+	// The same checks the server makes: line limits, plain text, M112, the blocklist while printing.
+	const reason = $derived(offline ?? gcodeReason(t, lines));
 
 	async function send() {
 		if (

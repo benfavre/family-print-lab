@@ -98,7 +98,17 @@ export interface PrintOptionState {
 	supported: boolean;
 	enabled: boolean | null;
 }
-export type PrintOptions = Record<PrintOptionName, PrintOptionState>;
+/** What the printer does when the door opens mid-print (Bambu Studio DeviceManager.hpp DoorOpenCheckState). */
+export type DoorCheck = 0 | 1 | 2;
+export const DOOR_CHECK_LABELS: Record<DoorCheck, string> = {
+	0: 'Nothing',
+	1: 'Warn',
+	2: 'Pause the print'
+};
+export type PrintOptions = Record<PrintOptionName, PrintOptionState> & {
+	/** Door-open check: supported from `fun` bit 12, mode from `cfg` bits 20–21. */
+	doorCheck: { supported: boolean; mode: DoorCheck | null };
+};
 
 /** An object on the plate that skip_objects can drop (identify_id from the sliced file). */
 export interface PlateObject {
@@ -118,8 +128,21 @@ export interface PlateObjects {
 	bboxAll: [number, number, number, number] | null;
 	/** Whether GET …/objects/plate.png has the plate picture. */
 	picture: boolean;
+	/** Whether GET …/objects/top.png and …/objects/pick.png make a clickable plate map. */
+	pickMap: boolean;
 	/** Ids the printer says are skipped (s_obj). */
 	skipped: number[];
+}
+
+/**
+ * The identify_id a pixel of Metadata/pick_<n>.png stands for, or null for the empty background. Bambu
+ * Studio fills each object with r = id & 0xff, g = (id >> 8) & 0xff, b = (id >> 16) & 0xff, alpha 255,
+ * on a clear (0, 0, 0, 0) background, without anti-aliasing (GLCanvas3D.cpp render_thumbnail
+ * ~12512–12535 with vol->model_object_ID, set to the instance's identify_id in 3DScene.cpp ~1410).
+ */
+export function pickId(r: number, g: number, b: number, a: number): number | null {
+	if (a < 255) return null;
+	return r | (g << 8) | (b << 16);
 }
 
 // ---------- States ----------
@@ -216,16 +239,18 @@ export function jogReason(t: ControlTarget, axis: Axis, distance: number): strin
 	return null;
 }
 
-export function extrudeReason(t: ControlTarget, nozzle = 0): string | null {
+export function extrudeReason(t: ControlTarget, nozzle?: 0 | 1): string | null {
 	const busy = idleOnly(t.status, 'move filament');
 	if (busy) return busy;
-	if (nozzle === 1 && !dualNozzle(t)) return `The ${t.model.short} has one nozzle.`;
 	const s = t.status;
-	const now =
-		(nozzle === (s?.activeNozzle ?? 0)
-			? s?.nozzle
-			: s?.nozzles.find((x) => x.id === nozzle)?.temp) ?? null;
-	return now !== null && now >= EXTRUDE_MIN_TEMP
+	const active = s?.activeNozzle ?? 0;
+	if (nozzle === 1 && !dualNozzle(t)) return `The ${t.model.short} has one nozzle.`;
+	// Bambu Studio StatusPanel.cpp on_axis_ctrl_e_*: only the extruder in use moves filament.
+	if (nozzle !== undefined && nozzle !== active)
+		return 'Only the nozzle in use can move filament; switch nozzles first.';
+	// `nozzle` is the nozzle in use (report.ts).
+	const now = s?.nozzle ?? s?.nozzles.find((x) => x.id === active)?.temp;
+	return now != null && now >= EXTRUDE_MIN_TEMP
 		? null
 		: `Heat the nozzle above ${EXTRUDE_MIN_TEMP} °C first.`;
 }
@@ -334,12 +359,34 @@ export function gcodeLines(text: string): string[] {
 		.filter(Boolean);
 }
 
-/** Why these lines may not be sent now, or null. */
+/**
+ * The command word of a G-code line, normalised ("n10 g028 x" → "G28"): comments, a leading line
+ * number and leading zeros do not hide a command from the blocklist. Null for a line with no command.
+ */
+export function gcodeCommand(line: string): string | null {
+	const m = line
+		.replace(/;.*$/, '')
+		.trim()
+		.match(/^(?:N\d+\s*)?([GMT])0*(\d+)(?:\.(\d+))?/i);
+	return m ? `${m[1].toUpperCase()}${m[2] || '0'}${m[3] ? `.${m[3]}` : ''}` : null;
+}
+
+export const GCODE_MAX_LINES = 50;
+export const GCODE_MAX_LINE = 256;
+
+/** Why these lines may not be sent now, or null. The server's guard and the G-code box both use it. */
 export function gcodeReason(t: ControlTarget, lines: string[]): string | null {
 	if (!lines.length) return 'Type at least one G-code line.';
+	if (lines.length > GCODE_MAX_LINES) return `Send at most ${GCODE_MAX_LINES} lines at a time.`;
+	if (lines.some((l) => l.length > GCODE_MAX_LINE))
+		return `Lines can be up to ${GCODE_MAX_LINE} characters.`;
+	if (lines.some((l) => !/^[\x20-\x7e]*$/.test(l)))
+		return 'G-code lines must be plain printable text.';
+	const codes = lines.map(gcodeCommand);
+	if (codes.includes('M112'))
+		return 'M112 is an emergency stop; it needs the printer restarted afterwards.';
 	if (!isActive(t.status)) return null;
-	for (const line of lines) {
-		const code = line.split(/\s+/)[0].toUpperCase();
+	for (const code of codes) {
 		const blocked = GCODE_BLOCKED_WHILE_PRINTING.find((b) => b.code === code);
 		if (blocked) return `${blocked.code} is blocked while printing: ${blocked.reason}.`;
 	}

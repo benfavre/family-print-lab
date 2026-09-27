@@ -149,5 +149,28 @@ describe('printer control commands', () => {
 		expect(() =>
 			parse(commandDef('print.gcode_line:custom')!.params, { lines: Array(51).fill('G1') })
 		).toThrow();
+		// Line numbers, leading spaces, comments and leading zeros do not slip past the blocklist.
+		for (const line of [' G28', 'N10 G28', 'G28;home', 'G028 X', 'n5 m84'])
+			expect(guard('print.gcode_line:custom', running, { lines: [line] }), line).toMatch(
+				/is blocked while printing/
+			);
+		expect(guard('print.gcode_line:custom', ctx('N1'), { lines: ['N3 M112'] })).toMatch(
+			/emergency/
+		);
+		expect(guard('print.gcode_line:custom', ctx('N1'), { lines: ['M1120'] })).toBeNull();
+	});
+
+	it('moves filament only through the nozzle in use, and sets the door check where reported', () => {
+		const hot = { nozzle: 220, activeNozzle: 1 as const };
+		expect(guard('print.set_extrusion_length', ctx('N6', hot), { length: 10 })).toBeNull();
+		expect(guard('print.set_extrusion_length', ctx('N6', hot), { length: 10, nozzle: 0 })).toMatch(
+			/nozzle in use/
+		);
+		expect(
+			guard('print.set_extrusion_length', ctx('N6', hot), { length: 10, nozzle: 1 })
+		).toBeNull();
+		expect(guard('system.set_door_stat', ctx('N6'), { mode: 2 })).toBeNull();
+		expect(guard('system.set_door_stat', ctx('C12'), { mode: 2 })).toMatch(/door check/);
+		expect(guard('system.set_door_stat', ctx('N9'), { mode: 1 })).toMatch(/door check/);
 	});
 });

@@ -35,5 +35,47 @@ describe('print options from the report', () => {
 		const empty = parsePrintOptions({}, capabilitiesFor('C11', null));
 		expect(empty.autoRecovery).toEqual({ supported: true, enabled: null });
 		expect(empty.sound.supported).toBe(false);
+		expect(empty.doorCheck).toEqual({ supported: false, mode: null });
+	});
+
+	it('takes support from fun over home_flag, and support_* booleans over both', () => {
+		// home_flag says sound and tangle are supported; fun (bits 8, 9 clear) says they are not.
+		const o = parsePrintOptions(
+			{ home_flag: bits(18, 19), fun: '0' },
+			capabilitiesFor('C12', null)
+		);
+		expect(o.sound.supported).toBe(false);
+		expect(o.filamentTangle.supported).toBe(false);
+		const explicit = parsePrintOptions(
+			{ fun: '0', support_prompt_sound: true, support_auto_recovery_step_loss: false },
+			capabilitiesFor('C12', null)
+		);
+		expect(explicit.sound.supported).toBe(true);
+		expect(explicit.autoRecovery.supported).toBe(false);
+		// auto_recovery beats home_flag; cfg beats both.
+		expect(
+			parsePrintOptions({ home_flag: bits(4), auto_recovery: false }, capabilitiesFor('C12', null))
+				.autoRecovery.enabled
+		).toBe(false);
+	});
+
+	it('reads the door-open check from fun bit 12 and cfg bits 20–21', () => {
+		const fun = (1 << 12).toString(16);
+		const pause = parsePrintOptions(
+			{ fun, cfg: (2 << 20).toString(16) },
+			capabilitiesFor('N6', null)
+		);
+		expect(pause.doorCheck).toEqual({ supported: true, mode: 2 });
+		const warn = parsePrintOptions(
+			{ fun, cfg: (1 << 20).toString(16) },
+			capabilitiesFor('N6', null)
+		);
+		expect(warn.doorCheck.mode).toBe(1);
+		expect(
+			parsePrintOptions({ fun: '1', cfg: '0' }, capabilitiesFor('N9', null)).doorCheck
+		).toEqual({
+			supported: false,
+			mode: 0
+		});
 	});
 });
