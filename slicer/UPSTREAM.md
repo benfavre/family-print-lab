@@ -11,7 +11,7 @@ new Bambu Studio release is a rebase of a handful of small patches, not a merge 
 
 | Upstream | Tag | Commit | Patch queue |
 | --- | --- | --- | --- |
-| Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 1, 1 patch(es), hash `b72ddcfaaf3f65313eccd0b715e4db7b89212ef7ea214e4b986f9eee3ebf7d0c` |
+| Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 2, 2 patch(es), hash `30f5377298ca31bd0bbd4cf7eb2e418ef171ca7e93484dcd62974a0aa479d17b` |
 
 <!-- pin:end -->
 
@@ -173,8 +173,14 @@ answers `engine.hello` with the pin and no slicing capabilities, which is what t
 and the `protocol` CI job need. `upstream.sh test` runs ctest, then the app's slicer tests with
 `PRINTLAB_SLICER_PATH` set to the build (protocol conformance and golden slices included).
 
-Patch 0001 is the only change to upstream: the top-level `CMakeLists.txt` asked for OpenGL, GLEW
-and GLFW even with the GUI off, and those are what fails on a headless host. It is marked upstreamable.
+The patch queue holds two build fixes, both marked upstreamable, both proven by the build:
+
+- 0001: the top-level `CMakeLists.txt` asked for OpenGL, GLEW and GLFW even with the GUI off, and
+  those are what fails on a headless host.
+- 0002: `FilamentMixer.hpp` uses `std::map` without including `<map>`. Upstream builds libslic3r with
+  precompiled headers, which hides it; the engine builds without them (`SLIC3R_PCH=OFF`, to keep each
+  compiler process small), so a missing include shows up as a compile error. Any further one found the
+  same way gets the same one-line treatment.
 
 ## State of the engine
 

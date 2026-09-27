@@ -69,6 +69,8 @@ if (PRINTLAB_WITH_UPSTREAM)
     set(SLIC3R_GUI OFF CACHE BOOL "" FORCE)
     set(SLIC3R_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(SLIC3R_STATIC ON CACHE BOOL "")
+    # No precompiled headers: smaller compiler processes on small machines. Upstream relies on them to
+    # hide a missing include or two (patch 0002).
     set(SLIC3R_PCH OFF CACHE BOOL "")
     set(BBL_RELEASE_TO_PUBLIC 1 CACHE STRING "")
     # "Not copy FFMPEG file": upstream's own switch; otherwise src/CMakeLists.txt copies the GUI's
