@@ -110,8 +110,9 @@ function bambuTray(id: string, type = 'PLA', color = 'F5F5F5FF'): Json {
 export const ams: SimFeature = {
 	key: 'ams',
 	init(sim) {
-		for (const { tray, global } of sim.trays())
-			if (bambuIdx(tray.tray_info_idx) && tray.tray_type && isZero(tray.tray_uuid))
+		// Only AMS trays read tags; external spool holders have no reader.
+		for (const { tray, global, unit } of sim.trays())
+			if (unit && bambuIdx(tray.tray_info_idx) && tray.tray_type && isZero(tray.tray_uuid))
 				tagTray(sim, tray, String(global));
 	},
 	command(sim, topic, msg) {
