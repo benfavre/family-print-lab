@@ -99,7 +99,7 @@
 						<p class="auto">Says yes by itself up to {k.limits.needApprovalOverGrams} g.</p>
 					{/if}
 					{#each k.recentRequests.filter((r) => r.check) as r (r.id)}
-						<p class="request" class:over={!r.check?.ok}>
+						<p class="waiting-request" class:over={!r.check?.ok}>
 							Waiting: “{r.projectTitle}”, about {r.grams} g ·
 							{r.check?.ok ? 'fits the limits' : r.check?.parentText}
 						</p>
@@ -260,12 +260,12 @@
 		background: var(--amber);
 	}
 	.auto,
-	.request {
+	.waiting-request {
 		margin: 0;
 		color: var(--muted);
 		font-size: 12.5px;
 	}
-	.request.over {
+	.waiting-request.over {
 		color: var(--amber);
 	}
 	.badges {

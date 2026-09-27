@@ -8,6 +8,7 @@ import { startTestLab, type TestLab } from '../../testing/harness';
 import { defineModule } from '../../modules';
 import type { CameraService } from '../contracts';
 import { makeThing } from '../../kid/things';
+import { fakeSliced } from '../../printer/sliced';
 import type { KidProfile } from '../../kid/session';
 import { kidAccess } from '../../kid/session';
 import { POST as ask } from '../../../../routes/api/kid/things/[id]/ask/+server';
@@ -252,6 +253,38 @@ describe('when a kid’s print finishes', () => {
 		expect(html).toContain('First print');
 		kids().setSettings({ snapshots: false });
 	});
+
+	it('follows a real print on the simulated printer: two colours earn a badge and a photo', async () => {
+		kids().setSettings({ snapshots: true });
+		const noa = kid('Noa');
+		const jobId = await approvedJob(noa);
+		t.rt.printing.attach(
+			jobId,
+			fakeSliced({
+				minutes: 1,
+				grams: 8,
+				printerModelId: 'N6',
+				filaments: [
+					{ type: 'PLA', color: '#FF0000', grams: 4 },
+					{ type: 'PETG', color: '#0000FF', grams: 4 }
+				]
+			}),
+			'stencil.gcode.3mf'
+		);
+		const printer = t.printer('N6').info;
+		const added = t.nextEvent('kid.photo.added', (e) => e.profileId === noa.id, 25_000);
+		t.rt.printing.send(jobId, { printerId: printer.id, useAms: true, amsMapping: [0, 1] });
+		await added;
+		expect(t.rt.lab.getJob(jobId)?.status).toBe('Succeeded');
+		expect(
+			kids()
+				.badges(noa.id)
+				.map((b) => b.badge)
+				.sort()
+		).toEqual(['first-print', 'multi-colour']);
+		expect(kids().gallery(noa.id)[0]).toMatchObject({ jobId, source: 'camera' });
+		kids().setSettings({ snapshots: false });
+	}, 30_000);
 
 	it('has no certificate before the print finished', async () => {
 		const jobId = await approvedJob(kid('Kai'));
