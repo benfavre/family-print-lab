@@ -107,6 +107,16 @@ interface VolumeSettings {
 }
 
 export function read3mf(buf: Buffer, o: ReadOptions = {}): ReadResult {
+	try {
+		return readProject(buf, o);
+	} catch (error) {
+		if (error instanceof AppError) throw error;
+		// Broken XML or JSON inside the archive: say so instead of failing with a server error.
+		throw bad(`That 3MF could not be read: ${(error as Error).message}`);
+	}
+}
+
+function readProject(buf: Buffer, o: ReadOptions): ReadResult {
 	const files = readZip(buf, (n) => (n.endsWith('/') ? false : 'all'));
 	const warnings: string[] = [];
 	const text = (path: string) => {

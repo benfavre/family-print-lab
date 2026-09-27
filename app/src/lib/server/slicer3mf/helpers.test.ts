@@ -174,3 +174,28 @@ describe('Metadata/print_lab.json', () => {
 		expect(parsePrintLabFile('nope')).toBeNull();
 	});
 });
+
+describe('broken files', () => {
+	it('answers plain errors instead of crashing', async () => {
+		const { writeZip } = await import('../cad/mesh');
+		const zip = (files: [string, string][]) =>
+			writeZip(files.map(([n, t]) => [n, Buffer.from(t)] as [string, Buffer]));
+		expect(() => read3mf(zip([['a.txt', 'x']]))).toThrow('no 3D model');
+		expect(() =>
+			read3mf(zip([['3D/3dmodel.model', '<model><resources><object id="1"><mesh>']]))
+		).toThrow(/could not be read/);
+		expect(() =>
+			read3mf(zip([['3D/3dmodel.model', '<model><resources/><build/></model>']]))
+		).toThrow('nothing on its build plate');
+		expect(() =>
+			read3mf(
+				zip([
+					[
+						'3D/3dmodel.model',
+						'<model><resources><object id="1"><mesh><vertices><vertex x="0" y="0" z="0"/></vertices><triangles><triangle v1="0" v2="1" v3="2"/></triangles></mesh></object></resources><build><item objectid="1"/></build></model>'
+					]
+				])
+			)
+		).toThrow(/does not exist/);
+	});
+});
