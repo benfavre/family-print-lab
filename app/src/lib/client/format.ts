@@ -83,6 +83,11 @@ export const hmsCode = (h: { attr: number | null; code: number | null }) =>
 	[(h.attr ?? 0) >>> 16, (h.attr ?? 0) & 0xffff, (h.code ?? 0) >>> 16, (h.code ?? 0) & 0xffff]
 		.map((n) => n.toString(16).toUpperCase().padStart(4, '0'))
 		.join('_');
+/** The 16-hex key the HMS data and the hms API use (attr and code as 8-hex each, no separators). */
+export const hmsKey = (h: { attr: number | null; code: number | null }) =>
+	[h.attr ?? 0, h.code ?? 0]
+		.map((n) => (n >>> 0).toString(16).toUpperCase().padStart(8, '0'))
+		.join('');
 export const temp = (now: number | null | undefined, target?: number | null) =>
 	now === null || now === undefined
 		? '—'
