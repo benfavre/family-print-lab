@@ -42,6 +42,7 @@ import { CloudLink, type CloudHost } from './cloud/link';
 import { loadPacks } from './kid/packs';
 import { version as appVersion } from '../../../package.json';
 import type { PrinterStatus } from '$lib/shared/domain';
+import { findFfmpeg } from './ffmpeg';
 
 export interface Runtime {
 	db: DB;
@@ -217,7 +218,8 @@ export function bootRuntime(o: BootOptions): Runtime {
 		off: (_event, listener) => printers.off('update', listener),
 		send: (id, command) => printers.require(id).send(command, {}),
 		bus,
-		module: (key) => services.get(key as string) as never
+		module: (key) => services.get(key as string) as never,
+		ffmpeg: () => findFfmpeg(env)
 	};
 	const cloud = env.CLOUD_URL
 		? new CloudLink(db, lab, models, env.CLOUD_URL, appVersion, undefined, cloudHost)
@@ -269,7 +271,10 @@ export function bootRuntime(o: BootOptions): Runtime {
 			live,
 			env,
 			dataDir: dir,
-			log: (message) => console.log(`[print-lab:${m.key}] ${message}`),
+			// A caller's own logger (tests keep quiet this way) gets module messages too.
+			log: o.log
+				? (message) => o.log!(`[${m.key}] ${message}`)
+				: (message) => console.log(`[print-lab:${m.key}] ${message}`),
 			settings: (schema, defaults) => moduleSettings(db, m.key, schema, defaults),
 			module: (key) => services.get(key as string) as never
 		};

@@ -8,6 +8,7 @@ import { integrations } from './integrations';
 import { kidAccess } from './kid/session';
 import { openDatabase } from './db';
 import { fakeSliced } from './printer/sliced';
+import { bootRuntime } from './runtime';
 
 describe('server modules', () => {
 	it('start in order, stay off when they fail, and stop in reverse', async () => {
@@ -59,6 +60,31 @@ describe('server modules', () => {
 		expect(() => store.set({ topic: 'x' })).toThrow();
 		db.$client.prepare(`UPDATE meta SET value = '{"topic":1}' WHERE key = 'settings:ntfy'`).run();
 		expect(store.get()).toEqual({ topic: 'lab' });
+	});
+
+	it('module messages go to the logger the runtime was booted with', async () => {
+		const lines: string[] = [];
+		const talker = defineModule({
+			key: 'talker',
+			start(ctx) {
+				ctx.log('hello');
+				return {};
+			}
+		});
+		const rt = bootRuntime({
+			env: {
+				DATABASE_URL: ':memory:',
+				LAB_AI: 'off',
+				LEGACY_IMPORT: '/nonexistent/legacy.json',
+				CLAUDE_BIN: '/nonexistent/claude',
+				CODEX_BIN: '/nonexistent/codex'
+			},
+			modules: ['talker'],
+			extraModules: [talker],
+			log: (message) => lines.push(message)
+		});
+		await rt.close();
+		expect(lines).toContain('[talker] hello');
 	});
 
 	it('hook lists run in order and can be removed', async () => {
