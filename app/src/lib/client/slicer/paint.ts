@@ -1,3 +1,4 @@
+// origin: BambuStudio src/libslic3r/TriangleSelector.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
 // Facet painting in the workspace: which triangles a brush, a smart fill or an edge-bounded fill
 // reaches, and the part's sparse native facet trees. A small brush subdivides annotation facets;
 // the original mesh, triangle ids and unrelated painting kinds stay unchanged.
