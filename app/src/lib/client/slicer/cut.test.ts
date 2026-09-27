@@ -102,4 +102,23 @@ describe('cut project edits', () => {
 		expect(project.objects).toHaveLength(1);
 		expect(project.plates.map((p) => p.instances.length)).toEqual([1, 1]);
 	});
+	it('does not reuse child ids already present under a different object', () => {
+		const { project, object } = fixture();
+		object.parts[0].id = 'o2-p1';
+		const old = object.instances[0].id;
+		object.instances[0].id = 'o2-i1';
+		project.plates[0].instances.find((i) => i.instanceId === old)!.instanceId = 'o2-i1';
+		applyCut(project, object.id, mesh('a').id, answer, false);
+		const ids = project.objects.flatMap((o) => [
+			o.id,
+			...o.parts.map((p) => p.id),
+			...o.instances.map((i) => i.id)
+		]);
+		expect(new Set(ids).size).toBe(ids.length);
+		const made = project.objects[1];
+		expect(project.plates[0].instances).toContainEqual({
+			objectId: made.id,
+			instanceId: made.instances[0].id
+		});
+	});
 });

@@ -67,13 +67,20 @@ export function applyCut(
 				])
 			);
 			delete next.sourceId;
-			next.parts[0].id = `${next.id}-p1`;
+			const taken = project.objects.flatMap((o) => [
+				o.id,
+				...o.parts.map((p) => p.id),
+				...o.instances.map((i) => i.id)
+			]);
+			taken.push(next.id);
+			next.parts[0].id = freshId(`${next.id}-p`, taken);
+			taken.push(next.parts[0].id);
 			delete next.parts[0].sourceId;
-			next.instances = original.instances.map((instance, k) => ({
-				id: `${next.id}-i${k + 1}`,
-				transform: [...instance.transform],
-				printable: instance.printable
-			}));
+			next.instances = original.instances.map((instance) => {
+				const id = freshId(`${next.id}-i`, taken);
+				taken.push(id);
+				return { id, transform: [...instance.transform], printable: instance.printable };
+			});
 			project.objects.push(next);
 			for (const plate of project.plates)
 				for (const link of [...plate.instances]) {
