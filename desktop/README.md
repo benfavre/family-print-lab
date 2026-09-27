@@ -29,7 +29,19 @@ Settings the web app reads from its environment (printer, `ANTHROPIC_API_KEY`, `
 ## Releasing
 
 1. Bump `version` in `desktop/package.json` (and `app/package.json`).
-2. Commit, then push the intended tag explicitly, for example `git tag v2.2.1 && git push origin v2.2.1`.
+2. Before tagging, push the candidate branch and wait for one _Slicer build_ run with all three native
+   platforms passing. Run the _Desktop release_ workflow manually against the candidate branch with
+   `native-run-id` set to that run's ID, for example:
+   `gh workflow run release.yml --ref parity -f native-run-id=123456789`.
+   This verifies the run, jobs and artifact source, then reuses those immutable artifacts to run
+   `bun run dist` and the installer smoke checks. It neither rebuilds the engine nor publishes a
+   release. Review the three `desktop-smoke-*` and `desktop-candidate-*` artifacts before tagging.
+   The native run's commit must be an ancestor of the candidate with identical non-Markdown files
+   under `slicer/`; documentation and workflow-only changes are allowed. Changed engine code, pins,
+   patches or build scripts require a new successful native run. A single-platform retry is not enough.
+   The candidate run must finish before tagging; it does not itself prevent someone pushing a tag.
+   Once verified, push the intended tag explicitly, for example
+   `git tag v2.2.1 && git push origin v2.2.1`.
 3. The _Desktop release_ workflow requires native engine builds and tests on all three platforms.
    It builds Windows (NSIS), macOS (dmg, zip) and Linux (AppImage, deb), staging their assets and
    `latest*.yml` updater manifests in a **draft** GitHub Release. Missing native bundles fail packaging.
