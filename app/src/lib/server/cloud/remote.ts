@@ -11,10 +11,10 @@ import { hmsKeyOf, hmsSeverity } from '$lib/shared/hms';
 import type { PrinterStatus } from '$lib/shared/printers/status';
 import { findFfmpeg } from '../ffmpeg';
 import { fitForPhone } from './picture';
+import { ReplayCache } from './replay';
 import {
 	CONTROL_WINDOW,
 	REMOTE_ACTIONS,
-	ReplayCache,
 	seal,
 	sealSnapshot,
 	verifyControlMac,
@@ -126,7 +126,7 @@ const REFUSALS_PER_MINUTE = 30;
 export class Remote {
 	private events = new Map<string, PushEvent>();
 	private queueEvent: PushEvent | null = null;
-	private replay = new ReplayCache();
+	private replay: ReplayCache;
 	private snapshotTimes: number[] = [];
 	private refusals = { since: 0, count: 0, unnoted: 0, notedAt: 0 };
 	private unsubscribe: (() => void)[] = [];
@@ -141,6 +141,7 @@ export class Remote {
 		/** Something the phone should hear about happened: send the printers (and queue) again. */
 		private changed: () => void
 	) {
+		this.replay = new ReplayCache(lab.db);
 		const bus = host.bus;
 		if (!bus) return;
 		const note = (printerId: string, kind: PushKind) => {
@@ -319,9 +320,17 @@ export class Remote {
 			return { ok: false, error: 'Refused: too many refused commands. Try again in a minute.' };
 		if (!verifyControlMac(keys, fields, m.mac))
 			return refuse('it was not signed with this household’s phone key');
-		if (Math.abs(Date.now() - fields.at) > CONTROL_WINDOW)
+		const now = Date.now();
+		if (Math.abs(now - fields.at) > CONTROL_WINDOW)
 			return refuse('it is too old, or the phone’s clock is off');
-		if (!this.replay.remember(fields.commandId)) return refuse('it was already applied once');
+		let claim;
+		try {
+			claim = this.replay.remember(fields.commandId, fields.at, now);
+		} catch {
+			return { ok: false, error: 'Remote control could not save the command. Try again later.' };
+		}
+		if (claim === 'replay') return refuse('it was already applied once');
+		if (claim === 'full') return refuse('too many recent commands; try again in a few minutes');
 		const status = this.host.statuses().find((p) => p.id === fields.printerId);
 		if (!status) return { ok: false, error: 'That printer is not here any more.' };
 		const name = status.name || 'the printer';

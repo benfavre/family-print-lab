@@ -7,7 +7,6 @@ import {
 	open,
 	openSnapshot,
 	phoneKeys,
-	ReplayCache,
 	seal,
 	sealSnapshot,
 	verifyControlMac
@@ -48,14 +47,6 @@ describe('the phone key', () => {
 		expect(controlMessage({ ...c, action: 'dispatch', queueItemId: 'q1' })).toBe(
 			'c1|p1|dispatch|1700000000000|q1'
 		);
-	});
-
-	it('remembers command ids for the time window only', () => {
-		const cache = new ReplayCache(1000);
-		expect(cache.remember('a', 0)).toBe(true);
-		expect(cache.remember('a', 500)).toBe(false);
-		expect(cache.remember('b', 1500)).toBe(true);
-		expect(cache.remember('a', 1600)).toBe(true);
 	});
 
 	it('seals so only the phone key opens it, bound to its additional data', () => {
