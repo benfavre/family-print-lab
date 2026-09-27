@@ -10,6 +10,7 @@
 
 #include "types.hpp"
 #include "features/calib/calib.hpp"
+#include "features/preview/preview.hpp"
 
 namespace printlab {
 
@@ -52,6 +53,10 @@ struct SyncResult {
 struct ValidateResult {
 	std::vector<ConfigError> errors;
 	std::vector<SliceWarning> warnings;
+};
+struct PreviewResult {
+	std::string path;
+	preview::Header header;
 };
 struct ExportResult {
 	std::string path;
@@ -100,6 +105,8 @@ public:
 	virtual ExportResult export_gcode3mf(const std::string &project_id, const std::vector<int> &plates,
 	                                     const std::string &path, const std::vector<PlateImages> &images,
 	                                     bool engine_images) = 0;
+
+	virtual PreviewResult preview_get(const std::string &project_id, int plate, const std::string &path, bool travel) = 0;
 
 	/** Opens a project holding the calibration test for these presets (capability calib.<kind>). */
 	virtual CalibResult calib_generate(const calib::Request &request, const PresetSelection &selection,

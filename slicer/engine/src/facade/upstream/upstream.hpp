@@ -111,6 +111,10 @@ public:
 	std::vector<PresetSummary> profiles_list(PresetKind kind, const std::string &vendor_dir) override;
 	ResolvedBundle profiles_resolve(const PresetSelection &selection, const std::string &vendor_dir) override;
 
+	PreviewResult preview_get(const std::string &, int, const std::string &, bool) override;
+	/** Statistics assigned only to labelled object extrusion, excluding shared start/end/purge moves. */
+	std::vector<ObjectStats> object_stats(const PlateResult &result) const;
+
 	// Shared by the .cpp files.
 	std::shared_ptr<ProjectState> project(const std::string &id);
 	const MeshEntry &mesh(const Project &project, const std::string &mesh_id);

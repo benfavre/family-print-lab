@@ -459,4 +459,18 @@ Json to_json(const CalibResult &r) {
 	return out;
 }
 
+Json to_json(const preview::Header &h) {
+	Json bbox = Json::array(), features = Json::array(), tools = Json::array(), layers = Json::array();
+	for (double n : h.bbox) bbox.push_back(n);
+	for (const auto &name : preview::features()) features.push_back(name);
+	for (const auto &t : h.tools)
+		tools.push_back(Json(Json::Object{{"index", t.index}, {"color", t.color}, {"type", t.type}}));
+	for (const auto &l : h.layers)
+		layers.push_back(Json(Json::Object{{"z", l.z}, {"height", l.height}, {"seconds", l.seconds ? Json(*l.seconds) : Json()},
+		                                  {"first", l.first}, {"count", l.count}}));
+	return Json(Json::Object{{"version", 1}, {"plate", h.plate}, {"source", "engine"}, {"segments", h.segments},
+	                         {"bbox", bbox}, {"features", features}, {"tools", tools}, {"layers", layers},
+	                         {"totalSeconds", h.total_seconds ? Json(*h.total_seconds) : Json()}});
+}
+
 } // namespace printlab

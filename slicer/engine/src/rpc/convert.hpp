@@ -31,6 +31,7 @@ Json to_json(const ResolvedBundle &b);
 Json to_json(const PresetSummary &p);
 Json to_json(const MeshInfo &m);
 Json to_json(const PlateStats &s);
+Json to_json(const preview::Header &h);
 Json to_json(const SlicedPlate &p);
 Json to_json(const ConfigError &e);
 Json to_json(const SliceWarning &w);

@@ -57,7 +57,7 @@ target_include_directories(printlab_rpc PUBLIC src "${CMAKE_CURRENT_BINARY_DIR}/
 find_package(Threads REQUIRED)
 target_link_libraries(printlab_rpc PUBLIC Threads::Threads printlab_features)
 
-add_library(printlab_features STATIC src/features/thumbnails/thumbnails.cpp src/features/calib/calib.cpp)
+add_library(printlab_features STATIC src/features/thumbnails/thumbnails.cpp src/features/calib/calib.cpp src/features/preview/preview.cpp)
 target_include_directories(printlab_features PUBLIC src)
 
 if (PRINTLAB_WITH_UPSTREAM)
@@ -95,6 +95,7 @@ if (PRINTLAB_WITH_UPSTREAM)
         src/facade/upstream/arrange_orient.cpp
         src/facade/upstream/slice.cpp
         src/facade/upstream/export.cpp
+        src/facade/upstream/preview.cpp
         src/facade/upstream/calib.cpp
         src/facade/upstream/facade.cpp
         src/facade/upstream/link_shims.cpp)
