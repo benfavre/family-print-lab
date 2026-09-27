@@ -109,5 +109,8 @@ not apply or we have not checked.
   full native build with Bambu Studio's dependencies needs a bigger machine than a laptop's spare
   cores (CI caches it). Without the engine, slicing falls back to an installed Bambu Studio command
   line, and calibration tests are off.
+- **Camera over RTSPS.** The simulator serves every model's camera the port-6000 way, so the RTSPS
+  path through ffmpeg (X1, P2S, H2 and X2D series) is covered by unit tests of its arguments and
+  certificate check, not by a live stream.
 - **Simulator gaps.** The X1, X1E and one H2C variant have no simulated state of their own and start
   from their closest sibling.
