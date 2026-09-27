@@ -78,6 +78,14 @@ export interface Part {
 	primitive?: { kind: 'box' | 'cylinder' | 'sphere'; size: [number, number, number] };
 	/** text_info attributes, kept verbatim. */
 	text?: Record<string, string>;
+	/** Stable part GUID (the part's uuid attribute). */
+	uuid?: string;
+	/** Where the part came from, verbatim: matrix, source_file, source_object_id, source_offset_x… */
+	source?: Record<string, string>;
+	/** Per-triangle face_property strings (bbs_3mf.cpp), sparse by triangle index. */
+	faceProperties?: Record<number, string>;
+	/** Child elements of the part we do not model (mesh_stat, emboss shapes…), verbatim XML. */
+	xml?: string[];
 }
 export interface Instance {
 	id: string;
@@ -106,6 +114,17 @@ export interface SceneObject {
 	printable: boolean;
 	/** Unknown metadata, round-tripped. */
 	extras?: Record<string, string>;
+	/** This object's entry in cut_information.xml (inner XML, verbatim). */
+	cutInfo?: string;
+}
+/** One entry of custom_gcode_per_layer.xml (upstream CustomGCode::Item). */
+export interface CustomGcode {
+	topZ: number;
+	/** CustomGCode::Type: 0 colour change, 1 pause, 2 custom, 3 tool change, 4 template. */
+	type: number;
+	extruder: number;
+	color: string;
+	extra: string;
 }
 export type BedType =
 	| 'Cool Plate'
@@ -132,6 +151,10 @@ export interface Plate {
 	config: ConfigMap;
 	/** Path. */
 	thumbnail?: string;
+	/** Colour changes, pauses and custom G-code by layer (custom_gcode_per_layer.xml). */
+	customGcode?: { mode?: string; items: CustomGcode[] };
+	/** This plate's entry in filament_sequence.json, verbatim JSON. */
+	filamentSequence?: Record<string, unknown>;
 }
 export interface FilamentSlot {
 	/** 1-based. */
@@ -166,6 +189,8 @@ export interface Project {
 	meshes: Record<MeshId, MeshRef>;
 	/** Files and XML we do not model, kept byte-for-byte for round-trips (path → base64 or file path). */
 	passthrough: Record<string, { path: string } | { base64: string }>;
+	/** Top-level elements of model_settings.config we do not model (for example <assemble>), verbatim. */
+	modelSettingsXml?: string[];
 }
 
 export const IDENTITY: Transform = [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0];
