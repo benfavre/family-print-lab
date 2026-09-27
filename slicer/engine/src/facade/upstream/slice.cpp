@@ -155,6 +155,7 @@ PlateStats UpstreamFacade::slice(const std::string &project_id, int plate_index,
 	PlateData used;
 	used.parse_filament_info(&result->gcode);
 	for (const FilamentInfo &f : used.slice_filaments_info) result->stats.filaments.push_back({f.id + 1, f.used_g, f.used_m});
+	result->stats.objects = object_stats(*result);
 	result->stats.warnings = warnings;
 	result->config = config;
 	state->sliced[plate_index] = result;

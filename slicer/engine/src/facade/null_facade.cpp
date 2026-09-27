@@ -37,6 +37,7 @@ public:
 	                             const std::vector<PlateImages> &, bool) override {
 		missing();
 	}
+	PreviewResult preview_get(const std::string &, int, const std::string &, bool) override { missing(); }
 	CalibResult calib_generate(const calib::Request &, const PresetSelection &, const ResolvedBundle &,
 	                           const std::string &) override {
 		missing();

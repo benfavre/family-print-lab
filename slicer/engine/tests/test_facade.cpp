@@ -1,5 +1,7 @@
 // Facade smoke test (builds with upstream only): resolve Bambu Studio's P1S presets, slice a 20 mm
 // cube and export the plate. Needs PRINTLAB_TEST_RESOURCES (the checkout's resources/).
+#include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <fstream>
 
@@ -82,9 +84,35 @@ TEST("slices a cube for the P1S and exports a printable file") {
 	int updates = 0;
 	PlateStats stats = facade->slice(id, 1, [&](const Progress &) { ++updates; }, cancel);
 	CHECK_EQ(stats.layers, 50);
-	CHECK(stats.seconds > 0);
+	CHECK(std::isfinite(stats.seconds));
+	CHECK(stats.seconds > 0 && stats.seconds < 86400);
 	CHECK(updates > 0);
 	CHECK(!stats.filaments.empty());
+	for (const auto &f : stats.filaments) {
+		CHECK(std::isfinite(f.grams) && f.grams >= 0 && f.grams < 1000);
+		CHECK(std::isfinite(f.meters) && f.meters >= 0 && f.meters < 1000);
+	}
+	for (int repeat = 0; repeat < 2; ++repeat) {
+		auto again = facade->slice(id, 1, [](const Progress &) {}, cancel);
+		CHECK(std::isfinite(again.seconds));
+		CHECK(std::abs(again.seconds - stats.seconds) < 0.01);
+		CHECK_EQ(again.filaments.size(), stats.filaments.size());
+		for (size_t i = 0; i < std::min(again.filaments.size(), stats.filaments.size()); ++i) {
+			CHECK(std::isfinite(again.filaments[i].grams));
+			CHECK(std::abs(again.filaments[i].grams - stats.filaments[i].grams) < 0.0001);
+			CHECK(std::isfinite(again.filaments[i].meters));
+			CHECK(std::abs(again.filaments[i].meters - stats.filaments[i].meters) < 0.0001);
+		}
+	}
+	CHECK_EQ(stats.objects.size(), size_t(1));
+	CHECK_EQ(stats.objects[0].object_id, "o1");
+	// Upstream does not emit object labels for a single-instance plate.
+	CHECK(!stats.objects[0].seconds);
+	CHECK(!stats.objects[0].grams);
+	auto preview = facade->preview_get(id, 1, work + "/preview.bin", false);
+	CHECK(preview.header.segments > 0);
+	CHECK(!preview.header.layers.empty());
+	CHECK(boost::filesystem::file_size(preview.path) > preview.header.segments * 30);
 
 	ExportResult r = facade->export_gcode3mf(id, {1}, work + "/out.gcode.3mf", {}, true);
 	CHECK(boost::filesystem::file_size(r.path) > 1000);

@@ -48,7 +48,7 @@ std::vector<std::string> UpstreamFacade::capabilities() const {
 	std::vector<std::string> caps = {"mesh.put",        "project.sync",  "arrange",         "orient",         "slice",
 	                                 "slice.cancel",    "export.gcode3mf", "export.thumbnails", "profiles.resolve", "profiles.list",
 	                                 "paint.supports",  "paint.seam",    "paint.color",     "paint.fuzzy_skin", "modifiers",
-	                                 "height_ranges",   "variable_layer_height"};
+	                                 "height_ranges",   "variable_layer_height", "preview.v1"};
 	// Every calibration test (features/calib): their models ship with the engine's resources.
 	for (calib::Kind k : calib::all_kinds()) caps.push_back(calib::capability(k));
 	return caps;

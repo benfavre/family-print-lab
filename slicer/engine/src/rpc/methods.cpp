@@ -59,7 +59,7 @@ void register_methods(Server &server, Facade &facade, const EngineOptions &optio
 	// CAPABILITY_MISSING (protocol.ts), not METHOD_NOT_FOUND. The capability is never reported, so the
 	// handler is never reached.
 	for (const auto &m : std::vector<std::pair<std::string, std::string>>{
-	         {"project.open", "project.open"}, {"project.save", "project.save"}, {"preview.get", "preview.v1"}})
+	         {"project.open", "project.open"}, {"project.save", "project.save"}})
 		if (std::find(caps.begin(), caps.end(), m.second) == caps.end())
 			server.add(m.first, {m.second, false, [](const Json &, CallContext &) -> Json {
 				                     throw EngineError(err::CAPABILITY_MISSING, "This version of the slicer cannot do that yet.");
@@ -145,6 +145,12 @@ void register_methods(Server &server, Facade &facade, const EngineOptions &optio
 		                     return to_json(facade.slice(need_string(p, "projectId", "params"),
 		                                                 static_cast<int>(need_int(p, "plate", "params")), ctx.progress, *ctx.cancel));
 	                     }});
+	server.add("preview.get", {"preview.v1", false, [&facade](const Json &p, CallContext &) {
+		                          auto r = facade.preview_get(need_string(p, "projectId", "params"),
+		                                                      static_cast<int>(need_int(p, "plate", "params")),
+		                                                      need_string(p, "path", "params"), opt_bool(p, "travel", true));
+		                          return Json(Json::Object{{"path", r.path}, {"header", to_json(r.header)}});
+	                          }});
 	server.add("export.gcode3mf", {"export.gcode3mf", false, [&facade](const Json &p, CallContext &) {
 		                               std::vector<int> plates;
 		                               const Json &pl = need(p, "plates", "params");
