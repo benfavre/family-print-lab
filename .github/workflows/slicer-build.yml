@@ -77,6 +77,7 @@ jobs:
         run: >-
           bunx vitest --run src/lib/server/slicer/cli.test.ts
           src/lib/server/slicer/engine.test.ts src/lib/server/slicer/locate.test.ts
+          src/lib/server/slicer/conformance.test.ts
       - name: Dependency target discovery and build option tests
         run: |
           bash slicer/tests/build.test.sh
