@@ -1,0 +1,51 @@
+{
+ "data": {
+  "print": {
+   "id": "500000",
+   "name": "Jar lid with hook or hanger",
+   "slug": "jar-lid-with-hook-or-hanger",
+   "summary": "You can hang the jar, for example, on a wall shelf or somewhere on a horizontal rope or loop of string.",
+   "description": "<p>The printing will require supports<br>The fastening elements are M5x20 screws. It will be more hygienic to use a hex head screw.<br>Self-locking nuts - and washers.</p><p>Make sure the back edge of the hook protrudes slightly beyond the jar or is flush with the surface of the jar. Use a vertical surface to position the hook. Put 1-3mm distance between the jar and the surface. Then mark the position of the holes.<br>&nbsp;</p><p>If the holes are in the wrong places, I recommend eating another portion of treats from another jar and there will be a new cap.</p><p>Will not fit flat on lids with a spring-loaded emboss in the center of the lid.<br>&nbsp;</p><p>The holder can be used with plastic jars and lids.</p><p>P.S. You can hang another, not too heavy object on the hook.</p><p>P.S. Hooks can also be screwed to opposite walls with screws and a horizontal rope attached to them.</p><p>&nbsp;</p><p>I leave it to your imagination, but do not overdo it with the load and I recommend 3D printing with maximum density.</p><p>&nbsp;</p><p>You screw one hook to the wall or shelf, then put a loop of string and you can hang the jar with the hook in the lid.</p><p><strong>Note:</strong> just hang the hook on the wall and pull the string from the lid of the jar (one or two holes) and hang the jar in the place of your choice. You decide how long the string will be and whether to hang a jar, LED light source, map or Christmas decorations on it.</p><p>I recommend using two hooks glued together for added strength.</p><p>&nbsp;</p><p><strong>ATTENTION:</strong><br>Be especially careful when making holes in the lid. If you are inexperienced, ask someone to drill the holes.<br><strong>There is a high risk of finger injury in sharp-edged holes made with a drill or punch.</strong></p><p><strong>&nbsp;</strong></p>",
+   "authorship": "author",
+   "premium": false,
+   "price": null,
+   "license": {
+    "id": "4",
+    "name": "Creative Commons — Attribution  — Noncommercial  —  Share Alike",
+    "abbreviation": "CC-BY-NC-SA",
+    "disallowRemixing": false
+   },
+   "user": {
+    "id": "289636",
+    "publicUsername": "dmc",
+    "handle": "dmc_289636"
+   },
+   "images": [
+    {
+     "id": "1939635",
+     "filePath": "media/prints/500000/images/4066306_72ffcdea-4bcd-4260-a77a-1caa98b6a9cf/pkk-004-1-002-03.jpg"
+    },
+    {
+     "id": "1939512",
+     "filePath": "media/prints/500000/images/4065954_2ee523bf-b7b3-48b6-b39a-1dfc0f329289/pkk-004-6-002-01.jpg"
+    },
+    {
+     "id": "1939634",
+     "filePath": "media/prints/500000/images/4066305_816203b8-d785-4381-9661-0124567584e0/pkk-004-1-002-02.jpg"
+    },
+    {
+     "id": "1939511",
+     "filePath": "media/prints/500000/images/4065952_439d5455-214d-4ae2-abab-468656b17d6c/pkk-004-1-002-01.jpg"
+    }
+   ],
+   "stls": [
+    {
+     "id": "2145249",
+     "name": "PKK-004-6-002-01.STL",
+     "fileSize": 467884
+    }
+   ],
+   "otherFiles": []
+  }
+ }
+}
