@@ -33,7 +33,7 @@ The Linux installer bundles Print Lab Slicer; Windows and macOS use an installed
 
 Get the desktop app for Windows, macOS or Linux from **[familyprintlab.app/download](https://familyprintlab.app/download)** (or the [latest release](https://github.com/benfavre/family-print-lab/releases/latest)). It keeps itself up to date. Your data stays on your computer, in the app's own folder (File → Open data folder), and printer or AI settings go in File → Printer and AI settings.
 
-The installers are not code-signed yet: Windows may show a SmartScreen warning (More info → Run anyway), and on macOS open the app with right-click → Open the first time. Automatic updates on macOS need signing, so Mac users download new versions by hand for now.
+The installers are not code-signed yet. Windows may show a SmartScreen warning (More info → Run anyway). On macOS, first try opening the app. If the developer cannot be verified, follow [Apple’s instructions](https://support.apple.com/en-gb/102445) in System Settings → Privacy & Security → Open Anyway after checking that you trust the download. Automatic updates on macOS need signing, so Mac users download new versions by hand for now.
 
 ## Run from source
 
