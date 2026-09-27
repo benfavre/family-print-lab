@@ -113,6 +113,12 @@ try {
 	await page.waitForLoadState('domcontentloaded');
 	const actualVersion = await app.evaluate(({ app }) => app.getVersion());
 	assert.equal(actualVersion, version);
+	const actualData = await app.evaluate(({ app }) => app.getPath('userData'));
+	assert.equal(
+		path.resolve(actualData),
+		path.join(temp, 'data'),
+		'Installer smoke data must be isolated'
+	);
 	assert.match(page.url(), /^http:\/\/127\.0\.0\.1:\d+\//);
 	const body = await page.locator('body').innerText();
 	assert.ok(body.trim().length > 20, 'Packaged app rendered an empty page');
