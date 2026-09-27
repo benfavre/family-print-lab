@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Print Lab patch queue <patch-queue@printlab.invalid>
+Date: Sun, 27 Sep 2026 05:04:06 +0200
+Subject: [PATCH] Build: FilamentMixer.hpp includes <map>
+
+Why: FilamentMixer.hpp uses std::map without including <map>. Upstream builds libslic3r with
+precompiled headers (SLIC3R_PCH, pchheader.hpp force-included), which hides it; the engine builds
+without them (SLIC3R_PCH=OFF keeps memory use within a small build machine), and FilamentMixer.cpp
+then fails to compile.
+Files: src/libslic3r/FilamentMixer.hpp
+Upstreamable: yes
+---
+ src/libslic3r/FilamentMixer.hpp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/libslic3r/FilamentMixer.hpp b/src/libslic3r/FilamentMixer.hpp
+index 46b028e..a2a7e33 100644
+--- a/src/libslic3r/FilamentMixer.hpp
++++ b/src/libslic3r/FilamentMixer.hpp
+@@ -2,6 +2,7 @@
+ #define SLIC3R_FILAMENT_MIXER_HPP
+ 
+ #include <limits>
++#include <map>
+ #include <set>
+ #include <string>
+ #include <utility>

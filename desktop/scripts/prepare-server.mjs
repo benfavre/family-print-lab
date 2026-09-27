@@ -30,6 +30,15 @@ for (const dir of ['drizzle', 'resources']) {
 		filter: (src) => !src.split(path.sep).some((part) => part === '__pycache__' || part === '.cache')
 	});
 }
+// Print Lab Slicer, when slicer/dist/<platform> holds a build (slicer/scripts/upstream.sh build, or
+// the release workflow's slicer-build artifact). The server runs with cwd = server/ and finds it at
+// engine/printlab-slicer (app/src/lib/server/slicer/locate.ts); without it the app uses an installed
+// Bambu Studio.
+const engine = path.resolve(desktop, '../slicer/dist', `${process.platform}-${process.arch}`);
+if (fs.existsSync(path.join(engine, 'engine.json'))) {
+	fs.cpSync(engine, path.join(server, 'engine'), { recursive: true });
+	console.log(`• copied Print Lab Slicer (${path.relative(desktop, engine)})`);
+} else console.log('• no Print Lab Slicer build for this platform; the app will use Bambu Studio');
 // The settings template the desktop app offers as printlab.env.
 fs.copyFileSync(path.join(app, '.env.example'), path.join(server, 'env.example'));
 console.log('• copied drizzle/, resources/ and env.example');

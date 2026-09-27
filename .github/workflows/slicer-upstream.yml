@@ -61,19 +61,25 @@ jobs:
           slicer/scripts/upstream.sh rebase "${{ steps.latest.outputs.latest }}" --report "$RUNNER_TEMP/rebase.json"
 
       # Each of the following steps runs only when what it needs exists, since packages merge in any order.
+      - name: Dependency cache key
+        id: deps
+        if: steps.latest.outputs.update == 'true' && hashFiles('slicer/engine/CMakeLists.txt') != ''
+        run: echo "key=$(slicer/scripts/build-deps.sh --print-key)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        if: steps.deps.outputs.key != ''
+        with:
+          path: slicer/.build/deps/usr/local
+          key: ${{ steps.deps.outputs.key }}
       - name: Build and test the engine
         id: engine
         if: steps.latest.outputs.update == 'true' && hashFiles('slicer/engine/CMakeLists.txt') != ''
         run: |
-          sudo apt-get update && sudo apt-get install -y build-essential cmake git libgl-dev libgtk-3-dev
+          sudo apt-get update && sudo apt-get install -y build-essential cmake git m4 pkg-config libdbus-1-dev autoconf automake libtool texinfo
+          if [ -d slicer/.build/deps/usr/local/lib ]; then echo "${{ steps.deps.outputs.key }}" > slicer/.build/deps/.stamp; fi
+          # build refuses a binary that references Bambu's proprietary network plugin.
           slicer/scripts/upstream.sh build -j 4
-          bin=slicer/.build/engine/printlab-slicer
-          if grep -q -a -E 'bambu_networking|NetworkAgent' "$bin"; then
-            echo "The engine must not reference Bambu's proprietary network plugin." >&2
-            exit 1
-          fi
           ctest --test-dir slicer/.build/engine --output-on-failure
-          echo "PRINTLAB_SLICER_PATH=$PWD/$bin" >> "$GITHUB_ENV"
+          echo "PRINTLAB_SLICER_PATH=$PWD/slicer/.build/engine/printlab-slicer" >> "$GITHUB_ENV"
 
       - name: Write the new pin
         if: steps.latest.outputs.update == 'true'

@@ -11,7 +11,7 @@ new Bambu Studio release is a rebase of a handful of small patches, not a merge 
 
 | Upstream | Tag | Commit | Patch queue |
 | --- | --- | --- | --- |
-| Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 0, 0 patch(es), hash `(empty)` |
+| Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 2, 2 patch(es), hash `30f5377298ca31bd0bbd4cf7eb2e418ef171ca7e93484dcd62974a0aa479d17b` |
 
 <!-- pin:end -->
 
@@ -27,13 +27,25 @@ helper refuses a local checkout that is not at the pinned commit.
 slicer/
   upstream.lock       the pin: name, url, tag, commit, queue version, queue hash
   UPSTREAM.md         this page
-  patches/series      our patch queue, in order (empty today)
+  patches/series      our patch queue, in order
   patches/NNNN-*.patch  git format-patch files, each explaining why it exists
   rr-cache/           recorded conflict resolutions (git rerere), replayed on the next update
   ports/ORIGINS.md    files we adapted from Bambu Studio or OrcaSlicer, with the commit they came from
   scripts/upstream.sh fetch | rebase | export | status | resources | ports | build | test
+  scripts/build-deps.sh  Bambu Studio's dependency superbuild, headless and cached
+  engine/             printlab-slicer, our engine (CMake project; consumes the checkout)
+    src/main.cpp        stdio setup (protocol on the real stdout, everything else to stderr)
+    src/rpc/            JSON, the JSON-RPC server (a strand per project, progress, cancel), methods
+    src/facade/         the facade interface and our plain structs
+      upstream/         the ONLY code that includes upstream headers (Model, presets, slice, export)
+      null_facade.cpp   the build without upstream (protocol layer only)
+    src/features/       our modules: thumbnails (CPU rasteriser for plate pictures)
+    tests/              ctest: JSON, rpc, thumbnails, and a facade smoke test with upstream
   tests/upstream.test.sh  tests upstream.sh against a toy upstream with three tags
+  tests/golden/       golden slices (expected.json), run by app/src/lib/server/slicer/golden.test.ts
   .upstream/          the checkout (never committed): the pinned tag plus the patch queue
+  .build/             build output (never committed): deps/, engine/, engine-protocol/
+  dist/<platform>/    the engine bundle (never committed): binary, resources, LICENSE, engine.json
 ```
 
 In `slicer/.upstream` the branch `printlab` is the pinned tag with our patches on top, and the tag
@@ -41,7 +53,7 @@ In `slicer/.upstream` the branch `printlab` is the pinned tag with our patches o
 
 ## Rules that keep updates cheap
 
-1. **Our code stays outside the upstream tree.** The engine (`slicer/engine`, when it lands) consumes
+1. **Our code stays outside the upstream tree.** The engine (`slicer/engine`) consumes
    upstream through CMake `add_subdirectory(… EXCLUDE_FROM_ALL)`.
 2. **One facade.** Only `slicer/engine/src/facade/` includes upstream headers or names upstream types.
    When Bambu Studio changes an API, the fix is in one place.
@@ -72,7 +84,7 @@ opens a pull request, or an issue listing the patches that no longer apply. By h
 3. Replay the queue onto the new tag: `slicer/scripts/upstream.sh rebase v02.08.xx.yy`
    - It applies cleanly: go to step 4.
    - It stops on a conflict: see _Resolving a patch that stopped applying_ below.
-4. Build and test (once `slicer/engine` exists): `slicer/scripts/upstream.sh build -j 6`, then
+4. Build and test: `slicer/scripts/upstream.sh build -j 6`, then
    `slicer/scripts/upstream.sh test`.
 5. Write the new pin and queue back: `slicer/scripts/upstream.sh export`. This rewrites
    `patches/`, `upstream.lock` and the table on this page.
@@ -136,13 +148,78 @@ fetch, export, re-fetch from the queue, a clean rebase, a conflicting one (with 
 `--report`), a recorded resolution replayed by rerere, and a tag that moved upstream (refused). CI runs
 it on every pull request.
 
+## Building the engine
+
+`slicer/scripts/upstream.sh build [-j N]` (or `bun run slicer:build` from `app/`) does everything:
+
+1. `build-deps.sh`: Bambu Studio's dependency superbuild (`slicer/.upstream/deps`) into
+   `${PRINTLAB_SLICER_BUILD_DIR:-slicer/.build}/deps/usr/local`, with upstream's own switches for a
+   headless build (`DEP_BUILD_WXWIDGETS=OFF`, `DEP_BUILD_FFMPEG=OFF`, `DEP_BUILD_LIBHARU=OFF`,
+   `DEP_BUILD_GLFW=OFF`) and without the GL targets (`dep_GLEW`, `dep_OpenCSG`). It builds `m4` into
+   the build directory when the host lacks it (GMP needs it). The result is stamped with a key (tag,
+   git tree of `deps/`, platform) that CI also uses for its cache; `build-deps.sh --print-key` shows it.
+   About 75 minutes with `-j 2` on an 8-core laptop, 634 MB installed.
+2. The engine: `cmake -S slicer/engine -B .build/engine -DPRINTLAB_UPSTREAM_DIR=slicer/.upstream
+   -DCMAKE_PREFIX_PATH=.build/deps/usr/local`, which adds upstream with `add_subdirectory(…
+   EXCLUDE_FROM_ALL)` (`SLIC3R_GUI=OFF`, `FLATPAK=ON` so no FFmpeg is copied) and builds only
+   libslic3r and what it needs.
+3. The bundle in `slicer/dist/<platform>/`: `printlab-slicer`, `resources/` (profiles, printers,
+   info from the same tag), `LICENSE`, `engine.json`. The app finds it there (`slicer/locate.ts`);
+   the desktop build copies it next to the server. The build fails if the binary mentions
+   `bambu_networking` or `NetworkAgent`.
+
+`upstream.sh build --no-upstream` builds only the protocol layer (a minute, no checkout needed): it
+answers `engine.hello` with the pin and no slicing capabilities, which is what the conformance tests
+and the `protocol` CI job need. `upstream.sh test` runs ctest, then the app's slicer tests with
+`PRINTLAB_SLICER_PATH` set to the build (protocol conformance and golden slices included).
+
+The patch queue holds two build fixes, both marked upstreamable, both proven by the build:
+
+- 0001: the top-level `CMakeLists.txt` asked for OpenGL, GLEW and GLFW even with the GUI off, and
+  those are what fails on a headless host.
+- 0002: `FilamentMixer.hpp` uses `std::map` without including `<map>`. Upstream builds libslic3r with
+  precompiled headers, which hides it; the engine builds without them (`SLIC3R_PCH=OFF`, to keep each
+  compiler process small), so a missing include shows up as a compile error. Any further one found the
+  same way gets the same one-line treatment.
+
 ## State of the engine
 
-The update tooling above works today and is tested; the app slices through a stock Bambu Studio or
-OrcaSlicer command line (`app/src/lib/server/slicer.ts`, found by `slicer/locate.ts`). The native
-engine (`slicer/engine`: the facade, the JSON-RPC loop and the build) is not in the repository yet.
-The app side of its protocol is: `StdioEngine` in `app/src/lib/server/slicer/engine.ts` speaks the
-Slicer Engine Protocol (`app/src/lib/shared/slicer/protocol.ts`) and is tested against a fake engine.
-When `slicer/engine/CMakeLists.txt` lands, `upstream.sh build` builds the deps superbuild with the
-headless options above into `${PRINTLAB_SLICER_BUILD_DIR:-slicer/.build}/deps`, then the engine into
-`…/engine`, and the workflow builds and tests it on every update.
+- The app side is complete and tested: `StdioEngine` (`app/src/lib/server/slicer/engine.ts`) against a
+  fake engine, `CliEngine` (`cli.ts`) against a fake Bambu Studio for every model in the catalogue,
+  `service.ts` (what jobs call) through both, and the protocol conformance tests against the real
+  protocol-only binary.
+- The protocol layer, the thumbnails and their tests build and pass everywhere (`--no-upstream`).
+- The full engine builds, links and runs on Linux x64 (Ubuntu 22.04, GCC 11, `-j 2`: about 75
+  minutes for the dependencies and about two hours for libslic3r and the engine). ctest passes
+  (`test_facade` slices a cube for the P1S), the protocol conformance tests pass, the golden boxes
+  for the X1C, P1S, A1 mini, H2D and X2D slice to the recorded layer counts and nozzle diameters, and
+  a job sliced by the engine prints to Succeeded on the simulated P1S
+  (`modules/slicer-engine/module.test.ts`). No real printer has printed its files yet.
+- What linking needed: libslic3r calls a few things upstream only builds with the GUI (nanosvg,
+  `Slic3r::Http` and `BBL_Encrypt` for LogSink's encrypted logs, OpenSSL's MD5), so
+  `facade/upstream/link_shims.cpp` compiles nanosvg and gives the other two no-op bodies: the engine
+  opens no network connection. Upstream's enum-list option defaults carry no keys (`restore_enum_maps`
+  in `convert.cpp`), and `nozzle_volume_type` / `filament_volume_map` are set per plate as the CLI does.
+- Known problem: the time estimate (and, less, the filament weight) differs between identical runs,
+  often absurd (`prediction` of -2147483648 in `slice_info.config`, `M73 R-2147483648`): something in
+  the G-code processor's path reads memory the facade leaves unset. Layers, toolpaths and the file
+  itself are stable. Until it is found the golden `seconds` and `grams` stay null. A build with
+  `-fsanitize=address,undefined` (or valgrind, not installed on the development machine) is the next
+  step.
+- A re-configure used to rebuild all of libslic3r, because its version header carries the configure
+  time; `upstream.sh build` now sets `SOURCE_DATE_EPOCH` to the pinned commit's time.
+- Not done yet: `project.open`/`project.save` (slicer-3mf's work), `preview.get`, `config.validate`
+  beyond upstream's own validation, multi-extruder filament grouping (the H2D/X2D auto map the CLI
+  does through its GUI plate list), and the wipe tower placeholder when arranging.
+- Windows and macOS builds are in `slicer-build.yml` but not verified; they may fail without
+  blocking a release.
+
+On a bigger machine, from the repository root:
+
+```
+slicer/scripts/upstream.sh fetch
+slicer/scripts/upstream.sh build -j 16
+slicer/scripts/upstream.sh test
+# once the time estimate is repeatable:
+GOLDEN_UPDATE=1 GOLDEN_REASON='time and weight recorded' slicer/scripts/upstream.sh test
+```

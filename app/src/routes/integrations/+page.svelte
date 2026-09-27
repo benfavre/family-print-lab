@@ -203,7 +203,7 @@
 			<button class="mini" disabled={t?.running} onclick={() => test(item)}
 				>{t?.running
 					? 'Testing…'
-					: `Test: ${TEST_LABEL[item.kind === 'ai' || item.kind === 'module' ? item.kind : item.id] ?? 'Check'}`}</button
+					: `Test: ${TEST_LABEL[item.id] ?? TEST_LABEL[item.kind] ?? 'Check'}`}</button
 			>
 			{#if item.kind === 'ai' && item.available}
 				<button class="mini" onclick={() => everything(item.id as AiProviderId)}

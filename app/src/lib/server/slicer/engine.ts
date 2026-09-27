@@ -2,8 +2,8 @@
 // Bambu Studio's libslic3r, see slicer/UPSTREAM.md) over the Slicer Engine Protocol
 // ($lib/shared/slicer/protocol.ts): newline-delimited JSON-RPC 2.0 on the engine's stdin/stdout, logs
 // on stderr. One process is shared; it is started on first use, restarted after a crash and stopped
-// after ten idle minutes. Without an engine, openSlicer() returns null and slicer.ts keeps slicing
-// through the stock Bambu Studio command line.
+// after ten idle minutes. Without an engine, openSlicer() falls back to the stock Bambu Studio command
+// line behind the same interface (cli.ts), and returns null when neither is installed.
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -19,35 +19,11 @@ import {
 	type EngineMethods,
 	type Progress
 } from '$lib/shared/slicer/protocol';
-import { locateEngine } from './locate';
+import { CliEngine } from './cli';
+import { EngineError, type CallOptions, type SlicerEngine } from './engine-types';
+import { locateCli, locateEngine, type SlicerHost } from './locate';
 
-export interface CallOptions {
-	signal?: AbortSignal;
-	onProgress?: (p: Progress) => void;
-	timeoutMs?: number;
-}
-
-export interface SlicerEngine {
-	readonly info: EngineInfo;
-	has(cap: EngineCapability): boolean;
-	call<M extends keyof EngineMethods>(
-		method: M,
-		params: EngineMethods[M]['params'],
-		opts?: CallOptions
-	): Promise<EngineMethods[M]['result']>;
-	close(): Promise<void>;
-}
-
-/** An error the engine answered with (codes in protocol.ts ERROR); `message` is plain words for the UI. */
-export class EngineError extends Error {
-	constructor(
-		readonly code: number,
-		message: string,
-		readonly data?: unknown
-	) {
-		super(message);
-	}
-}
+export { EngineError, type CallOptions, type SlicerEngine };
 
 /** The capability a method needs; methods not listed are part of every engine. */
 export const METHOD_CAPABILITY: Partial<Record<EngineMethod, EngineCapability>> = {
@@ -356,31 +332,72 @@ export class StdioEngine implements SlicerEngine {
 	}
 }
 
-let shared: Promise<SlicerEngine | null> | null = null;
+let shared: {
+	key: string;
+	engine: Promise<SlicerEngine | null>;
+	/** Set when the engine was found but did not start: when to try it again. */
+	retryAt?: number;
+} | null = null;
+
+/** How long a found engine that did not start is left alone before it is tried again. */
+export const ENGINE_RETRY_MS = 60_000;
+
+/** Scratch space for both backends (one per server process). */
+export const slicerWorkDir = () => path.join(os.tmpdir(), `printlab-slicer-${process.pid}`);
 
 /**
- * Our engine if one is found (slicer/locate.ts) and it negotiates, else null (slicer.ts then slices
- * through the stock Bambu Studio command line). Shared by the whole server; the engine itself restarts
- * after a crash and stops when idle.
+ * Our engine if one is found (slicer/locate.ts) and it negotiates, else the stock Bambu Studio or
+ * OrcaSlicer command line behind the same interface, else null. Shared by the whole server; the engine
+ * itself restarts after a crash and stops when idle. A different environment (tests, a changed
+ * PRINTLAB_SLICER_PATH) opens a fresh one. A found engine that does not start is tried again after
+ * ENGINE_RETRY_MS (the binary may have been fixed meanwhile), not on every call: each try costs a
+ * process start and the hello timeout.
  */
 export async function openSlicer(
-	env: Record<string, string | undefined> = process.env
+	env: Record<string, string | undefined> = process.env,
+	o: { cwd?: string; host?: SlicerHost; now?: number } = {}
 ): Promise<SlicerEngine | null> {
-	shared ??= (async () => {
-		const found = locateEngine(env);
-		if (!found) return null;
-		try {
-			return await StdioEngine.open({
-				command: found.path,
-				workDir: path.join(os.tmpdir(), `printlab-slicer-${process.pid}`),
-				resourcesDir: found.resourcesDir
-			});
-		} catch (e) {
-			console.warn(`Print Lab Slicer at ${found.path} did not start: ${(e as Error).message}`);
-			return null;
-		}
-	})();
-	const engine = await shared;
-	if (!engine) shared = null;
+	const found = locateEngine(env, o.cwd, o.host);
+	const cli = locateCli(env, o.cwd, o.host);
+	const key = `${found?.path ?? ''}|${cli?.path ?? ''}`;
+	const now = o.now ?? Date.now();
+	const retry = shared?.key === key && shared.retryAt !== undefined && now >= shared.retryAt;
+	if (shared?.key !== key || retry) {
+		// A different install replaces the old backend; a retry leaves it to the jobs still using it
+		// (the command line holds no process, and its project folders are its own).
+		const old = retry ? null : shared;
+		shared = {
+			key,
+			engine: (async (): Promise<SlicerEngine | null> => {
+				await old?.engine.then((e) => e?.close()).catch(() => {});
+				if (found)
+					try {
+						return await StdioEngine.open({
+							command: found.path,
+							workDir: path.join(slicerWorkDir(), 'engine'),
+							resourcesDir: found.resourcesDir
+						});
+					} catch (e) {
+						console.warn(
+							`Print Lab Slicer at ${found.path} did not start, using the Bambu Studio command line: ${(e as Error).message}`
+						);
+					}
+				return cli
+					? new CliEngine({ location: cli, workDir: path.join(slicerWorkDir(), 'cli') })
+					: null;
+			})()
+		};
+	}
+	const mine = shared;
+	const engine = await mine.engine;
+	if (found && engine?.info.engine !== 'printlab-slicer' && mine.retryAt === undefined)
+		mine.retryAt = now + ENGINE_RETRY_MS;
 	return engine;
+}
+
+/** Stops the shared engine (server shutdown). */
+export async function closeSlicer() {
+	const old = shared;
+	shared = null;
+	await old?.engine.then((e) => e?.close()).catch(() => {});
 }

@@ -1,0 +1,54 @@
+{
+  "about": "Golden slices for Print Lab Slicer, independent of the upstream version: each case slices a box for a printer with the job defaults (0.4 nozzle, 0.20 mm, PLA, 15 % infill, no supports) through app/src/lib/server/slicer/golden.test.ts. Layers must match exactly; seconds and grams within tolerance. null means not recorded yet: run the test with GOLDEN_UPDATE=1 GOLDEN_REASON='why' on a working engine build, review the diff and commit it.",
+  "tolerance": { "seconds": 0.03, "grams": 0.03 },
+  "reasons": [
+    "2026-09-27 v02.08.02.61: first engine build (linux-x64): layers and nozzle diameters recorded; seconds and grams stay null because the engine's time and weight estimates are not yet repeatable (see slicer/UPSTREAM.md, State of the engine)"
+  ],
+  "cases": [
+    {
+      "name": "x1c-box",
+      "model": "BL-P001",
+      "box": [20, 20, 10],
+      "layers": 50,
+      "seconds": null,
+      "grams": null,
+      "nozzleDiameters": "0.4"
+    },
+    {
+      "name": "p1s-box",
+      "model": "C12",
+      "box": [20, 20, 10],
+      "layers": 50,
+      "seconds": null,
+      "grams": null,
+      "nozzleDiameters": "0.4"
+    },
+    {
+      "name": "a1-mini-box",
+      "model": "N1",
+      "box": [20, 20, 10],
+      "layers": 50,
+      "seconds": null,
+      "grams": null,
+      "nozzleDiameters": "0.4"
+    },
+    {
+      "name": "h2d-box",
+      "model": "O1D",
+      "box": [20, 20, 10],
+      "layers": 50,
+      "seconds": null,
+      "grams": null,
+      "nozzleDiameters": "0.4,0.4"
+    },
+    {
+      "name": "x2d-box",
+      "model": "N6",
+      "box": [20, 20, 10],
+      "layers": 50,
+      "seconds": null,
+      "grams": null,
+      "nozzleDiameters": "0.4,0.4"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+# ctest: the protocol layer and the thumbnails everywhere; facade smoke tests with upstream.
+function(printlab_test name)
+    add_executable(${name} ${name}.cpp)
+    target_link_libraries(${name} PRIVATE ${ARGN})
+    add_test(NAME ${name} COMMAND ${name})
+endfunction()
+
+printlab_test(test_json printlab_rpc)
+printlab_test(test_rpc printlab_rpc printlab_facade)
+printlab_test(test_thumbnails printlab_features)
+if (PRINTLAB_WITH_UPSTREAM)
+    printlab_test(test_facade printlab_facade)
+    # Needs Bambu Studio's profiles: the checkout's resources/ (upstream.sh fetch has them).
+    set_tests_properties(test_facade PROPERTIES ENVIRONMENT "PRINTLAB_TEST_RESOURCES=${PRINTLAB_UPSTREAM_DIR}/resources")
+endif ()

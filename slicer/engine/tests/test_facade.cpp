@@ -1,0 +1,97 @@
+// Facade smoke test (builds with upstream only): resolve Bambu Studio's P1S presets, slice a 20 mm
+// cube and export the plate. Needs PRINTLAB_TEST_RESOURCES (the checkout's resources/).
+#include <cstdlib>
+#include <fstream>
+
+#include <boost/filesystem.hpp>
+
+#include "check.hpp"
+#include "facade/facade.hpp"
+
+using namespace printlab;
+
+namespace {
+
+std::string write_cube(const std::string &dir) {
+	// ASCII STL, 20 × 20 × 10 mm.
+	float v[8][3] = {{0, 0, 0}, {20, 0, 0}, {20, 20, 0}, {0, 20, 0}, {0, 0, 10}, {20, 0, 10}, {20, 20, 10}, {0, 20, 10}};
+	int f[12][3] = {{0, 2, 1}, {0, 3, 2}, {4, 5, 6}, {4, 6, 7}, {0, 1, 5}, {0, 5, 4},
+	                {1, 2, 6}, {1, 6, 5}, {2, 3, 7}, {2, 7, 6}, {3, 0, 4}, {3, 4, 7}};
+	std::string path = dir + "/cube.stl";
+	std::ofstream out(path);
+	out << "solid cube\n";
+	for (auto &t : f) {
+		out << "facet normal 0 0 0\nouter loop\n";
+		for (int k : t) out << "vertex " << v[k][0] << " " << v[k][1] << " " << v[k][2] << "\n";
+		out << "endloop\nendfacet\n";
+	}
+	out << "endsolid cube\n";
+	return path;
+}
+
+} // namespace
+
+TEST("slices a cube for the P1S and exports a printable file") {
+	const char *resources = std::getenv("PRINTLAB_TEST_RESOURCES");
+	if (!resources) {
+		std::fprintf(stderr, "  skipped: PRINTLAB_TEST_RESOURCES is not set\n");
+		return;
+	}
+	std::string work = (boost::filesystem::temp_directory_path() / boost::filesystem::unique_path("printlab-%%%%%%")).string();
+	boost::filesystem::create_directories(work);
+	auto facade = make_facade();
+	facade->configure(work, resources);
+	CHECK(!facade->identity().profiles_dir.empty());
+
+	PresetSelection sel;
+	sel.printer = {PresetKind::Printer, "Bambu Lab P1S 0.4 nozzle", "system"};
+	sel.process = {PresetKind::Process, "0.20mm Standard @BBL X1C", "system"};
+	sel.filaments = {{PresetKind::Filament, "Bambu PLA Basic @BBL P1S 0.4 nozzle", "system"}};
+	ResolvedBundle bundle = facade->profiles_resolve(sel, "");
+	CHECK(!bundle.full.empty());
+	CHECK(bundle.printer.chain.size() >= 2);
+
+	MeshInfo mesh = facade->mesh_put("cube", write_cube(work), "stl");
+	CHECK_EQ(mesh.triangles, size_t(12));
+
+	std::string id = facade->project_create(sel);
+	Project p;
+	p.presets = sel;
+	p.extras["printer_model_id"] = "C12";
+	p.filaments = {{1, "#FF7A2F", "PLA"}};
+	SceneObject o;
+	o.id = "o1";
+	o.name = "Cube";
+	Part part;
+	part.id = "p1";
+	part.mesh = "cube";
+	o.parts.push_back(part);
+	Instance inst;
+	inst.id = "i1";
+	inst.transform = {1, 0, 0, 0, 1, 0, 0, 0, 1, 118, 118, 0};
+	o.instances.push_back(inst);
+	p.objects.push_back(o);
+	Plate plate;
+	plate.index = 1;
+	plate.bed_type = "Textured PEI Plate";
+	plate.instances = {{"o1", "i1"}};
+	p.plates.push_back(plate);
+	CHECK(facade->project_sync(id, p, bundle).errors.empty());
+
+	CancelToken cancel;
+	int updates = 0;
+	PlateStats stats = facade->slice(id, 1, [&](const Progress &) { ++updates; }, cancel);
+	CHECK_EQ(stats.layers, 50);
+	CHECK(stats.seconds > 0);
+	CHECK(updates > 0);
+	CHECK(!stats.filaments.empty());
+
+	ExportResult r = facade->export_gcode3mf(id, {1}, work + "/out.gcode.3mf", {}, true);
+	CHECK(boost::filesystem::file_size(r.path) > 1000);
+	CHECK_EQ(r.plates.size(), size_t(1));
+	CHECK_EQ(r.plates[0].md5.size(), size_t(32));
+	facade->project_close(id);
+	boost::filesystem::remove_all(work);
+}
+
+CHECK_MAIN
