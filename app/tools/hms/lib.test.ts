@@ -176,6 +176,7 @@ describe('the committed database', () => {
 		);
 		expect(file.actions['07008011']['20P']).toEqual([4, 6]);
 		expect(file.actions['03008016'].default).toEqual([4, 5, 6]);
+		expect(file.actions['05FF8069']['20P']).toEqual([24]);
 		expect(Object.keys(file.devices).sort()).toEqual(
 			[
 				'00M',

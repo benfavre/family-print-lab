@@ -3,8 +3,8 @@
 // DeviceErrorDialog.cpp init_button_list ~183 (labels) and on_button_click ~535 (what each does).
 // Ids that only move Bambu Studio's own window around (Check Assistant 6, View Liveview 13, the rack
 // page 49), that do nothing (Load Filament 10, Cancel 37), or that need data we do not have (Proceed
-// 41 and Don't Remind Me 57 need the dialog's action JSON; Recheck 24, Stop Drying 35 and Disable
-// Purification 54 use commands this app does not implement yet) are left out: no button.
+// 41 and Don't Remind Me 57 need the dialog's action JSON) are left out: no button. Disable
+// Purification 54 is only listed for HMS codes, which get no buttons (see actionIdsFor).
 import type { CommandMap, CommandName } from '$lib/server/printer/commands/registry';
 
 /** What a button needs to fill in its command. */
@@ -96,6 +96,11 @@ export const ACTIONS: Record<number, ActionDef> = {
 		risk: 'safe',
 		printerOnlyForProcessing: true
 	},
+	24: {
+		label: 'Recheck',
+		steps: [{ name: 'print.refresh_nozzle:hms', params: () => ({}) }],
+		risk: 'safe'
+	},
 	25: {
 		label: 'Ignore, don’t remind me again',
 		steps: [ignore],
@@ -119,6 +124,11 @@ export const ACTIONS: Record<number, ActionDef> = {
 		steps: [ams('resume')],
 		risk: 'safe',
 		printerOnlyForProcessing: true
+	},
+	35: {
+		label: 'Stop drying',
+		steps: [{ name: 'print.auto_stop_ams_dry:hms', params: () => ({}) }],
+		risk: 'safe'
 	},
 	51: { label: 'Abort', steps: [ams('abort')], risk: 'confirm' },
 	// Pseudo ids Bambu Studio gives the old "retry" errors (convert_to_pseudo_buttons ~284): Retry

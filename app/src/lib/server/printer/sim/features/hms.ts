@@ -1,12 +1,14 @@
 // Printer errors on the simulated printer: control-page buttons raise real codes from Bambu's data
-// (AMS runout, nozzle clog, first-layer problem) and the answers Bambu Studio sends clear them the way
-// the firmware would (resume, ignore, clean_print_error, ams_control, buzzer_ctrl). The core feature
-// handles resume and stop; a resumed or ended print clears the alert on the next step.
+// (AMS runout, nozzle clog, first-layer problem, unrecognised hotend) and the answers Bambu Studio
+// sends clear them (resume, ignore, clean_print_error, ams_control, buzzer_ctrl; a hotend recheck or
+// stopped AMS drying counts as solved here). The core feature handles resume and stop; a resumed or
+// ended print clears the alert on the next step.
 // Codes from Bambu Studio v02.08.02.61 resources/hms/hms_en_20P.json and hms_en_22E.json:
 // 07xx2s00_00020001 "AMS <unit> Slot <s+1> filament has run out", print error 070u8011 "AMS filament ran
 // out" (07FF8011 for the external spool), 03008016 "The nozzle is clogged with filament",
 // 0C000300_0002000E "Your nozzle seems to be covered with jammed or clogged material",
-// 0C000300_00030007 "Possible first layer defects have been detected". Pause stages 6, 35 and 34 are
+// 0C000300_00030007 "Possible first layer defects have been detected", print error 05FF8069 "Unable to
+// recognize the right (Aux) hotend" (Recheck, action 24, in hms_action_20P.json). Pause stages 6, 35 and 34 are
 // ha-bambulab const.py CURRENT_STAGE_IDS paused_filament_runout, paused_nozzle_clog and
 // paused_first_layer_error.
 import type { Json, SimFeature, SimPrinter } from '../core';
@@ -81,6 +83,14 @@ export const hms: SimFeature = {
 			case 'buzzer_ctrl':
 				sim.log('🔕 buzzer off');
 				return { result: 'success' };
+			case 'refresh_nozzle':
+				sim.log('🔍 hotend rechecked');
+				clear(sim, 'hotend rechecked');
+				return { result: 'success' };
+			case 'auto_stop_ams_dry':
+				sim.log('AMS drying stopped');
+				clear(sim, 'drying stopped');
+				return { result: 'success' };
 			case 'ams_control':
 				if (msg.param === 'resume' || msg.param === 'done') {
 					if (s.gcode_state === 'PAUSE') sim.print.resume();
@@ -121,6 +131,15 @@ export const hms: SimFeature = {
 			label: 'First layer problem',
 			run(sim) {
 				pauseWith(sim, 34, [{ attr: 0x0c000300, code: 0x00030007 }], 0, 'first layer defects');
+			}
+		},
+		{
+			id: 'hotend-unknown',
+			label: 'Hotend not recognised',
+			run(sim) {
+				sim.state.print_error = 0x05ff8069;
+				sim.log('⚠ right hotend not recognised (simulated)');
+				sim.report();
 			}
 		},
 		{

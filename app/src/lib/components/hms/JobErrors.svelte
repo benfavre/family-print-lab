@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { jobErrors } from '$lib/client/modules/hms/data';
-	import { displayCode, type HmsEventRow } from '$lib/shared/hms';
+	import { SEVERITY_ORDER, displayCode, type HmsEventRow } from '$lib/shared/hms';
 	import type { Job } from '$lib/shared/domain';
 
 	// On a failed job's card: the printer error that ended it, in plain words.
@@ -11,7 +11,15 @@
 		void job.status;
 		void jobErrors(id).then((list) => (events = list));
 	});
-	const main = $derived(events.find((e) => e.kind === 'print_error') ?? events[0] ?? null);
+	// The print error it failed with; else the worst alert still up when it ended (an alert that was
+	// cleared earlier, such as a runout answered mid-print, did not end it).
+	const main = $derived(
+		events.find((e) => e.kind === 'print_error') ??
+			events
+				.filter((e) => !e.clearedAt || (job.finishedAt !== null && e.clearedAt >= job.finishedAt))
+				.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity])[0] ??
+			null
+	);
 </script>
 
 {#if main}

@@ -22,6 +22,8 @@ declare module '../registry' {
 		'system.uiop:print_error': { printError: number };
 		'print.buzzer_ctrl:hms': Record<string, never>;
 		'print.ams_control:hms': { param: 'resume' | 'done' | 'abort' };
+		'print.refresh_nozzle:hms': Record<string, never>;
+		'print.auto_stop_ams_dry:hms': Record<string, never>;
 	}
 }
 
@@ -116,6 +118,25 @@ export default [
 		source: 'Bambu Studio DeviceManager.cpp command_ams_control ~1763',
 		params: z.strictObject({ param: z.enum(['resume', 'done', 'abort']) }),
 		build: (o) => ({ command: 'ams_control', param: o.param }),
+		risk: 'safe'
+	}),
+	defineCommand({
+		name: 'print.refresh_nozzle:hms',
+		topic: 'print',
+		source: 'Bambu Studio DeviceManager.cpp command_refresh_nozzle ~1622 (QoS 1)',
+		params: none,
+		build: () => ({ command: 'refresh_nozzle' }),
+		qos: 1,
+		timeoutMs: 5000,
+		risk: 'safe'
+	}),
+	defineCommand({
+		name: 'print.auto_stop_ams_dry:hms',
+		topic: 'print',
+		source: 'Bambu Studio DeviceManager.cpp command_ams_drying_stop ~1778',
+		params: none,
+		build: () => ({ command: 'auto_stop_ams_dry' }),
+		timeoutMs: 5000,
 		risk: 'safe'
 	})
 ];

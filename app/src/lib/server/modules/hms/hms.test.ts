@@ -1,7 +1,7 @@
 // The hms module against a simulated X2D: a runout raises plain-words alerts with Bambu's button,
 // pressing it resumes the print and closes the history rows, and a failed print keeps its error on
 // the job. Routes are called directly, pointed at the test lab's runtime.
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { RequestEvent } from '@sveltejs/kit';
 import { startTestLab, type TestLab } from '$lib/server/testing/harness';
 import { fakeSliced } from '$lib/server/printer/sliced';
@@ -56,12 +56,13 @@ async function call(
 const control = (sim: SimPrinter, id: string) =>
 	simHms.controls!.find((c) => c.id === id)!.run(sim, {});
 
+let profileId: string | null = null;
 /** A job printing on the X2D, running (heating done). */
-async function printing() {
+async function printing(title = 'Desk hook') {
 	const { lab: l, printing: files } = t.rt;
 	const x2d = t.printer('N6');
-	const profileId = l.createProfile({ name: 'Alex', color: 'blue' });
-	const projectId = l.createProject({ profileId, title: 'Desk hook' });
+	profileId ??= l.createProfile({ name: 'Alex', color: 'blue' });
+	const projectId = l.createProject({ profileId, title });
 	const jobId = l.createJob({ projectId });
 	files.attach(
 		jobId,
@@ -143,6 +144,78 @@ describe('hms module with a simulated printer', () => {
 		// The failed print's error stays active until the printer clears it (Bambu's OK button isn't
 		// offered for this code; resume and stop are).
 		await until(() => service.active(info.id).some((a) => a.key === '03008016'));
+	});
+
+	it('answers with the report’s job id, and leaves laser tasks to the printer', async () => {
+		const { info, sim } = await printing('Bracket');
+		const printer = t.rt.printers.require(info.id);
+		const service = t.rt.module('hms')!;
+		// Fields a real report carries (ha-bambulab tests/pybambu/H2D.json: job_attr 17, job_id
+		// "360562969"); Bambu Studio refuses to resume when job_attr bits 4–7 are above 1.
+		Object.assign(sim.state, { job_id: '360562969', subtask_id: '0', job_attr: 0x21 });
+		sim.report();
+		control(sim, 'ams-runout');
+		await until(() => service.active(info.id).some((a) => a.key === '07008011'));
+		// No button then, and a press is refused.
+		expect(service.active(info.id).find((a) => a.key === '07008011')!.actions).toEqual([]);
+		const refused = await call(
+			pressAction,
+			'/',
+			{ id: info.id },
+			{ code: '07008011', actionId: 4 }
+		);
+		expect(refused.status).toBe(409);
+		expect(refused.body.error).toMatch(/only be resumed on the printer/);
+
+		sim.state.job_attr = 17;
+		sim.report();
+		await until(() => (printer as unknown as { raw: Record<string, unknown> }).raw.job_attr === 17);
+		const send = vi.spyOn(printer, 'send');
+		try {
+			const ok = await call(pressAction, '/', { id: info.id }, { code: '0700_8011', actionId: 4 });
+			expect(ok.status).toBe(200);
+			expect(send).toHaveBeenCalledWith('print.resume:hms', {
+				err: String(0x07008011),
+				jobId: '360562969'
+			});
+		} finally {
+			send.mockRestore();
+		}
+		await until(() => sim.state.gcode_state === 'RUNNING');
+		sim.print.stop();
+	});
+
+	it('rechecks an unrecognised hotend with Bambu’s Recheck button', async () => {
+		const { info, sim } = t.printer('N6');
+		const service = t.rt.module('hms')!;
+		control(sim, 'hotend-unknown');
+		await until(() => service.active(info.id).some((a) => a.key === '05FF8069'));
+		const alert = service.active(info.id).find((a) => a.key === '05FF8069')!;
+		expect(alert.text).toMatch(/Unable to recognize the right \(Aux\) hotend/);
+		expect(alert.actions.map((a) => [a.id, a.label])).toEqual([[24, 'Recheck']]);
+		const pressed = await call(
+			pressAction,
+			'/',
+			{ id: info.id },
+			{ code: '05FF8069', actionId: 24 }
+		);
+		expect(pressed.status).toBe(200);
+		await until(() => !service.active(info.id).some((a) => a.key === '05FF8069'));
+		await until(() => service.history(info.id).rows.find((r) => r.code === '05FF8069')?.clearedAt);
+	});
+
+	it('keeps cancels and the errors Bambu keeps internal out of the history', async () => {
+		const id = t.printer('N6').info.id;
+		const service = t.rt.module('hms') as ReturnType<typeof import('./service').createHmsService>;
+		const before = service.history(id).total;
+		service.raised(id, 'print_error', '0300400C', null);
+		// Empty text for the X2D in Bambu Studio resources/hms/hms_en_20P.json device_error.
+		service.raised(id, 'print_error', '05008030', null);
+		expect(service.history(id).total).toBe(before);
+		expect((await call(printerHms, `/api/printers/${id}/hms?severity=loud`, { id })).status).toBe(
+			400
+		);
+		expect((await call(printerHms, '/api/printers/nope/hms', { id: 'nope' })).status).toBe(404);
 	});
 
 	it('looks codes up for a printer, a model or no one', async () => {

@@ -142,6 +142,15 @@ export function createHmsService(deps: {
 		return database?.text('print_error', printErrorKey(error), device) !== '';
 	}
 
+	/**
+	 * A processing task such as laser cutting: Bambu Studio lets only the printer resume those
+	 * (MachineObject::check_resume_condition: job_attr bits 4–7 above 1, DeviceManager.cpp ~3224).
+	 */
+	function processingTask(printerId: string) {
+		const printer = printers.get(printerId);
+		return !!printer && ((reportFields(printer).jobAttr >> 4) & 0xf) > 1;
+	}
+
 	function active(printerId: string): HmsAlertInfo[] {
 		const s = printers.get(printerId)?.snapshot;
 		if (!s) return [];
@@ -149,6 +158,9 @@ export function createHmsService(deps: {
 		const out = new Map<string, HmsAlertInfo>();
 		if (reportable(s.printError, device)) {
 			const a = build('print_error', printErrorKey(s.printError), device);
+			// Buttons Bambu only offers on the printer for this task render no button here.
+			if (processingTask(printerId))
+				a.actions = a.actions.filter((b) => !ACTIONS[b.id].printerOnlyForProcessing);
 			out.set(a.key, a);
 		}
 		for (const h of s.hms) {
@@ -176,6 +188,8 @@ export function createHmsService(deps: {
 
 	function raised(printerId: string, kind: HmsKind, key: string, jobId: string | null) {
 		if (!known(printerId)) return;
+		// Cancels and the errors Bambu keeps internal (HMS.cpp is_internal_error) are not alerts.
+		if (kind === 'print_error' && !reportable(parseInt(key, 16), deviceOf(printerId))) return;
 		const open = db
 			.select()
 			.from(hmsEvents)
@@ -285,15 +299,15 @@ export function createHmsService(deps: {
 			const key = code.replace(/[\s_-]/g, '').toUpperCase();
 			const alert = active(printerId).find((a) => a.key === key);
 			if (!alert) throw new AppError(409, 'That alert is no longer active on the printer.');
-			if (!alert.actions.some((a) => a.id === actionId))
-				throw new AppError(400, 'That button does not belong to this alert.');
-			const def = ACTIONS[actionId];
-			const fields = reportFields(printer);
-			if (def.printerOnlyForProcessing && ((fields.jobAttr >> 4) & 0xf) > 1)
+			if (ACTIONS[actionId]?.printerOnlyForProcessing && processingTask(printerId))
 				throw new AppError(
 					409,
 					'For safety, this kind of task (such as laser cutting) can only be resumed on the printer.'
 				);
+			if (!alert.actions.some((a) => a.id === actionId))
+				throw new AppError(400, 'That button does not belong to this alert.');
+			const def = ACTIONS[actionId];
+			const fields = reportFields(printer);
 			const ctx: ActionContext = {
 				printError: parseInt(alert.key, 16),
 				jobId: fields.jobId,

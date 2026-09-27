@@ -1,20 +1,26 @@
 <script lang="ts">
 	import { useApp } from '$lib/client/app.svelte';
 	import { printerAlerts } from '$lib/client/modules/hms/data';
-	import type { HmsAlert } from '$lib/shared/hms';
+	import { displayCode, printErrorKey, type HmsAlert } from '$lib/shared/hms';
 	import type { PrinterStatus } from '$lib/shared/domain';
 
 	// Shown when the printer's last print failed with an error: what went wrong, in plain words.
 	let { printer }: { printer: PrinterStatus } = $props();
 	const { lab } = useApp();
 	let alert = $state<HmsAlert | null>(null);
+	// Set when the texts could not be fetched: the banner then shows the bare code.
+	let failed = $state(false);
 	const error = $derived(printer.state?.printError ?? 0);
 
+	let request = 0;
 	$effect(() => {
 		const id = printer.id;
 		const code = error;
 		if (!id || !code) return;
+		const mine = ++request;
 		void printerAlerts(id, { limit: 1 }).then((view) => {
+			if (mine !== request) return;
+			failed = !view;
 			alert = view?.active.find((a) => a.kind === 'print_error') ?? null;
 		});
 	});
@@ -30,7 +36,15 @@
 	);
 </script>
 
-{#if alert}
+{#if failed && error}
+	<section class="panel print-failed" role="status">
+		<h2 class="panel-title">The last print failed</h2>
+		<p class="meta">
+			Print error <code>{displayCode(printErrorKey(error))}</code>. Look it up on the Bambu Lab
+			wiki.
+		</p>
+	</section>
+{:else if alert}
 	<section class="panel print-failed" role="status">
 		<h2 class="panel-title">The last print failed</h2>
 		<p>{alert.text}</p>

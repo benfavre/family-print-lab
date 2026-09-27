@@ -83,6 +83,17 @@ describe('HMS action buttons', () => {
 		});
 	});
 
+	it('builds Recheck and Stop drying like command_refresh_nozzle and command_ams_drying_stop', () => {
+		expect(publish(24)).toEqual([{ topic: 'print', qos: 1, body: { command: 'refresh_nozzle' } }]);
+		expect(publish(35)).toEqual([
+			{ topic: 'print', qos: 0, body: { command: 'auto_stop_ams_dry' } }
+		]);
+		// hms_action_093.json lists 23 and 24 for 05008081 (hotend not recognised), 35 for 0502C010.
+		expect(actionIdsFor('print_error', '05008081', [23, 24])).toEqual([23, 24]);
+		expect(actionIdsFor('print_error', '0502C010', [35])).toEqual([35]);
+		expect(actionIdsFor('hms', '0500010000020001', [54])).toEqual([]);
+	});
+
 	it('marks the answers Bambu Studio refuses for laser and cutting tasks', () => {
 		const printerOnly = Object.entries(ACTIONS)
 			.filter(([, a]) => a.printerOnlyForProcessing)

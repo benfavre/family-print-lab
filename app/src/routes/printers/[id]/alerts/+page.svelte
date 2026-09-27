@@ -30,12 +30,17 @@
 	let rows = $state<HmsEventRow[]>([]);
 	let total = $state(0);
 	let loading = $state(true);
+	let failed = $state(false);
 
+	let request = 0;
 	async function load(more = false) {
 		if (!id) return;
+		const mine = ++request;
 		const severity = FILTERS.find((f) => f[0] === filter)?.[2] ?? [];
 		const view = await printerAlerts(id, { severity, limit: PAGE, offset: more ? rows.length : 0 });
+		if (mine !== request) return;
 		loading = false;
+		failed = !view;
 		if (!view) return;
 		active = view.active;
 		rows = more ? [...rows, ...view.history] : view.history;
@@ -79,6 +84,13 @@
 			<a href={resolve('/printers/[id]', { id })}>← {printer?.name ?? 'Printer'}</a>
 			<span>Texts from Bambu Lab, kept on this computer</span>
 		</div>
+		{#if failed}
+			<p class="error">
+				{printer
+					? 'Couldn’t load the alerts. Check Printer error help on the Integrations page.'
+					: 'That printer no longer exists.'}
+			</p>
+		{/if}
 		<section class="panel">
 			<header class="panel-head">
 				<h2>Active alerts</h2>
@@ -88,11 +100,11 @@
 				<div class="hms-list">
 					{#each active as a (a.key)}<HmsAlert
 							alert={a}
-							printerId={id}
+							printerId={printer?.connected ? id : null}
 							ondone={() => load()}
 						/>{/each}
 				</div>
-			{:else if !loading}
+			{:else if !loading && !failed}
 				<p class="panel-empty">
 					{printer?.connected
 						? 'No errors reported.'
@@ -137,7 +149,7 @@
 				{#if rows.length < total}
 					<button class="mini" onclick={() => load(true)}>Show older alerts</button>
 				{/if}
-			{:else if !loading}
+			{:else if !loading && !failed}
 				<p class="panel-empty">
 					Nothing yet. Alerts the printer raises while the app is running are kept here.
 				</p>

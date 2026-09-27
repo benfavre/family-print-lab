@@ -7,7 +7,8 @@ import { HMS_DIR } from '$lib/server/modules/hms/database';
 /** One of Bambu's error pictures (resources/hms/images, from Bambu Studio's local_image). */
 export const GET = api(({ params }) => {
 	const name = params.name ?? '';
-	if (!/^[0-9a-f]{32}\.webp$/.test(name)) throw new AppError(404, 'No such picture.');
+	// Names as the builder accepts them (tools/hms/lib.ts), never a path.
+	if (!/^[\w-]{1,100}\.webp$/.test(name)) throw new AppError(404, 'No such picture.');
 	const file = path.join(HMS_DIR, 'images', name);
 	if (!fs.existsSync(file)) throw new AppError(404, 'No such picture.');
 	return new Response(fs.readFileSync(file), {
