@@ -7,7 +7,8 @@ import {
 	VISION_LAYERS,
 	VISION_SPAGHETTI
 } from '$lib/server/printer/sim/features/vision-fixtures';
-import { analyse, decodeGrey, findFfmpeg, GREY_H, GREY_W, greyArgs, judge } from './heuristic';
+import { analyse, decodeGrey, GREY_H, GREY_W, greyArgs, judge } from './heuristic';
+import { findFfmpeg } from '$lib/server/ffmpeg';
 
 const ffmpeg = findFfmpeg();
 const jpeg = (b64: string) => Buffer.from(b64, 'base64');

@@ -2,18 +2,11 @@
 // page shows them). JPEG, WebP and GIF pictures are converted with the system ffmpeg, scaled to at most
 // 1600 px wide; without ffmpeg only PNG pictures are kept.
 import { spawn } from 'node:child_process';
-import fs from 'node:fs';
-import { findBin } from '$lib/server/ai/providers';
 
 const PNG = '89504e470d0a1a0a';
 const SKETCH_MAX = 4_000_000;
 
 export const isPng = (b: Buffer) => b.subarray(0, 8).toString('hex') === PNG;
-
-export function findFfmpeg(override?: string) {
-	if (override) return fs.existsSync(override) ? override : null;
-	return fs.existsSync('/usr/bin/ffmpeg') ? '/usr/bin/ffmpeg' : findBin('ffmpeg');
-}
 
 /** PNG dimensions from its header (0 when it is not a PNG). */
 export function pngSize(b: Buffer) {

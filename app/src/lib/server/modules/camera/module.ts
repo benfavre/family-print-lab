@@ -8,7 +8,7 @@ import type { SettingsStore } from '$lib/server/module-settings';
 import type { CameraSettings } from '$lib/shared/camera';
 import { CAMERA_SETTINGS_DEFAULTS } from '$lib/shared/camera';
 import { createCameraService, type CameraManager } from './service';
-import { findFfmpeg } from './ffmpeg';
+import { findFfmpeg } from '$lib/server/ffmpeg';
 import { createMedia, type Media } from './media';
 import { cameraSettingsSchema } from './validation';
 

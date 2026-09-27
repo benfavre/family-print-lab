@@ -1,8 +1,8 @@
 // Gallery photos: WebP or JPEG, at most 400 KB. Uploads are shrunk in the browser; camera snapshots
 // that are larger are scaled down here with the system ffmpeg (no image library needed).
 import { spawn } from 'node:child_process';
-import fs from 'node:fs';
 import { AppError } from '../../validation';
+import { findFfmpeg } from '$lib/server/ffmpeg';
 
 export const MAX_PHOTO_BYTES = 400 * 1024;
 
@@ -30,11 +30,6 @@ export function decodePhoto(input: string): { image: Buffer; mime: PhotoMime } {
 	if (image.length > MAX_PHOTO_BYTES)
 		throw new AppError(413, 'That photo is too large (400 KB at most).');
 	return { image, mime };
-}
-
-export function ffmpegPath(env: Record<string, string | undefined> = process.env) {
-	if (env.FFMPEG_BIN) return env.FFMPEG_BIN;
-	return fs.existsSync('/usr/bin/ffmpeg') ? '/usr/bin/ffmpeg' : 'ffmpeg';
 }
 
 /** Re-encodes a JPEG at most `width` pixels wide. */
@@ -72,7 +67,7 @@ export async function fitSnapshot(
 	if (sniffPhoto(jpeg) !== 'image/jpeg') throw new Error('The camera did not send a JPEG.');
 	if (jpeg.length <= MAX_PHOTO_BYTES) return jpeg;
 	for (const width of [1280, 960, 640]) {
-		const small = await scaleJpeg(o.bin ?? ffmpegPath(), jpeg, width, o.signal);
+		const small = await scaleJpeg(o.bin ?? findFfmpeg() ?? 'ffmpeg', jpeg, width, o.signal);
 		if (small.length <= MAX_PHOTO_BYTES) return small;
 	}
 	throw new Error('The snapshot stays too large for the gallery.');

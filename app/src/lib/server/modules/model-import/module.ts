@@ -4,7 +4,7 @@
 import { defineModule } from '$lib/server/modules';
 import { parse } from '$lib/server/validation';
 import { createFetcher } from './fetch';
-import { findFfmpeg } from './pictures';
+import { findFfmpeg } from '$lib/server/ffmpeg';
 import { ImportService } from './service';
 import { settingsInput, storedSettings } from './validation';
 import type { ImportSettingsView } from '$lib/shared/model-import';
@@ -34,7 +34,7 @@ export default defineModule({
 			models: ctx.models,
 			fetch: createFetcher(),
 			thingiverseToken: () => store.get().thingiverseToken,
-			ffmpeg: () => findFfmpeg(ctx.env.FFMPEG_BIN),
+			ffmpeg: () => findFfmpeg(ctx.env),
 			log: ctx.log
 		});
 		const view = (): ImportSettingsView => ({ hasThingiverseToken: hasToken() });

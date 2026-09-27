@@ -9,7 +9,7 @@ import type { ModuleServices } from '../modules';
 import { AppError } from '../validation';
 import { hmsKeyOf, hmsSeverity } from '$lib/shared/hms';
 import type { PrinterStatus } from '$lib/shared/printers/status';
-import { findFfmpeg } from '../modules/camera/ffmpeg';
+import { findFfmpeg } from '../ffmpeg';
 import { fitForPhone } from './picture';
 import {
 	CONTROL_WINDOW,

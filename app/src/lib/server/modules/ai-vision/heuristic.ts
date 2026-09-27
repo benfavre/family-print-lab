@@ -5,7 +5,6 @@
 // brightness changed a lot without that (the toolhead alone moves two or three). It knows nothing
 // about prints, so it is labelled a rough check everywhere and never claims more than 90 % confidence.
 import { spawn } from 'node:child_process';
-import fs from 'node:fs';
 import type { VisionVerdict } from '$lib/shared/vision';
 
 export const GREY_W = 160;
@@ -161,20 +160,4 @@ export function decodeGrey(ffmpeg: string, jpeg: Buffer, timeoutMs = 10_000): Pr
 		child.stdin.on('error', () => {});
 		child.stdin.end(jpeg);
 	});
-}
-
-/** ffmpeg: FFMPEG_PATH, else the usual places; null when there is none. */
-export function findFfmpeg(env: Record<string, string | undefined> = process.env): string | null {
-	const candidates = env.FFMPEG_PATH
-		? [env.FFMPEG_PATH]
-		: ['/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg'];
-	for (const path of candidates) {
-		try {
-			fs.accessSync(path, fs.constants.X_OK);
-			return path;
-		} catch {
-			/* next */
-		}
-	}
-	return null;
 }

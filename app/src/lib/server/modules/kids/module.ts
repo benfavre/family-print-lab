@@ -7,6 +7,7 @@ import type { CameraService, NotifyService } from '../contracts';
 import type { BadgeId, LimitReason } from '$lib/shared/kids';
 import { KidsService } from './service';
 import { kidsSettingsSchema } from './validation';
+import { findFfmpeg } from '$lib/server/ffmpeg';
 
 declare module '../../modules' {
 	interface ModuleServices {
@@ -49,7 +50,7 @@ export default defineModule({
 			camera: soft<CameraService>(ctx, 'camera'),
 			notify: soft<NotifyService>(ctx, 'notifications'),
 			log: ctx.log,
-			ffmpeg: ctx.env.FFMPEG_BIN
+			ffmpeg: findFfmpeg(ctx.env) ?? undefined
 		});
 		// The runtime's own listener has closed the job by now (events.ts ordering).
 		offs = [

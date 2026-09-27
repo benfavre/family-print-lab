@@ -10,29 +10,12 @@
 // visible to other programs on this computer (`ps`). It is never logged or sent anywhere. Keeping it
 // inside our own process needs an RTSP-over-TLS client of our own (a later improvement).
 import { spawn, type ChildProcess } from 'node:child_process';
-import fs from 'node:fs';
 import tls from 'node:tls';
 import { MpjpegParser } from './mjpeg';
 import type { CameraSource, FrameSink } from './source';
 
 export const RTSPS_PORT = 322;
 export const RTSP_PORT = 554;
-
-/** Where to find ffmpeg: FFMPEG_PATH, else the usual places. Null when there is none. */
-export function findFfmpeg(env: Record<string, string | undefined> = process.env): string | null {
-	const candidates = env.FFMPEG_PATH
-		? [env.FFMPEG_PATH]
-		: ['/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg'];
-	for (const path of candidates) {
-		try {
-			fs.accessSync(path, fs.constants.X_OK);
-			return path;
-		} catch {
-			/* next */
-		}
-	}
-	return null;
-}
 
 /** The printer's stream URL, always built from the saved address (never the host in the report). */
 export function rtspUrl(o: {

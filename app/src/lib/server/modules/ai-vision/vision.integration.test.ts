@@ -12,7 +12,7 @@ import { kidAccess } from '$lib/server/kid/session';
 import { setTrouble } from '$lib/server/printer/sim/features/vision';
 import { VISION_SPAGHETTI } from '$lib/server/printer/sim/features/vision-fixtures';
 import type { VisionCheck, VisionOverview, VisionSettingsView } from '$lib/shared/vision';
-import { findFfmpeg } from './heuristic';
+import { findFfmpeg } from '$lib/server/ffmpeg';
 import { visionModule } from './module';
 import { KEEP_FRAMES_MS } from './store';
 import { GET as overviewRoute } from '../../../../routes/api/printers/[id]/vision/+server';

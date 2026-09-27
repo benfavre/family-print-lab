@@ -31,7 +31,7 @@ import {
 	type VisionSettingsView,
 	type VisionVerdict
 } from '$lib/shared/vision';
-import { findFfmpeg } from './heuristic';
+import { findFfmpeg } from '$lib/server/ffmpeg';
 import { activeFor } from './schedule';
 import { VisionChecker } from './service';
 import { VisionStore } from './store';

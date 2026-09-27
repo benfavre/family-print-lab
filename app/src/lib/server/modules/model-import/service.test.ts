@@ -10,7 +10,8 @@ import { integrations } from '$lib/server/integrations';
 import { kidAccess } from '$lib/server/kid/session';
 import { ImportService } from './service';
 import { fixture, scriptedFetch, tinyPng, TRIANGLE_STL, type Answer } from './testing';
-import { findFfmpeg, toPng, isPng, pngSize, pictureDemuxer } from './pictures';
+import { toPng, isPng, pngSize, pictureDemuxer } from './pictures';
+import { findFfmpeg } from '$lib/server/ffmpeg';
 
 let t: TestLab;
 let profileId: string;

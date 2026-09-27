@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import { openDatabase } from '../db';
 import { EventBus } from '../events';
 import { Lab } from '../lab';
-import { findFfmpeg } from '../modules/camera/ffmpeg';
+import { findFfmpeg } from '../ffmpeg';
 import { emptySnapshot, type PrinterStatus } from '$lib/shared/printers/status';
 import { controlMac, newPhoneKey, open, phoneKeys } from './phone';
 import { fitForPhone, jpegSize, MAX_WIDTH } from './picture';
