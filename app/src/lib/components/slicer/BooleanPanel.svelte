@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import type { WorkspaceState } from '$lib/client/slicer/workspace.svelte';
 	import { applyBoolean, booleanProblem } from '$lib/client/slicer/boolean';
 	import { hasGeometryDetails } from '$lib/client/slicer/geometry-details';
@@ -14,6 +15,12 @@
 	let clearDetails = $state(false);
 	let working = $state(false);
 	let error = $state('');
+	let active: AbortController | null = null;
+	onDestroy(() => active?.abort());
+	$effect(() => {
+		void ws.selection;
+		return () => active?.abort();
+	});
 	$effect(() => {
 		void objects;
 		clearDetails = false;
@@ -21,6 +28,10 @@
 	});
 	async function combine() {
 		if (working || problem || (details && !clearDetails)) return;
+		const consent = clearDetails;
+		const selection = JSON.stringify(ws.selection);
+		const operation = new AbortController();
+		active = operation;
 		const before = ws.project,
 			[first, second] = objects;
 		const operand = (object: typeof first) => ({
@@ -33,11 +44,13 @@
 		try {
 			const response = await fetch('/api/slicer-ui/meshes/boolean', {
 				method: 'POST',
+				signal: operation.signal,
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({ first: operand(first), second: operand(second), mode })
 			});
 			const answer = await response.json();
 			if (!response.ok) throw new Error(answer.error ?? 'The objects could not be combined.');
+			if (operation.signal.aborted || JSON.stringify(ws.selection) !== selection) return;
 			if (ws.project !== before) throw new Error('The project changed while combining. Try again.');
 			ws.change('Combine objects', (draft) => {
 				applyBoolean(
@@ -46,14 +59,17 @@
 					second.id,
 					[first.parts[0].mesh, second.parts[0].mesh],
 					(answer as BooleanAnswer).mesh,
-					clearDetails
+					consent
 				);
 			});
 		} catch (e) {
-			error = (e as Error).message;
+			if (!operation.signal.aborted) error = (e as Error).message;
 		} finally {
-			working = false;
-			ws.busy = '';
+			if (active === operation) {
+				active = null;
+				working = false;
+				if (ws.busy === 'Combining the objects…') ws.busy = '';
+			}
 		}
 	}
 </script>
