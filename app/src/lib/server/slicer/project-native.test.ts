@@ -60,10 +60,11 @@ describe.runIf(!!BIN)('native project files', () => {
 	it(
 		'preserves invalid settings for editing but refuses to slice with defaults',
 		{ timeout: 180_000 },
-		async () => {
+		async ({ skip }) => {
 			const work = fs.mkdtempSync(path.join(os.tmpdir(), 'fpl-project-invalid-'));
 			const engine = await StdioEngine.open({ command: BIN!, workDir: work });
 			try {
+				if (!engine.has('slice')) skip();
 				const reference = read3mf(fs.readFileSync(path.join(dir, 'synth-bambu-features.3mf')));
 				reference.project.projectConfig.sparse_infill_density = '<25%>';
 				const input = path.join(work, 'invalid.3mf');

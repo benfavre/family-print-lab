@@ -1,11 +1,12 @@
 import fs from 'node:fs';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { startTestLab, type TestLab } from '../../testing/harness';
 import { integrations, testIntegration } from '../../integrations';
 import { writeStl } from '../../cad/mesh';
 import { renderScad } from '../../cad/openscad';
 import { readSliced } from '../../printer/sliced';
 import { fakeInstall, type FakeInstall } from '../../slicer/__fixtures__/install';
+import * as locations from '../../slicer/locate';
 import type { SlicerEngine } from '../../slicer/engine';
 import { slicerRow } from './module';
 
@@ -73,6 +74,7 @@ describe('slicing jobs through the module', () => {
 	afterAll(() => install.remove());
 	afterEach(async () => {
 		await t?.stop();
+		vi.restoreAllMocks();
 	});
 
 	async function until<T>(get: () => T | undefined, ms = 10_000): Promise<T> {
@@ -86,6 +88,8 @@ describe('slicing jobs through the module', () => {
 	}
 
 	it('slices a job for the P1S and the simulated P1S prints it to Succeeded', async () => {
+		// Exercise the CLI fixture even on a developer machine with a native engine installed.
+		vi.spyOn(locations, 'locateEngine').mockReturnValue(null);
 		t = await startTestLab({
 			fleet: ['N6', 'C12'],
 			modules: ['slicer-engine'],
@@ -169,6 +173,8 @@ describe('slicing jobs through the module', () => {
 	);
 
 	it('shows the slicer on the Integrations page and slices a test cube there', async () => {
+		// Exercise the CLI fixture even on a developer machine with a native engine installed.
+		vi.spyOn(locations, 'locateEngine').mockReturnValue(null);
 		t = await startTestLab({
 			fleet: ['C12'],
 			modules: ['slicer-engine'],
