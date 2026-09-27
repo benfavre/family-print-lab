@@ -1,0 +1,91 @@
+# Builds Print Lab Slicer (slicer/engine against the Bambu Studio tag in slicer/upstream.lock plus our
+# patch queue) for each desktop platform and uploads printlab-slicer-<platform>: the binary, the
+# resources it reads (profiles from the same tag), LICENSE and engine.json. The dependency superbuild
+# takes hours the first time, so it is cached by build-deps.sh's key (tag, deps/ tree, platform).
+# release.yml calls this; a failed engine build never blocks a desktop release (the app then uses an
+# installed Bambu Studio).
+name: Slicer build
+
+on:
+  push:
+    paths: ['slicer/**', '.github/workflows/slicer-build.yml']
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  # Minutes, every push: the protocol layer without Bambu Studio, its C++ tests and the app's
+  # protocol conformance tests against the real binary.
+  protocol:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: app/.nvmrc
+      - uses: oven-sh/setup-bun@v2
+      - run: slicer/scripts/upstream.sh build --no-upstream -j 4
+      - run: ctest --test-dir slicer/.build/engine-protocol --output-on-failure
+      - name: Protocol conformance
+        working-directory: app
+        run: |
+          bun install
+          PRINTLAB_SLICER_PATH="$PWD/../slicer/.build/engine-protocol/printlab-slicer" bunx vitest --run src/lib/server/slicer/
+
+  engine:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04 # the oldest glibc we ship for
+            platform: linux-x64
+          - os: macos-14
+            platform: darwin-arm64
+          - os: windows-2022
+            platform: win32-x64
+    runs-on: ${{ matrix.os }}
+    # Windows and macOS builds of the headless engine are not verified yet; they must not fail the run.
+    continue-on-error: ${{ matrix.platform != 'linux-x64' }}
+    timeout-minutes: 350
+    defaults:
+      run:
+        shell: bash
+    env:
+      PRINTLAB_SLICER_BUILD_DIR: ${{ github.workspace }}/slicer/.build
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build tools
+        run: |
+          case "${{ runner.os }}" in
+            Linux) sudo apt-get update && sudo apt-get install -y build-essential cmake git m4 pkg-config libdbus-1-dev autoconf automake libtool texinfo ;;
+            macOS) brew install cmake m4 autoconf automake libtool texinfo ;;
+          esac
+      - name: Bambu Studio at the pin, with our patch queue
+        run: slicer/scripts/upstream.sh fetch
+      - name: Dependency cache key
+        id: key
+        run: echo "key=$(slicer/scripts/build-deps.sh --print-key)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: slicer/.build/deps/usr/local
+          key: ${{ steps.key.outputs.key }}
+      - name: Mark cached dependencies as built
+        run: |
+          if [ -d slicer/.build/deps/usr/local/lib ]; then echo "${{ steps.key.outputs.key }}" > slicer/.build/deps/.stamp; fi
+      - name: Build the engine
+        run: slicer/scripts/upstream.sh build -j 4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: app/.nvmrc
+      - uses: oven-sh/setup-bun@v2
+      - name: Engine tests, conformance and golden slices
+        run: |
+          (cd app && bun install)
+          slicer/scripts/upstream.sh test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: printlab-slicer-${{ matrix.platform }}
+          path: slicer/dist/${{ matrix.platform }}
+          retention-days: 30

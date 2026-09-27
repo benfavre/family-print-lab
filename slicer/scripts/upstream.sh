@@ -10,8 +10,8 @@
 #   upstream.sh status                          pin, checkout, patch count and dirty state
 #   upstream.sh resources                       copy profiles, printers and HMS texts out of the checkout
 #   upstream.sh ports                           list ported files whose upstream origin changed
-#   upstream.sh build [--deps-only] [-j N]      build the engine (needs slicer/engine)
-#   upstream.sh test                            engine tests, then the app's slicer tests
+#   upstream.sh build [--deps-only|--no-upstream] [-j N]  build the engine into slicer/dist/<plat>
+#   upstream.sh test                            ctest, then the app's slicer tests against the build
 #
 # Environment: PRINTLAB_UPSTREAM_DIR (default slicer/.upstream), PRINTLAB_SLICER_BUILD_DIR
 # (default slicer/.build).
@@ -426,43 +426,87 @@ cmd_ports() {
 	[ $changed = 0 ] || say "review the CHANGED ports against upstream, then update their commit in ORIGINS.md."
 }
 
+platform_key() {
+	local os arch
+	os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+	case "$os" in mingw* | msys* | cygwin*) os=win32 ;; esac
+	arch="$(uname -m)"
+	case "$arch" in x86_64 | amd64) arch=x64 ;; aarch64) arch=arm64 ;; esac
+	echo "$os-$arch"
+}
+
+# build: dependencies (build-deps.sh), then the engine against the checkout, then slicer/dist/<plat>
+# with the binary, the resources it reads at runtime (profiles, printers, info) from the same tag,
+# the licence and engine.json. --no-upstream builds the protocol layer only (minutes, no checkout).
 cmd_build() {
-	local deps_only=0 jobs=6
+	local deps_only=0 jobs=2 upstream=1
 	while [ $# -gt 0 ]; do
 		case "$1" in
 		--deps-only)
 			deps_only=1
 			shift
 			;;
+		--no-upstream)
+			upstream=0
+			shift
+			;;
 		-j)
 			jobs="${2:?-j needs a number}"
 			shift 2
 			;;
+		-j*)
+			jobs="${1#-j}"
+			shift
+			;;
 		*) die "unknown option $1" ;;
 		esac
 	done
+	[ -f "$SLICER/engine/CMakeLists.txt" ] || die "slicer/engine/CMakeLists.txt is missing."
+	local plat exe="" engine
+	plat="$(platform_key)"
+	case "$plat" in win32-*) exe=".exe" ;; esac
+	if [ $upstream = 0 ]; then
+		engine="$BUILD/engine-protocol"
+		cmake -S "$SLICER/engine" -B "$engine" -DPRINTLAB_WITH_UPSTREAM=OFF -DCMAKE_BUILD_TYPE=Release
+		cmake --build "$engine" -j "$jobs"
+		say "built the protocol-only engine: ${engine#"$ROOT"/}/printlab-slicer$exe (no slicing core)."
+		return 0
+	fi
 	need_checkout
-	[ -f "$SLICER/engine/CMakeLists.txt" ] ||
-		die "slicer/engine is not in this repository yet, so there is nothing to build. The app slices through the Bambu Studio command line meanwhile."
-	# Bambu Studio's deps superbuild installs into ${DESTDIR}/usr/local (deps/CMakeLists.txt); the GUI-only
-	# dependencies are switched off with its own options, so no patch is needed for a headless build.
-	local deps="$BUILD/deps"
-	cmake -S "$UP/deps" -B "$deps/build" -DCMAKE_BUILD_TYPE=Release -DDESTDIR="$deps" \
-		-DDEP_BUILD_WXWIDGETS=OFF -DDEP_BUILD_GLFW=OFF -DDEP_BUILD_FFMPEG=OFF -DDEP_BUILD_LIBHARU=OFF
-	cmake --build "$deps/build" -j "$jobs"
+	PRINTLAB_UPSTREAM_DIR="$UP" PRINTLAB_SLICER_BUILD_DIR="$BUILD" bash "$SLICER/scripts/build-deps.sh" -j "$jobs"
 	[ $deps_only = 1 ] && return 0
-	cmake -S "$SLICER/engine" -B "$BUILD/engine" -DPRINTLAB_UPSTREAM_DIR="$UP" \
-		-DCMAKE_PREFIX_PATH="$deps/usr/local" -DCMAKE_BUILD_TYPE=Release
-	cmake --build "$BUILD/engine" -j "$jobs"
+	engine="$BUILD/engine"
+	cmake -S "$SLICER/engine" -B "$engine" -DPRINTLAB_UPSTREAM_DIR="$UP" \
+		-DCMAKE_PREFIX_PATH="$BUILD/deps/usr/local" -DCMAKE_BUILD_TYPE=Release
+	nice -n 10 cmake --build "$engine" -j "$jobs" --target printlab-slicer test_json test_rpc test_thumbnails test_facade
+	# Never ship Bambu's proprietary network plugin or the GUI (slicer/UPSTREAM.md rule 7).
+	if grep -a -q -E 'bambu_networking|NetworkAgent' "$engine/printlab-slicer$exe"; then
+		die "the engine references bambu_networking or NetworkAgent; it must not."
+	fi
+	local dist="$SLICER/dist/$plat"
+	rm -rf "$dist"
+	mkdir -p "$dist/resources/profiles"
+	cp "$engine/printlab-slicer$exe" "$dist/"
+	cp -R "$UP/resources/profiles/BBL" "$UP/resources/profiles/BBL.json" "$dist/resources/profiles/"
+	for d in printers info; do [ -d "$UP/resources/$d" ] && cp -R "$UP/resources/$d" "$dist/resources/"; done
+	cp "$UP/LICENSE" "$dist/LICENSE"
+	local version
+	version="$(sed -n -E 's/^project\(printlab-slicer VERSION ([0-9.]+).*/\1/p' "$SLICER/engine/CMakeLists.txt")"
+	printf '{"engine":"printlab-slicer","version":"%s","platform":"%s","upstream":{"name":"%s","tag":"%s","commit":"%s"},"patchQueue":{"version":%s,"hash":"%s"}}\n' \
+		"$version" "$plat" "$(lock_get name)" "$(lock_get tag)" "$(lock_get commit)" "$(lock_get queue)" "$(lock_get queue_hash)" >"$dist/engine.json"
+	say "Print Lab Slicer is in ${dist#"$ROOT"/} (the app finds it there)."
 }
 
 cmd_test() {
-	if [ -f "$BUILD/engine/CTestTestfile.cmake" ]; then
-		ctest --test-dir "$BUILD/engine" --output-on-failure
-	else
-		say "no engine build, skipping the C++ tests."
-	fi
-	(cd "$ROOT/app" && bunx vitest --run src/lib/server/slicer/)
+	local engine="" dir
+	for dir in "$BUILD/engine" "$BUILD/engine-protocol"; do
+		if [ -f "$dir/CTestTestfile.cmake" ]; then
+			ctest --test-dir "$dir" --output-on-failure
+			[ -n "$engine" ] || engine="$dir/printlab-slicer"
+		fi
+	done
+	[ -n "$engine" ] || say "no engine build, skipping the C++ tests and the protocol conformance tests."
+	(cd "$ROOT/app" && PRINTLAB_SLICER_PATH="$engine" bunx vitest --run src/lib/server/slicer/)
 }
 
 case "${1:-}" in

@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Print Lab patch queue <patch-queue@printlab.invalid>
+Date: Sun, 27 Sep 2026 02:12:22 +0200
+Subject: [PATCH] Build: find OpenGL, GLEW and GLFW only for the GUI
+
+Why: the top-level CMakeLists.txt requires OpenGL, GLEW and glfw3 even with SLIC3R_GUI=OFF, although
+only the GUI (src/slic3r) links them. On a headless build host the deps superbuild then fails:
+GLEW needs the GLU headers and GLFW (Wayland on Linux) needs extra-cmake-modules. With this patch the
+engine's dependencies build without any GL packages (build-deps.sh skips dep_GLEW, dep_OpenCSG and
+dep_GLFW).
+Files: CMakeLists.txt
+Upstreamable: yes
+---
+ CMakeLists.txt | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index b4f3a96..a1d4d0a 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -583,6 +583,8 @@ endif ()
+ 
+ find_package(PNG REQUIRED)
+ 
++# OpenGL, GLEW and GLFW are used by the GUI only; libslic3r and the command line do not link them.
++if (SLIC3R_GUI)
+ set(OpenGL_GL_PREFERENCE "LEGACY")
+ find_package(OpenGL REQUIRED)
+ 
+@@ -595,6 +597,7 @@ endif()
+ find_package(GLEW REQUIRED)
+ 
+ find_package(glfw3 REQUIRED)
++endif ()
+ 
+ # Find the Cereal serialization library
+ find_package(cereal REQUIRED)
