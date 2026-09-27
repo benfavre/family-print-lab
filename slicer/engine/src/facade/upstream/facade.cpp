@@ -95,6 +95,7 @@ SyncResult UpstreamFacade::project_sync(const std::string &project_id, const Pro
 	state->project = next;
 	state->presets = presets;
 	state->config = std::move(config);
+	state->config_error.clear();
 	state->sliced.clear(); // any change invalidates what was sliced
 	out.revision = ++state->revision;
 	return out;

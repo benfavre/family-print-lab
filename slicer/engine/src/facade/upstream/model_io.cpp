@@ -108,6 +108,8 @@ Vec3d UpstreamFacade::plate_origin(const ProjectState &state, int index) const {
 
 std::unique_ptr<Model> UpstreamFacade::build_model(const ProjectState &state, int plate, std::vector<std::string> *object_ids,
                                                    std::vector<std::string> *instance_ids) {
+	if (!state.config_error.empty())
+		throw EngineError(err::INVALID_CONFIG, "Some imported settings need to be corrected before slicing.", state.config_error);
 	auto model = std::make_unique<Model>();
 	const Project &p = state.project;
 	const Plate *only = nullptr;

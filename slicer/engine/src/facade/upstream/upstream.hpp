@@ -72,6 +72,8 @@ struct CalibState {
 
 struct ProjectState {
 	int revision = 0;
+	/** Invalid imported settings remain saveable, but must be fixed before model operations. */
+	std::string config_error;
 	std::optional<CalibState> calib;
 	Project project;
 	ResolvedBundle presets;
