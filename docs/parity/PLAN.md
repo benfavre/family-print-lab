@@ -3360,29 +3360,36 @@ max(existing `when`) + 60000. A package branch may use any `when` above the base
 `db/migrations.test.ts` asserts that journal entries rise strictly in both `idx` and `when` and that each
 tag's file exists.
 
-| NN   | Tag                    | Package                                 |
-| ---- | ---------------------- | --------------------------------------- |
-| 0005 | `0005_printers`        | foundation                              |
-| 0006 | `0006_hms`             | hms                                     |
-| 0007 | `0007_ams`             | ams                                     |
-| 0008 | `0008_notifications`   | notifications                           |
-| 0009 | `0009_presets`         | slicer-profiles                         |
-| 0010 | `0010_queue`           | queue                                   |
-| 0011 | `0011_home_automation` | home-automation                         |
-| 0012 | `0012_kids`            | kids                                    |
-| 0013 | `0013_maintenance`     | maintenance                             |
-| 0014 | `0014_lan_auth`        | lan-auth                                |
-| 0015 | `0015_model_import`    | model-import                            |
-| 0016 | reserved               | camera (only if needed)                 |
-| 0017 | reserved               | analytics (only if needed)              |
-| 0018 | `0018_slicer_projects` | slicer-3mf                              |
-| 0019 | reserved               | controls (only if needed)               |
-| 0020 | reserved               | gcode-preview (only if needed)          |
-| 0021 | `0021_vision`          | ai-vision                               |
-| 0022 | reserved               | cloud-remote (FPL side, only if needed) |
-| 0023 | reserved               | slicer-ui                               |
-| 0024 | reserved               | slicer-calibration                      |
-| 0025 | reserved               | onboarding                              |
+The file names as merged on `parity` (the merger renumbered on collision; the journal is the source of
+truth). A new package takes the next number after the highest one in `app/drizzle/`, or a free one
+below it; the merger still assigns `idx` and `when`.
+
+| NN   | Tag                    | Package                     |
+| ---- | ---------------------- | --------------------------- |
+| 0005 | `0005_printers`        | foundation                  |
+| 0006 | `0006_hms`             | hms                         |
+| 0007 | `0007_ams`             | ams                         |
+| 0008 | `0008_notifications`   | notifications               |
+| 0009 | `0009_presets`         | slicer-profiles             |
+| 0010 | `0010_queue`           | queue                       |
+| 0011 | free                   |                             |
+| 0012 | free                   |                             |
+| 0013 | `0013_maintenance`     | maintenance                 |
+| 0014 | free                   |                             |
+| 0015 | `0015_model_import`    | model-import                |
+| 0016 | free                   |                             |
+| 0017 | free                   |                             |
+| 0018 | `0018_slicer_projects` | slicer-3mf                  |
+| 0019 | `0019_home_automation` | home-automation             |
+| 0020 | `0020_kids`            | kids                        |
+| 0021 | `0021_lan_auth`        | lan-auth                    |
+| 0022 | `0022_vision`          | ai-vision                   |
+| 0023 | `0023_calibration`     | slicer-calibration          |
+| 0024 | free                   |                             |
+| 0025 | reserved               | onboarding (only if needed) |
+
+camera, analytics, controls, gcode-preview, cloud-remote (FPL side) and slicer-ui shipped without a
+table of their own.
 
 A package that needs no table leaves its slot unused (gaps in file names are fine; `idx` and `when` are
 assigned in merge order as above). PLC: cloud-remote uses `migrations/0007_remote.sql`.
