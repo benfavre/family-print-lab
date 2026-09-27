@@ -17,7 +17,7 @@ async function sphere(page: Page) {
 	const original: Project = detail.project;
 	original.objects[0].parts[0].transform[9] = 3;
 	original.objects[0].parts[0].paint = { seam: { 0: '4' } };
-	original.objects[0].layerHeightProfile = [0, 0.2, 10, 0.15, 20, 0.1];
+	original.objects[0].layerHeightProfile = [0, 0.2, 20, 0.1];
 	expect(
 		(
 			await page.request.put(`/api/slicer-projects/${id}`, {
