@@ -90,6 +90,8 @@ const children = [
 			// Each printer on a fake smart plug (Integrations → Home automation: http://127.0.0.1:8300…).
 			'--plugs',
 			'8300',
+			// A first run finds the simulators the way it finds real printers (Find printers, SSDP).
+			...(firstRun ? ['--ssdp', '2021'] : []),
 			...simArgs
 		],
 		{ stdio: 'inherit' }

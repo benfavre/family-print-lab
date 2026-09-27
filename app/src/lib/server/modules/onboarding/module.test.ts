@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { RequestEvent } from '@sveltejs/kit';
 import { startTestLab, type TestLab } from '../../testing/harness';
 import { isFirstRun } from '$lib/shared/onboarding';
+import { kidAccess } from '../../kid/session';
 import { GET, POST } from '../../../../routes/api/onboarding/+server';
 
 let t: TestLab;
@@ -62,6 +63,30 @@ describe('onboarding module', () => {
 		expect(t.rt.module('onboarding')!.state()).toMatchObject({ firstRun: false, profiles: 1 });
 		t.rt.lab.deleteProfile(id);
 		expect(t.rt.module('onboarding')!.state().firstRun).toBe(true);
+	});
+
+	it('stops being a first run once a printer is added', () => {
+		const p = t.rt.printers.create({
+			name: 'Garage',
+			model: 'N6',
+			host: '127.0.0.1',
+			port: 1,
+			serial: 'SIM-X2D-0042',
+			accessCode: '12345678',
+			tls: false,
+			simulated: true,
+			enabled: false
+		});
+		expect(t.rt.module('onboarding')!.state()).toMatchObject({ firstRun: false, printers: 1 });
+		t.rt.printers.remove(p.id);
+		expect(t.rt.module('onboarding')!.state().firstRun).toBe(true);
+	});
+
+	it('keeps kid mode out of the guide and its state', () => {
+		const reads = t.rt.loadedModules().flatMap((m) => m.module.kidReads ?? []);
+		expect(kidAccess('GET', '/welcome', '/welcome', reads)).toBe('redirect');
+		expect(kidAccess('GET', '/api/onboarding', '/api/onboarding', reads)).toBe('refuse');
+		expect(kidAccess('POST', '/api/onboarding', '/api/onboarding', reads)).toBe('refuse');
 	});
 
 	it('refuses unknown actions', async () => {

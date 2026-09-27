@@ -29,28 +29,47 @@
 			}).catch(() => {})
 	);
 
+	// The job made for the first print, kept so a failed upload (wrong file) does not leave a second
+	// "First print" project behind when the next file is chosen.
+	let firstJob = $state<string | null>(null);
+
 	async function firstPrint(file: File) {
 		if (!chosen) return;
+		// Checked before anything is made (attachSliced checks again).
+		if (!/\.3mf$/i.test(file.name))
+			return ui.toast('Choose the sliced file (.gcode.3mf) from Bambu Studio.', 'error');
 		// Grown-ups own the first project; kid profiles only when there is nobody else.
 		const owner = profiles.find((p) => !p.kid) ?? profiles[0];
 		if (!owner) return;
 		busy = true;
 		try {
-			const project = await lab.call<{ id: string }>('POST', '/api/projects', {
-				profileId: owner.id,
-				title: 'First print',
-				status: 'Planned',
-				description: 'Printed from the setup guide.'
-			});
-			if (!project) return;
-			const job = await lab.call<{ id: string }>('POST', '/api/jobs', {
-				projectId: project.id,
-				revision: file.name.replace(/\.gcode\.3mf$|\.3mf$/i, '').slice(0, 80),
-				printerId: chosen.id
-			});
-			if (!job) return;
-			const created = lab.ws.jobs.find((j) => j.id === job.id);
-			if (!created || !(await act.attachSliced(created, file))) return;
+			let job = lab.ws.jobs.find((j) => j.id === firstJob && !j.sliced) ?? null;
+			if (job && job.printerId !== chosen.id) {
+				const moved = await lab.call('PATCH', `/api/jobs/${job.id}`, {
+					printerId: chosen.id,
+					version: job.version
+				});
+				if (!moved) return;
+				job = lab.ws.jobs.find((j) => j.id === firstJob) ?? null;
+			}
+			if (!job) {
+				const project = await lab.call<{ id: string }>('POST', '/api/projects', {
+					profileId: owner.id,
+					title: 'First print',
+					status: 'Planned',
+					description: 'Printed from the setup guide.'
+				});
+				if (!project) return;
+				const created = await lab.call<{ id: string }>('POST', '/api/jobs', {
+					projectId: project.id,
+					revision: file.name.replace(/\.gcode\.3mf$|\.3mf$/i, '').slice(0, 80),
+					printerId: chosen.id
+				});
+				if (!created) return;
+				firstJob = created.id;
+				job = lab.ws.jobs.find((j) => j.id === created.id) ?? null;
+			}
+			if (!job || !(await act.attachSliced(job, file))) return;
 			ui.openSend(job.id, chosen.id);
 		} finally {
 			busy = false;

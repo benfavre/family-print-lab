@@ -95,8 +95,17 @@ test('a fresh lab opens the setup guide, adds the simulator and sends a first jo
 	await expect(page.getByRole('heading', { name: 'Connect your printer' })).toBeVisible();
 	await expect(page.getByRole('note')).toContainText('Bambu Handy');
 	await expect(page.getByRole('note')).toContainText('To switch back');
-	await page.getByRole('button', { name: 'Enter details by hand' }).click();
+	// Find printers hears the P1S simulator that announces itself over SSDP (playwright.config.ts) and
+	// fills in what it announced; its ports are not announced, so this test adds its own X2D by hand.
+	await page.getByRole('button', { name: 'Find printers' }).click();
+	const p1s = page.locator('.found li', { hasText: 'P1S' });
+	await expect(p1s).toContainText('127.0.0.1', { timeout: 15_000 });
+	await p1s.getByRole('button', { name: 'Use this one' }).click();
 	const form = page.getByRole('form', { name: 'Printer details' });
+	await expect(form.getByLabel('Serial number')).toHaveValue('SIM-P1S-0001');
+	await expect(form.getByLabel('IP address')).toHaveValue('127.0.0.1');
+	await page.getByRole('button', { name: 'Enter details by hand' }).click();
+	await expect(form.getByLabel('Serial number')).toHaveValue('');
 	await form.getByLabel('Name').fill('Garage X2D');
 	await form.getByLabel('IP address').fill('127.0.0.1');
 	await form.getByLabel('Serial number').fill('SIM-X2D-0001');
@@ -144,6 +153,13 @@ test('a fresh lab opens the setup guide, adds the simulator and sends a first jo
 	await expect
 		.poll(async () => (await (await page.request.get(`${APP}/api/onboarding`)).json()).completedAt)
 		.toBeTruthy();
+	// A file that is not a sliced project is turned away before anything is made.
+	await page.getByLabel('Sliced file for the first print').setInputFiles({
+		name: 'cable-clip.stl',
+		mimeType: 'model/stl',
+		buffer: Buffer.from('solid clip\nendsolid clip\n')
+	});
+	await expect(page.getByText('Choose the sliced file (.gcode.3mf)')).toBeVisible();
 	await page
 		.getByLabel('Sliced file for the first print')
 		.setInputFiles('src/lib/server/__fixtures__/cable-clip.gcode.3mf');
@@ -164,6 +180,10 @@ test('a fresh lab opens the setup guide, adds the simulator and sends a first jo
 			{ timeout: 30_000 }
 		)
 		.toEqual({ status: 'Printing', printer: true });
+	const firstPrints = (await workspace()).projects.filter(
+		(p: { title: string }) => p.title === 'First print'
+	);
+	expect(firstPrints).toHaveLength(1);
 
 	// Set up now: a new tab shows the profile chooser, not the guide.
 	const tab = await page.context().newPage();

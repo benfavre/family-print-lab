@@ -27,7 +27,12 @@
 		return chosen.size === 1 ? ([...chosen][0] as AiProviderId) : null;
 	});
 
-	onMount(() => void lab.loadIntegrations(true));
+	// A fresh check, since something may have just been installed.
+	let checked = $state(false);
+	onMount(async () => {
+		await lab.loadIntegrations(true);
+		checked = true;
+	});
 
 	function settingsHref(item: IntegrationStatus) {
 		if (item.id === 'cloud') return lab.cloud.configured ? `${resolve('/family')}#kid-mode` : null;
@@ -46,7 +51,13 @@
 			{ ai: { routing, models: report.models } },
 			`${AI_PROVIDER_NAME[id]} will do the AI work.`
 		);
-		if (res) await lab.loadIntegrations();
+		if (!res) return;
+		await lab.loadIntegrations();
+		// The design and chat panels read which provider does what from the AI summary.
+		const summary = await fetch('/api/ai')
+			.then((r) => (r.ok ? r.json() : null))
+			.catch(() => null);
+		if (summary) lab.ai = summary;
 	}
 </script>
 
@@ -55,8 +66,13 @@
 		Everything here is optional and can be changed later under Settings → Integrations. Nothing is
 		sent anywhere until you set it up.
 	</p>
-	{#if !report}
+	{#if !report && (lab.checkingIntegrations || !checked)}
 		<p class="dim">Checking what is installed on this computer…</p>
+	{:else if !report}
+		<p class="dim">
+			Could not check the tools on this computer.
+			<button class="mini" onclick={() => lab.loadIntegrations(true)}>Try again</button>
+		</p>
 	{:else}
 		<h3>Slicing</h3>
 		<div class="grid">
@@ -74,7 +90,7 @@
 		</p>
 		<div class="grid">
 			{#each ai as item (item.id)}
-				<IntegrationCard {item}>
+				<IntegrationCard {item} settingsHref="{resolve('/integrations')}#integration-{item.id}">
 					{#snippet actions()}
 						{#if item.available}
 							<button

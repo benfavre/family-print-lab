@@ -32,6 +32,7 @@
 	let testing = $state(false);
 	let adding = $state(false);
 	let result = $state<{ ok: boolean; detail: string } | null>(null);
+	let unknownModel = $state('');
 
 	function body() {
 		return {
@@ -66,6 +67,8 @@
 	}
 
 	function choose(d: DiscoveredPrinter) {
+		// An announced model the app does not know: keep the default, the test fills in the real one.
+		unknownModel = d.model ? '' : d.ssdpModel || 'an unknown model';
 		const model = d.model ?? 'N6';
 		f = {
 			...blank(),
@@ -79,6 +82,7 @@
 	}
 
 	function byHand() {
+		unknownModel = '';
 		f = blank();
 		result = null;
 		formOpen = true;
@@ -97,6 +101,7 @@
 			result = r.ok ? data : { ok: false, detail: data.error ?? 'The test failed.' };
 			// The printer said which model it is.
 			if (r.ok && data.model && data.model !== f.model) f.model = data.model;
+			if (r.ok && data.model) unknownModel = '';
 		} catch {
 			result = { ok: false, detail: 'Could not reach the app server.' };
 		} finally {
@@ -112,7 +117,9 @@
 		if (!res) return;
 		formOpen = false;
 		result = null;
-		found = found?.map((d) => (d.serial === f.serial ? { ...d, known: true } : d)) ?? null;
+		const serial = f.serial.trim().toUpperCase();
+		found =
+			found?.map((d) => (d.serial.toUpperCase() === serial ? { ...d, known: true } : d)) ?? null;
 	}
 
 	// Trust is decided on the first connection; fetch the registry again once a new printer connects.
@@ -150,6 +157,12 @@
 		</ul>
 		<p class="dim">
 			The access code is shown on the same screen, next to LAN Only Mode. It stays on this computer.
+			<!-- Where the switches are, per model: ha-bambulab docs/index.mdx links this wiki page. -->
+			<a
+				href="https://wiki.bambulab.com/en/knowledge-sharing/enable-lan-mode"
+				target="_blank"
+				rel="noopener noreferrer">How to turn them on (Bambu Lab wiki) ↗</a
+			>
 		</p>
 	</div>
 
@@ -235,7 +248,10 @@
 								{#each g.models as m (m.code)}<option value={m.code}>{m.short}</option>{/each}
 							</optgroup>
 						{/each}
-					</select></label
+					</select>{#if unknownModel}<small
+							>The printer calls itself {unknownModel}. Pick the model, or press Test and the app
+							will ask the printer.</small
+						>{/if}</label
 				>
 			</div>
 			<div class="fields-row">

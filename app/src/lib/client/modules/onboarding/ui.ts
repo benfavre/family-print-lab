@@ -10,7 +10,9 @@ export default defineUi({
 		{
 			id: 'setup-guide',
 			label: 'Open the setup guide',
-			keywords: 'welcome onboarding first run printer family start',
+			// Shown as the hint and searched: no page names here, or typing "family" would open the guide
+			// instead of the Family page (the palette runs the first match on Enter).
+			keywords: 'setup welcome onboarding first run',
 			run: () => void goto(resolve('/welcome'))
 		}
 	]
