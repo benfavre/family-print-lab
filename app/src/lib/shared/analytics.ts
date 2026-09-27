@@ -3,7 +3,8 @@ import type { JobStatus, ProfileColor } from './domain';
 
 /**
  * What the dashboard looks at. Dates are local calendar days (YYYY-MM-DD, both ends included), read
- * in the viewer's time zone (`tz`, minutes east of UTC, like `-new Date().getTimezoneOffset()`).
+ * in the viewer's time zone (`tz`, an IANA name like `Intl.DateTimeFormat().resolvedOptions().timeZone`,
+ * so days stay right across summer time changes; 'UTC' when not given).
  * `printerId: 'none'` means jobs that name no printer.
  */
 export interface AnalyticsFilter {
@@ -11,7 +12,7 @@ export interface AnalyticsFilter {
 	to: string | null;
 	printerId: string | null;
 	profileId: string | null;
-	tz: number;
+	tz: string;
 }
 
 export const NO_PRINTER = 'none';
@@ -132,6 +133,6 @@ export function filterParams(f: Partial<AnalyticsFilter>): URLSearchParams {
 	if (f.to) p.set('to', f.to);
 	if (f.printerId) p.set('printer', f.printerId);
 	if (f.profileId) p.set('person', f.profileId);
-	if (f.tz) p.set('tz', String(f.tz));
+	if (f.tz && f.tz !== 'UTC') p.set('tz', f.tz);
 	return p;
 }

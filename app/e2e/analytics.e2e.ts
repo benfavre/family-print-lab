@@ -37,6 +37,16 @@ test('Stats shows the fixture’s numbers and exports them as CSV', async ({ pag
 	await expect(tile('Prints').locator('dd')).toHaveText('0');
 	await expect(page).toHaveURL(/person=son/);
 
+	// All time survives a reload (an address with no dates means the last 12 months).
+	await page.getByRole('button', { name: 'All time' }).click();
+	await expect(page).toHaveURL(/range=all/);
+	await page.reload();
+	await ready(page);
+	await expect(page.getByRole('button', { name: 'All time' })).toHaveAttribute(
+		'aria-pressed',
+		'true'
+	);
+
 	const res = await page.request.get(`/api/analytics/export.csv?${range}`);
 	expect(res.headers()['content-type']).toMatch(/^text\/csv/);
 	const lines = (await res.text()).replace(/^\ufeff/, '').split('\r\n');

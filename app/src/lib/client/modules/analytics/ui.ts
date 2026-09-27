@@ -2,6 +2,7 @@
 import { resolve } from '$app/paths';
 import { defineUi } from '../../registry';
 import { download } from '../../actions';
+import { filterParams } from '$lib/shared/analytics';
 
 export default defineUi({
 	key: 'analytics',
@@ -21,7 +22,11 @@ export default defineUi({
 			id: 'analytics-export',
 			label: 'Download every finished print (CSV)',
 			keywords: 'stats analytics export spreadsheet filament cost',
-			run: () => download('/api/analytics/export.csv')
+			// Every finished print, dated in this computer's time zone like the page.
+			run: () =>
+				download(
+					`/api/analytics/export.csv?${filterParams({ tz: Intl.DateTimeFormat().resolvedOptions().timeZone })}`
+				)
 		}
 	]
 });

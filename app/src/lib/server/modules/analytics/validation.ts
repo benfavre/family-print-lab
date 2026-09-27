@@ -1,11 +1,17 @@
 import { z } from 'zod';
 import type { AnalyticsFilter } from '$lib/shared/analytics';
 import { AppError, parse } from '../../validation';
+import { isTimeZone } from './queries';
 
+const realDay = (v: string) => {
+	// Date.parse rolls 2026-02-30 over to 2 March, so check the day survives the round trip.
+	const t = Date.parse(`${v}T00:00:00Z`);
+	return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === v;
+};
 const day = z
 	.string()
 	.regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date like 2026-09-27.')
-	.refine((v) => !Number.isNaN(Date.parse(`${v}T00:00:00Z`)), 'Not a real date.');
+	.refine(realDay, 'Not a real date.');
 const blankIsNull = (v: unknown) => (v === '' || v === undefined ? null : v);
 
 export const analyticsFilter = z.strictObject({
@@ -14,8 +20,8 @@ export const analyticsFilter = z.strictObject({
 	printer: z.preprocess(blankIsNull, z.string().max(80).nullable()),
 	person: z.preprocess(blankIsNull, z.string().max(80).nullable()),
 	tz: z.preprocess(
-		(v) => (v === '' || v === undefined ? 0 : Number(v)),
-		z.number().int().min(-840).max(840)
+		(v) => (v === '' || v === undefined ? 'UTC' : v),
+		z.string().max(64).refine(isTimeZone, 'Unknown time zone.')
 	)
 });
 

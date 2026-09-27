@@ -14,14 +14,20 @@
 
 	const { lab } = useApp();
 
-	// The filter lives in the address (?from&to&printer&person) so a reload or a shared link keeps it.
+	// The filter lives in the address (?from&to&printer&person, range=all for all time) so a reload or
+	// a shared link keeps it; with no dates it shows the last 12 months.
 	const q = page.url.searchParams;
-	const fromUrl = q.has('from') || q.has('to') || q.has('printer') || q.has('person');
+	const dates =
+		q.get('range') === 'all'
+			? rangeDates('all')
+			: q.has('from') || q.has('to')
+				? { from: q.get('from') || null, to: q.get('to') || null }
+				: rangeDates('12m');
 	let filter = $state<AnalyticsFilter>({
-		...(fromUrl ? { from: q.get('from'), to: q.get('to') } : rangeDates('12m')),
+		...dates,
 		printerId: q.get('printer'),
 		profileId: q.get('person'),
-		tz: -new Date().getTimezoneOffset()
+		tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 	});
 	let summary = $state<AnalyticsSummary | null>(null);
 	let error = $state('');
@@ -36,13 +42,17 @@
 		loading = true;
 		fetch(`/api/analytics?${params}`, { signal: controller.signal })
 			.then(async (r) => {
-				const body = await r.json();
+				const body = await r.json().catch(() => ({}));
 				if (!r.ok) throw new Error(body.error ?? 'Could not load the statistics.');
 				summary = body;
 				error = '';
 			})
 			.catch((e: Error) => {
-				if (e.name !== 'AbortError') error = e.message;
+				if (e.name === 'AbortError') return;
+				error =
+					e instanceof TypeError
+						? 'Could not reach Family Print Lab. Check it is still running, then try again.'
+						: e.message;
 			})
 			.finally(() => {
 				if (!controller.signal.aborted) loading = false;
@@ -50,7 +60,9 @@
 		return () => controller.abort();
 	});
 	$effect(() => {
-		const search = filterParams({ ...filter, tz: 0 }).toString();
+		const params = filterParams({ ...filter, tz: undefined });
+		if (!filter.from && !filter.to) params.set('range', 'all');
+		const search = params.toString();
 		if (`?${search}` !== page.url.search && (search || page.url.search))
 			// eslint-disable-next-line svelte/no-navigation-without-resolve -- a resolve() path plus the filter
 			replaceState(`${resolve('/analytics')}${search ? `?${search}` : ''}`, page.state);

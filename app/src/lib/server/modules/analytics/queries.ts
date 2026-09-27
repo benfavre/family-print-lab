@@ -2,15 +2,17 @@
 //
 // Rules (they match how the lab charges spools, see Lab.settle):
 // - Only finished jobs count: Succeeded, Failed and Cancelled, dated by when they finished (else when
-//   they started, else when they were made), in the viewer's time zone.
+//   they started, else when they were made), in the viewer's time zone (a named zone, so a year's
+//   range keeps each day right across summer time changes).
 // - Success rate is succeeded / (succeeded + failed); cancelled prints are left out.
 // - Filament: succeeded and failed prints use their grams; cancelled prints use none.
 // - Cost per gram is the spool's price / its total grams; prints without a spool, or on a spool with no
 //   price, add grams but no cost (counted as "uncosted" so the page can say so).
 // - Printer time: the measured time, else (cancelled) the time between start and finish, else the
 //   slicer estimate.
-// - Failure reasons: the printer's error text from the hms module's table when it exists and has rows
-//   for the job, else the first line of the job's notes.
+// - Failure reasons, one per failed job: the printer's error text from the hms module's table when it
+//   exists (the last print error of the job, else its last fatal or serious HMS alert; passing and
+//   info alerts are not why a print failed), else the first line of the job's notes.
 import type { DB } from '../../db';
 import {
 	NO_PRINTER,
@@ -55,7 +57,10 @@ WITH base AS (
 			END
 		) AS minutes,
 		j.notes AS notes,
-		datetime(COALESCE(NULLIF(j.finished_at, ''), NULLIF(j.started_at, ''), j.created_at), @tz) AS local
+		fpl_local_time(
+			CAST(strftime('%s', COALESCE(NULLIF(j.finished_at, ''), NULLIF(j.started_at, ''), j.created_at)) AS INTEGER),
+			@tz
+		) AS local
 	FROM jobs j
 	JOIN projects p ON p.id = j.project_id
 	JOIN profiles pr ON pr.id = p.profile_id
@@ -78,9 +83,54 @@ const SLICE = `
 	SUM(CASE WHEN perGram IS NULL THEN grams ELSE 0 END) AS uncostedGrams,
 	SUM(CASE WHEN status <> 'Cancelled' THEN 1 ELSE 0 END) AS prints`;
 
+const clocks = new Map<string, Intl.DateTimeFormat>();
+/** A moment (Unix seconds) as local "YYYY-MM-DD HH:MM:SS" wall-clock time in an IANA time zone. */
+export function localTime(seconds: number | null, zone: string): string | null {
+	if (seconds === null || !Number.isFinite(seconds)) return null;
+	let clock = clocks.get(zone);
+	if (!clock) {
+		clock = new Intl.DateTimeFormat('en-GB', {
+			timeZone: zone,
+			hourCycle: 'h23',
+			year: 'numeric',
+			month: '2-digit',
+			day: '2-digit',
+			hour: '2-digit',
+			minute: '2-digit',
+			second: '2-digit'
+		});
+		clocks.set(zone, clock);
+	}
+	const at: Record<string, string> = {};
+	for (const part of clock.formatToParts(seconds * 1000)) at[part.type] = part.value;
+	return `${at.year}-${at.month}-${at.day} ${at.hour}:${at.minute}:${at.second}`;
+}
+
+/** Whether a name is a time zone this runtime knows. */
+export function isTimeZone(zone: string): boolean {
+	try {
+		new Intl.DateTimeFormat('en-GB', { timeZone: zone });
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+// SQLite has fixed offsets only, so local days come from a small function on each connection.
+const withClock = new WeakSet<DB['$client']>();
+function sqlite(db: DB) {
+	if (!withClock.has(db.$client)) {
+		db.$client.function('fpl_local_time', { deterministic: true }, (s, zone) =>
+			localTime(s === null ? null : Number(s), String(zone))
+		);
+		withClock.add(db.$client);
+	}
+	return db.$client;
+}
+
 function params(f: AnalyticsFilter) {
 	return {
-		tz: `${f.tz >= 0 ? '+' : ''}${f.tz} minutes`,
+		tz: f.tz,
 		from: f.from,
 		to: f.to,
 		printer: f.printerId,
@@ -90,7 +140,7 @@ function params(f: AnalyticsFilter) {
 
 /** Whether a table exists (other packages' tables are optional). */
 function hasTable(db: DB, name: string) {
-	return !!db.$client
+	return !!sqlite(db)
 		.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`)
 		.get(name);
 }
@@ -142,51 +192,67 @@ const slice = (r: SliceRow, key: string, label: string): FilamentSlice => ({
 	prints: r.prints
 });
 
-/** Failure reasons per failed job (the printer's error text first, else the job's first note line). */
-function failureReasons(db: DB, f: AnalyticsFilter, printerErrors: boolean) {
-	const failed = db.$client
-		.prepare(`${FINISHED} SELECT id, notes FROM f WHERE status = 'Failed'`)
-		.all(params(f)) as { id: string; notes: string }[];
-	const fromPrinter = new Map<string, string[]>();
-	if (printerErrors && failed.length) {
-		const rows = db.$client
+type JobReason = { reason: string; source: FailureReason['source'] };
+
+/**
+ * The printer's reason for each failed job, from the hms module's history (PLAN 5.1: `hms_events` with
+ * kind 'hms' | 'print_error', severity 'fatal' | 'serious' | 'common' | 'info' | 'unknown', text,
+ * raised_at, job_id). The last print error wins (the hms module records the one the print ended with
+ * on print.failed), else the last fatal or serious alert. Another package's table: if it is not what
+ * we expect, the notes are used instead of failing the whole page.
+ */
+function printerReasons(db: DB, f: AnalyticsFilter): Map<string, string> {
+	const out = new Map<string, string>();
+	let rows: { jobId: string; text: string }[];
+	try {
+		rows = sqlite(db)
 			.prepare(
 				`${FINISHED}
-				SELECT DISTINCT h.job_id AS jobId, TRIM(h.text) AS text
+				SELECT h.job_id AS jobId, TRIM(h.text) AS text
 				FROM hms_events h JOIN f ON f.id = h.job_id
 				WHERE f.status = 'Failed' AND TRIM(COALESCE(h.text, '')) <> ''
-				ORDER BY h.raised_at`
+					AND (h.kind = 'print_error' OR h.severity IN ('fatal', 'serious'))
+				ORDER BY h.kind = 'print_error', h.raised_at, h.rowid`
 			)
 			.all(params(f)) as { jobId: string; text: string }[];
-		for (const r of rows) fromPrinter.set(r.jobId, [...(fromPrinter.get(r.jobId) ?? []), r.text]);
+	} catch {
+		return out;
 	}
-	const byJob = new Map<string, { reasons: string[]; source: FailureReason['source'] }>();
+	// Ordered so the row that wins for a job comes last.
+	for (const r of rows) out.set(r.jobId, r.text);
+	return out;
+}
+
+/** Why each failed job failed (the printer's error text first, else the job's first note line). */
+function failureReasons(db: DB, f: AnalyticsFilter, printerErrors: boolean) {
+	const failed = sqlite(db)
+		.prepare(`${FINISHED} SELECT id, notes FROM f WHERE status = 'Failed'`)
+		.all(params(f)) as { id: string; notes: string }[];
+	const fromPrinter = printerErrors && failed.length ? printerReasons(db, f) : new Map();
+	const byJob = new Map<string, JobReason>();
 	for (const j of failed) {
 		const printer = fromPrinter.get(j.id);
 		const note = noteReason(j.notes ?? '');
 		byJob.set(
 			j.id,
 			printer
-				? { reasons: printer, source: 'printer' }
+				? { reason: printer, source: 'printer' }
 				: note
-					? { reasons: [note], source: 'note' }
-					: { reasons: ['No reason noted'], source: 'none' }
+					? { reason: note, source: 'note' }
+					: { reason: 'No reason noted', source: 'none' }
 		);
 	}
 	return byJob;
 }
 
 /** Counts reasons, most common first; the tail folds into "Other reasons". */
-function countReasons(
-	byJob: Map<string, { reasons: string[]; source: FailureReason['source'] }>
-): FailureReason[] {
+function countReasons(byJob: Map<string, JobReason>): FailureReason[] {
 	const counts = new Map<string, FailureReason>();
-	for (const { reasons, source } of byJob.values())
-		for (const reason of reasons) {
-			const hit = counts.get(reason);
-			if (hit) hit.count++;
-			else counts.set(reason, { reason, count: 1, source });
-		}
+	for (const { reason, source } of byJob.values()) {
+		const hit = counts.get(reason);
+		if (hit) hit.count++;
+		else counts.set(reason, { reason, count: 1, source });
+	}
 	const sorted = [...counts.values()].sort(
 		(a, b) =>
 			Number(a.source === 'none') - Number(b.source === 'none') ||
@@ -204,7 +270,7 @@ function countReasons(
 /** Everything the dashboard shows for one filter. */
 export function summary(db: DB, f: AnalyticsFilter): AnalyticsSummary {
 	const p = params(f);
-	const all = <T>(sql: string) => db.$client.prepare(`${FINISHED} ${sql}`).all(p) as T[];
+	const all = <T>(sql: string) => sqlite(db).prepare(`${FINISHED} ${sql}`).all(p) as T[];
 
 	const t = all<{
 		prints: number;
@@ -282,7 +348,7 @@ export function summary(db: DB, f: AnalyticsFilter): AnalyticsSummary {
 		GROUP BY printerId ORDER BY grams DESC, label`
 	).map((r) => slice(r, r.key ?? NO_PRINTER, r.label ?? NO_PRINTER_LABEL));
 
-	const printerList = db.$client
+	const printerList = sqlite(db)
 		.prepare(`SELECT id, name FROM printers ORDER BY sort_order, name`)
 		.all() as { id: string; name: string }[];
 	const hourRows = all<{
@@ -325,7 +391,7 @@ export function summary(db: DB, f: AnalyticsFilter): AnalyticsSummary {
 		(r): TopProject => ({ ...r, grams: round(r.grams), cost: money(r.cost) })
 	);
 
-	const people = db.$client
+	const people = sqlite(db)
 		.prepare(`SELECT id, name, color FROM profiles ORDER BY created_at, name`)
 		.all() as { id: string; name: string; color: ProfileColor }[];
 
@@ -358,7 +424,7 @@ export function summary(db: DB, f: AnalyticsFilter): AnalyticsSummary {
 
 /** Every finished print for the CSV export, newest first. */
 export function rows(db: DB, f: AnalyticsFilter): AnalyticsRow[] {
-	const list = db.$client
+	const list = sqlite(db)
 		.prepare(
 			`${FINISHED}
 			SELECT id, strftime('%Y-%m-%d %H:%M', local) AS date, title, owner, printerName, status,
@@ -391,7 +457,7 @@ export function rows(db: DB, f: AnalyticsFilter): AnalyticsRow[] {
 			grams: round(r.grams),
 			cost: money(r.cost),
 			minutes: r.minutes === null ? null : Math.round(r.minutes),
-			reason: why && why.source !== 'none' ? why.reasons.join('; ') : ''
+			reason: why && why.source !== 'none' ? why.reason : ''
 		};
 	});
 }

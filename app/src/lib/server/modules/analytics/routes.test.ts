@@ -45,7 +45,7 @@ const call = (handler: typeof stats, query: string) =>
 
 describe('GET /api/analytics', () => {
 	it('answers the summary for a filter', async () => {
-		const res = await call(stats, 'from=2026-09-01&to=2026-09-30&tz=60');
+		const res = await call(stats, 'from=2026-09-01&to=2026-09-30&tz=Europe%2FParis');
 		expect(res.status).toBe(200);
 		const body = await res.json();
 		expect(body.totals).toMatchObject({ prints: 1, grams: 20, cost: 0.6, machineMinutes: 42 });
@@ -54,14 +54,17 @@ describe('GET /api/analytics', () => {
 			to: '2026-09-30',
 			printerId: null,
 			profileId: null,
-			tz: 60
+			tz: 'Europe/Paris'
 		});
+		expect((await (await call(stats, '')).json()).filter.tz).toBe('UTC');
 	});
 
 	it('refuses bad dates', async () => {
 		expect((await call(stats, 'from=yesterday')).status).toBe(400);
 		expect((await call(stats, 'from=2026-10-01&to=2026-09-01')).status).toBe(400);
-		expect((await call(stats, 'tz=9999')).status).toBe(400);
+		expect((await call(stats, 'from=2026-02-30')).status).toBe(400);
+		expect((await call(stats, 'tz=Mars%2FOlympus')).status).toBe(400);
+		expect((await call(stats, 'colour=red')).status).toBe(400);
 	});
 });
 

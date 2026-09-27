@@ -3,7 +3,7 @@ import { openDatabase, type DB } from '../../db';
 import { printers } from '../../db/schema';
 import { Lab } from '../../lab';
 import type { AnalyticsFilter } from '$lib/shared/analytics';
-import { noteReason, rows, summary, weekOf, weeksBetween } from './queries';
+import { isTimeZone, localTime, noteReason, rows, summary, weekOf, weeksBetween } from './queries';
 
 // A small lab worked out by hand:
 //   spools  s1 PLA 1000 g for 20 (0.02/g), s2 PETG 500 g for 15 (0.03/g), s3 TPU 1000 g, no price
@@ -13,11 +13,17 @@ import { noteReason, rows, summary, weekOf, weeksBetween } from './queries';
 //   3 Sam  · Stand  Succeeded s2 200 g, est. 300 min, none  2026-09-15 10:00Z
 //   4 Sam  · Stand  Cancelled s2  80 g, ran 45 min, Workshop 2026-09-16 10:45Z  (uses no filament)
 //   5 Alex · Tray   Succeeded no spool, PLA 40 g, 60 min, Workshop 2026-10-01 10:00Z
-//   6 Alex · Tray   Succeeded s3 TPU 10 g, 10 min, none     2026-10-02 23:30Z  (10-03 at UTC+2)
+//   6 Alex · Tray   Succeeded s3 TPU 10 g, 10 min, none     2026-10-02 23:30Z  (10-03 in Paris)
 //   plus a queued and a printing job, which never count.
 let db: DB, lab: Lab;
 const ids: Record<string, string> = {};
-const all: AnalyticsFilter = { from: null, to: null, printerId: null, profileId: null, tz: 0 };
+const all: AnalyticsFilter = {
+	from: null,
+	to: null,
+	printerId: null,
+	profileId: null,
+	tz: 'UTC'
+};
 
 beforeEach(() => {
 	db = openDatabase(':memory:');
@@ -204,8 +210,9 @@ describe('analytics summary', () => {
 	it('reads dates in the viewer’s time zone', () => {
 		const to = { ...all, from: '2026-10-01', to: '2026-10-02' };
 		expect(summary(db, to).totals.prints).toBe(2);
-		expect(summary(db, { ...to, tz: 120 }).totals.prints).toBe(1);
-		expect(summary(db, { ...all, tz: 120 }).months.at(-1)).toEqual({
+		expect(summary(db, { ...to, tz: 'Europe/Paris' }).totals.prints).toBe(1);
+		expect(summary(db, { ...to, tz: 'America/New_York' }).totals.prints).toBe(2);
+		expect(summary(db, { ...all, tz: 'Europe/Paris' }).months.at(-1)).toEqual({
 			month: '2026-10',
 			material: 'TPU',
 			grams: 10,
@@ -234,24 +241,65 @@ describe('analytics summary', () => {
 		db.$client.exec(`CREATE TABLE hms_events (
 			id INTEGER PRIMARY KEY, printer_id TEXT, kind TEXT, code TEXT, severity TEXT, text TEXT,
 			raised_at TEXT, cleared_at TEXT, job_id TEXT)`);
-		db.$client
-			.prepare(
-				`INSERT INTO hms_events (printer_id, kind, code, text, raised_at, job_id) VALUES (?, ?, ?, ?, ?, ?)`
-			)
-			.run(
-				'p1',
-				'print_error',
-				'0300-4000',
-				'The nozzle seems clogged.',
-				'2026-09-08T09:59:00Z',
-				ids.j2
-			);
+		const raise = db.$client.prepare(
+			`INSERT INTO hms_events (printer_id, kind, code, severity, text, raised_at, job_id)
+			VALUES ('p1', ?, ?, ?, ?, ?, ?)`
+		);
+		// During the failed print: an info alert, a serious alert, then the print error it ended on.
+		raise.run(
+			'hms',
+			'0C00030000020004',
+			'info',
+			'Build plate detected.',
+			'2026-09-08T08:00Z',
+			ids.j2
+		);
+		raise.run(
+			'hms',
+			'0300200000010001',
+			'serious',
+			'Nozzle temperature is abnormal.',
+			'2026-09-08T09:00Z',
+			ids.j2
+		);
+		raise.run(
+			'print_error',
+			'0300400C',
+			'serious',
+			'The nozzle seems clogged.',
+			'2026-09-08T09:59Z',
+			ids.j2
+		);
+		// A succeeded job's alert is never a failure reason.
+		raise.run(
+			'hms',
+			'0700200000030001',
+			'fatal',
+			'AMS filament ran out.',
+			'2026-09-07T09:00Z',
+			ids.j1
+		);
 		const s = summary(db, all);
 		expect(s.printerErrors).toBe(true);
 		expect(s.failures).toEqual([
 			{ reason: 'The nozzle seems clogged.', count: 1, source: 'printer' }
 		]);
 		expect(rows(db, all).find((r) => r.jobId === ids.j2)?.reason).toBe('The nozzle seems clogged.');
+
+		// Without a print error the last fatal or serious alert is the reason; info alerts never are.
+		db.$client.exec(`DELETE FROM hms_events WHERE kind = 'print_error'`);
+		expect(summary(db, all).failures).toEqual([
+			{ reason: 'Nozzle temperature is abnormal.', count: 1, source: 'printer' }
+		]);
+		db.$client.exec(`DELETE FROM hms_events WHERE severity = 'serious'`);
+		expect(summary(db, all).failures).toEqual([{ reason: 'Spaghetti', count: 1, source: 'note' }]);
+	});
+
+	it('falls back to the notes when the hms table is not what it expects', () => {
+		db.$client.exec(`CREATE TABLE hms_events (id INTEGER PRIMARY KEY, job_id TEXT)`);
+		const s = summary(db, all);
+		expect(s.printerErrors).toBe(true);
+		expect(s.failures).toEqual([{ reason: 'Spaghetti', count: 1, source: 'note' }]);
 	});
 
 	it('works on an empty lab', () => {
@@ -316,6 +364,34 @@ describe('helpers', () => {
 		expect(weekOf('2026-09-14')).toBe('2026-09-14');
 		expect(weeksBetween('2026-12-30', '2027-01-06')).toEqual(['2026-12-28', '2027-01-04']);
 		expect(weeksBetween('2020-01-01', '2026-01-01', 3)).toHaveLength(3);
+	});
+
+	it('reads local time in a named zone, summer time included', () => {
+		const at = (iso: string) => Date.parse(iso) / 1000;
+		// Paris is UTC+1 in winter and UTC+2 in summer: a fixed offset would get one of these wrong.
+		expect(localTime(at('2026-01-15T23:30:00Z'), 'Europe/Paris')).toBe('2026-01-16 00:30:00');
+		expect(localTime(at('2026-07-15T22:30:00Z'), 'Europe/Paris')).toBe('2026-07-16 00:30:00');
+		expect(localTime(at('2026-07-15T22:30:00Z'), 'UTC')).toBe('2026-07-15 22:30:00');
+		expect(localTime(at('2026-03-01T03:00:00Z'), 'America/Los_Angeles')).toBe(
+			'2026-02-28 19:00:00'
+		);
+		expect(localTime(null, 'UTC')).toBeNull();
+		expect(isTimeZone('Europe/London')).toBe(true);
+		expect(isTimeZone('Mars/Olympus')).toBe(false);
+	});
+
+	it('counts a winter print on its local day in a year-long range', () => {
+		lab.createJob({
+			projectId: ids.dock,
+			status: 'Succeeded',
+			grams: 5,
+			actualMinutes: 5,
+			finishedAt: '2026-01-31T23:30:00.000Z' // 1 February, 00:30 in Paris (UTC+1 in winter)
+		});
+		const feb = { ...all, from: '2026-02-01', to: '2026-02-28', tz: 'Europe/Paris' };
+		expect(summary(db, feb).totals.prints).toBe(1);
+		expect(summary(db, { ...feb, tz: 'UTC' }).totals.prints).toBe(0);
+		expect(rows(db, feb)[0].date).toBe('2026-02-01 00:30');
 	});
 
 	it('shortens notes to their first line', () => {
