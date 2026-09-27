@@ -4,5 +4,6 @@ import { core } from './core';
 import { camera } from './camera';
 import { ams } from './ams';
 import { controls } from './controls';
+import { hms } from './hms';
 
-export const FEATURES: SimFeature[] = [core, camera, ams, controls];
+export const FEATURES: SimFeature[] = [core, camera, ams, controls, hms];

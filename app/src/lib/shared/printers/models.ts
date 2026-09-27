@@ -156,7 +156,13 @@ const TABLE: Record<
 	ModelCode,
 	Pick<PrinterModel, 'short' | 'series' | 'hmsDevice' | 'camera' | 'nozzles' | 'printUrl'>
 > = {
-	// HMS prefixes: ha-bambulab scripts/update_error_text.py _DEVICE_TYPES; null = not verified yet (hms package fills them).
+	// HMS prefixes (the first three characters of the serial, which Bambu Studio HMS.cpp get_dev_id_type
+	// uses to pick resources/hms/hms_<lang>_<prefix>.json): ha-bambulab scripts/update_error_text.py
+	// _DEVICE_TYPES for X1/P1/A1/P2S/H2S/H2D; the rest are the other files Bambu Studio v02.08.02.61 ships
+	// (HMS.cpp package_dev_id_types), matched to models by the Bambu wiki "find SN" page (H2D Pro "239")
+	// and Bambuddy virtual_printer/manager.py MODEL_SERIAL_PREFIXES (X2D "20P9", A2L "26A19") plus its
+	// release notes (H2C "31B8B"); consistent with their contents (31B is the only file with hotend-rack
+	// and induction-heating messages). The live serial, when it names a known file, wins (hms module).
 	'BL-P001': {
 		short: 'X1C',
 		series: 'X1',
@@ -216,7 +222,7 @@ const TABLE: Record<
 	N9: {
 		short: 'A2L',
 		series: 'A2',
-		hmsDevice: null,
+		hmsDevice: '26A',
 		camera: 'jpeg6000',
 		nozzles: 1,
 		printUrl: 'ftp'
@@ -229,7 +235,14 @@ const TABLE: Record<
 		nozzles: 1,
 		printUrl: 'ftp'
 	},
-	N6: { short: 'X2D', series: 'X2', hmsDevice: null, camera: 'rtsps', nozzles: 2, printUrl: 'ftp' },
+	N6: {
+		short: 'X2D',
+		series: 'X2',
+		hmsDevice: '20P',
+		camera: 'rtsps',
+		nozzles: 2,
+		printUrl: 'ftp'
+	},
 	O1D: {
 		short: 'H2D',
 		series: 'H2',
@@ -241,7 +254,7 @@ const TABLE: Record<
 	O1E: {
 		short: 'H2D Pro',
 		series: 'H2',
-		hmsDevice: null,
+		hmsDevice: '239',
 		camera: 'rtsps',
 		nozzles: 2,
 		printUrl: 'ftp'
@@ -257,7 +270,7 @@ const TABLE: Record<
 	O1C: {
 		short: 'H2C',
 		series: 'H2',
-		hmsDevice: null,
+		hmsDevice: '31B',
 		camera: 'rtsps',
 		nozzles: 2,
 		printUrl: 'ftp'
@@ -265,7 +278,7 @@ const TABLE: Record<
 	O1C2: {
 		short: 'H2C',
 		series: 'H2',
-		hmsDevice: null,
+		hmsDevice: '31B',
 		camera: 'rtsps',
 		nozzles: 2,
 		printUrl: 'ftp'
