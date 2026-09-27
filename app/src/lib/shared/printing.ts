@@ -59,7 +59,10 @@ const family = (type: string) => type.toUpperCase().replace(/[-\s].*$/, '');
  * Picks a slot for each filament: same material first, then the closest colour; a slot is used once
  * when possible. -1 where nothing of that material is loaded.
  */
-export function autoMapping(filaments: SlicedFilament[], slots: LoadedSlot[]): number[] {
+export function autoMapping(
+	filaments: Pick<SlicedFilament, 'type' | 'color'>[],
+	slots: LoadedSlot[]
+): number[] {
 	const used = new Set<number>();
 	return filaments.map((f) => {
 		const same = slots.filter((s) => family(s.type) === family(f.type));

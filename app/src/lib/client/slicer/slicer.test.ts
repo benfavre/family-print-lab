@@ -70,7 +70,7 @@ import {
 	paintWith,
 	shownStates
 } from './paint';
-import { colourDistance, slotFromTray, suggestTrays, type TrayChoice } from './trays';
+import { slotFromTray, suggestTrays, type TrayChoice } from './trays';
 import { filamentRows, objectRows, plateResult, totalGrams } from './results';
 import { parseStl } from '../stl';
 
@@ -442,7 +442,13 @@ describe('trays', () => {
 				trays
 			)
 		).toEqual([1, 0, 2, null]);
-		expect(colourDistance('#000000', '#000000')).toBe(0);
+		// Material families as the send window matches them: PLA Basic and PLA-S are PLA.
+		expect(
+			suggestTrays(
+				[slot('PLA', '#FFFFFF')],
+				[tray(4, 'PLA Basic', '#FFFFFF'), tray(254, 'PLA', '#FFFFFF')]
+			)
+		).toEqual([4]);
 		expect(slotFromTray(slot('PLA', '#FFFFFF'), tray(3, 'PLA', 'FF7A2FFF'))).toMatchObject({
 			tray: 3,
 			color: '#FF7A2F',
