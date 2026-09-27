@@ -64,7 +64,9 @@ jobs:
             Windows) choco install pkgconfiglite --version=0.28 --yes --no-progress ;;
           esac
       - name: Dependency target discovery and build option tests
-        run: bash slicer/tests/build.test.sh
+        run: |
+          bash slicer/tests/build.test.sh
+          bash slicer/tests/test-results.test.sh
       - name: Windows protocol and startup preflight
         if: runner.os == 'Windows'
         run: |
