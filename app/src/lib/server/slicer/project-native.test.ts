@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { Project } from '$lib/shared/slicer/project';
+import { ERROR } from '$lib/shared/slicer/protocol';
 import { read3mf } from '../slicer3mf/read';
 import { write3mf } from '../slicer3mf/write';
 import { StdioEngine } from './engine';
@@ -56,4 +57,32 @@ describe.runIf(!!BIN)('native project files', () => {
 			}
 		});
 	}
+	it(
+		'preserves invalid settings for editing but refuses to slice with defaults',
+		{ timeout: 180_000 },
+		async () => {
+			const work = fs.mkdtempSync(path.join(os.tmpdir(), 'fpl-project-invalid-'));
+			const engine = await StdioEngine.open({ command: BIN!, workDir: work });
+			try {
+				const reference = read3mf(fs.readFileSync(path.join(dir, 'synth-bambu-features.3mf')));
+				reference.project.projectConfig.sparse_infill_density = '<25%>';
+				const input = path.join(work, 'invalid.3mf');
+				fs.writeFileSync(
+					input,
+					write3mf(reference.project, { mesh: (id) => reference.meshes.get(id)!.geometry })
+				);
+				const opened = await engine.call('project.open', { path: input });
+				expect(portable(opened.project)).toEqual(reference.project);
+				const output = path.join(work, 'saved.3mf');
+				await engine.call('project.save', { projectId: opened.projectId, path: output });
+				expect(read3mf(fs.readFileSync(output)).project).toEqual(reference.project);
+				await expect(
+					engine.call('slice', { projectId: opened.projectId, plate: 1 })
+				).rejects.toMatchObject({ code: ERROR.INVALID_CONFIG });
+			} finally {
+				await engine.close();
+				fs.rmSync(work, { recursive: true, force: true });
+			}
+		}
+	);
 });

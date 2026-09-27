@@ -85,8 +85,7 @@ void load_core(const std::string &path, Imported &result) {
 	bool bambu = false;
 	Semver version;
 	if (!load_bbs_3mf(path.c_str(), &result.config, &substitutions, &result.model, &result.plates, &result.presets,
-					  &bambu, &version, nullptr,
-					  LoadStrategy::LoadModel | LoadStrategy::LoadConfig | LoadStrategy::Silence))
+					  &bambu, &version, nullptr, LoadStrategy::LoadModel | LoadStrategy::Silence))
 		throw std::runtime_error("The upstream 3MF reader could not load this project.");
 }
 std::string hash(const std::string &bytes) {
@@ -134,13 +133,28 @@ OpenProjectResult UpstreamFacade::project_open(const std::string &path) {
 									 {"bbox", bounds},
 									 {"storage", Json(Json::Object{{"kind", "file"}, {"path", filename}})}});
 		});
+		// The importer reads height-range configs even without LoadConfig (bbs_3mf.cpp:2006).
+		// Validate only the model package: unsupported settings must remain editable and saveable.
+		project_io::Files geometry_files;
+		for (const auto &entry : files) {
+			const fs::path name(entry.first);
+			if (entry.first == "[Content_Types].xml" || name.extension() == ".model" || name.extension() == ".rels")
+				geometry_files.insert(entry);
+		}
+		Temporary geometry_file{fs::path(dir) / "geometry.3mf"};
+		write_archive(geometry_file.path.string(), geometry_files);
 		Imported loaded;
-		load_core(path, loaded);
+		load_core(geometry_file.path.string(), loaded);
 		auto state = project(id);
 		std::lock_guard<std::mutex> lock(state->mutex);
 		state->project = project_from(document, "project");
-		state->presets.full = from_config(loaded.config);
-		state->config = project_config(state->presets.full, state->project.project_config);
+		state->config = project_config({}, {});
+		try {
+			state->config = project_config({}, state->project.project_config);
+		} catch (const std::exception &e) {
+			// Opening is not slicing. Keep the setting verbatim, but never slice using defaults instead.
+			state->config_error = e.what();
+		}
 		return {id, dir, state->project, std::move(infos)};
 	} catch (const std::exception &e) {
 		if (!id.empty())
@@ -198,8 +212,24 @@ void UpstreamFacade::project_save(const std::string &project_id, const std::stri
 		// source transforms and cannot hold unknown config/XML or the app's tray/spool references.
 		Temporary core{fs::path(scratch()) / fs::unique_path("project-%%%%-%%%%.3mf")};
 		fs::create_directories(core.path.parent_path());
-		auto model = build_model(*state, 0, nullptr);
-		DynamicPrintConfig config = state->config;
+		ProjectState geometry;
+		geometry.project = state->project;
+		geometry.project.project_config.clear();
+		for (auto &object : geometry.project.objects) {
+			object.config.clear();
+			object.height_ranges.clear();
+			object.layer_height_profile.clear();
+			for (auto &part : object.parts) {
+				part.config.clear();
+				part.filament = 0;
+				part.paint_supports.clear();
+				part.paint_seam.clear();
+				part.paint_color.clear();
+				part.paint_fuzzy_skin.clear();
+			}
+		}
+		auto model = build_model(geometry, 0, nullptr);
+		DynamicPrintConfig config = project_config({}, {});
 		StoreParams params;
 		std::string core_path = core.path.string();
 		params.path = core_path.c_str();
