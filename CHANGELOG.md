@@ -50,7 +50,8 @@ manual installation while code signing is unavailable.
   negative time estimates, including `M73 R-2147483648`, and record time/weight goldens for X1 Carbon,
   P1S, A1 mini, H2D and X2D.
 - Preserve nullable configuration values and raw G-code strings across the JSON interface. Keep
-  invalid project settings available for editing, while refusing to slice with substituted defaults.
+  project settings available for editing. Configuration errors detected by the engine block slicing;
+  some legacy fields and forward-compatible substitutions remain accepted upstream.
 - Fix native memory errors, leaks and worker-startup deadlocks found by AddressSanitizer,
   UndefinedBehaviorSanitizer and Valgrind. Keep upstream changes in a documented patch queue at
   Bambu Studio `v02.08.02.61`; see [UPSTREAM.md](slicer/UPSTREAM.md).
@@ -113,8 +114,9 @@ manual installation while code signing is unavailable.
 ### Remote access, privacy and access control
 
 - With optional Print Lab Cloud protocol v2, share every selected printer, its alerts and queue with
-  household phones. Encrypt shared status and camera pictures with the household phone key; sign
-  pause, resume, stop and “Start next” commands so the relay cannot forge them.
+  household phones. With a paired household phone key, encrypt shared status, queue details and camera pictures; sign
+  pause, resume, stop and “Start next” commands so the relay cannot forge them. Without a phone key,
+  opted-in status and queue sharing can use the plain-text compatibility path.
 - Persist remote-command replay protection in local SQLite across restarts. Refuse commands if the
   protection cannot be recorded, and refuse an unencrypted protocol downgrade once a phone key exists.
 - Keep “Start next” tied to the computer's queue decision and a plate marked clear; arbitrary remote

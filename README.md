@@ -55,18 +55,18 @@ No printer yet? `npm run dev:sim` runs the app with a simulated Bambu printer. S
 
 These are detected automatically and shown on the **Integrations** page:
 
-| Tool                                                   | Enables                                                                               |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| [Claude Code](https://claude.com/claude-code) or Codex | AI features using your Claude or ChatGPT subscription                                 |
-| Anthropic API key                                      | AI features billed per use                                                            |
-| Blender 4.2+                                           | Mesh repair, simplification and "Open in Blender"                                     |
+| Tool                                                   | Enables                                                                                     |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| [Claude Code](https://claude.com/claude-code) or Codex | AI features using your Claude or ChatGPT subscription                                       |
+| Anthropic API key                                      | AI features billed per use                                                                  |
+| Blender 4.2+                                           | Mesh repair, simplification and "Open in Blender"                                           |
 | Print Lab Slicer                                       | The slicing workspace, one-click slicing and calibration tests (bundled with Linux desktop) |
-| Bambu Studio or OrcaSlicer                             | Slicing when Print Lab Slicer is not installed (no calibration tests)                 |
-| ffmpeg                                                 | Live camera on printers other than the A1 and P1 series, and the rough AI print check |
-| Bambu Lab printers in LAN-only + Developer Mode        | Live status, camera, sending plates, print control                                    |
-| Spoolman                                               | Importing spools and recording what each print used                                   |
-| Smart plugs, an MQTT broker or Home Assistant          | Switching printers on and off, and showing them in your home automation               |
-| A Thingiverse app token                                | Importing Thingiverse links (Printables and MakerWorld need nothing)                  |
+| Bambu Studio or OrcaSlicer                             | Slicing when Print Lab Slicer is not installed (no calibration tests)                       |
+| ffmpeg                                                 | Live camera on printers other than the A1 and P1 series, and the rough AI print check       |
+| Bambu Lab printers in LAN-only + Developer Mode        | Live status, camera, sending plates, print control                                          |
+| Spoolman                                               | Importing spools and recording what each print used                                         |
+| Smart plugs, an MQTT broker or Home Assistant          | Switching printers on and off, and showing them in your home automation                     |
+| A Thingiverse app token                                | Importing Thingiverse links (Printables and MakerWorld need nothing)                        |
 
 ## Privacy and security
 
