@@ -5,6 +5,7 @@
 	import { thingStatus, thingTemplate } from '$lib/client/kid';
 	import { loadMesh } from '$lib/client/models';
 	import KidViewer from '$lib/components/kid/KidViewer.svelte';
+	import { kidsFeed } from '$lib/client/modules/kids/feed.svelte';
 
 	const { lab, ui } = useApp();
 	const kid = $derived(page.data.kid!);
@@ -21,6 +22,13 @@
 	let spoolId = $state<string | null>(null);
 	let message = $state('');
 	let asking = $state(false);
+	// Whether this thing, in this colour, fits the child's limits (the kids module; absent = no limits).
+	const limit = kidsFeed<{ ok: boolean; message: string; autoApprove: boolean }>(lab, () =>
+		project && status?.canAsk
+			? `/api/kids/me/check?project=${project.id}${spoolId ? `&spool=${spoolId}` : ''}`
+			: null
+	);
+	const notToday = $derived(limit.data && !limit.data.ok ? limit.data.message : '');
 
 	$effect(() => {
 		const model = made?.model;
@@ -39,14 +47,15 @@
 	async function ask() {
 		if (!project || asking) return;
 		asking = true;
-		const ok = await lab.call(
-			'POST',
-			`/api/kid/things/${project.id}/ask`,
-			{ spoolId, message },
-			'Asked! A grown-up will look soon. 🙋'
-		);
+		const ok = await lab.call<{ approved?: boolean }>('POST', `/api/kid/things/${project.id}/ask`, {
+			spoolId,
+			message
+		});
 		asking = false;
-		if (ok) message = '';
+		if (ok) {
+			message = '';
+			ui.toast(ok.approved ? 'Yes! It’s coming soon. 🎉' : 'Asked! A grown-up will look soon. 🙋');
+		}
 	}
 </script>
 
@@ -137,7 +146,10 @@
 							/>
 						{/if}
 					</fieldset>
-					<button class="kid-button berry" disabled={asking}>🙋 Ask a grown-up to print it</button>
+					{#if notToday}<p class="not-today" role="status">{notToday}</p>{/if}
+					<button class="kid-button berry" disabled={asking || !!notToday}
+						>🙋 Ask a grown-up to print it</button
+					>
 				</form>
 			{/if}
 			{#if made?.template}
@@ -200,6 +212,13 @@
 		border-radius: 26px;
 		background: var(--k-card);
 		box-shadow: 0 5px 0 var(--k-line);
+	}
+	.not-today {
+		margin: 0;
+		padding: 12px 16px;
+		border-radius: 18px;
+		background: #eef0ff;
+		font-weight: 650;
 	}
 	.ask .kid-heading {
 		margin: 14px 0 0;

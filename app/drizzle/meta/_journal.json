@@ -99,6 +99,13 @@
       "when": 1790400780000,
       "tag": "0019_home_automation",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1790400840000,
+      "tag": "0020_kids",
+      "breakpoints": true
     }
   ]
 }

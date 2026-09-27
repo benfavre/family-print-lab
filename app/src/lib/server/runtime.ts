@@ -95,7 +95,8 @@ export interface BootOptions {
 	env: Record<string, string | undefined>;
 	/** Module keys to start (default: all found; [] = none). */
 	modules?: string[];
-	/** Modules beyond the ones found in modules/ (tests). */
+	/** Modules beyond the ones found in modules/, or stand-ins for them: an extra with the key of a
+	 * found module replaces it (tests). */
 	extraModules?: ServerModule[];
 	/** CA certificates for printer TLS instead of the bundled ones (tests). */
 	printerCa?: (string | Buffer)[];
@@ -238,9 +239,13 @@ export function bootRuntime(o: BootOptions): Runtime {
 
 	// Modules last: they get everything above.
 	const services = new Map<string, unknown>();
+	// A test's stand-in replaces the package module with the same key.
+	const extras = o.extraModules ?? [];
 	const found = [
-		...Object.values(MODULE_FILES).map((m) => m.default),
-		...(o.extraModules ?? [])
+		...Object.values(MODULE_FILES)
+			.map((m) => m.default)
+			.filter((m) => !extras.some((x) => x.key === m?.key)),
+		...extras
 	].filter(
 		(m): m is ServerModule => !!m && typeof m.key === 'string' && typeof m.start === 'function'
 	);

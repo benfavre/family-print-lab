@@ -9,3 +9,4 @@ export * from './tables/imports';
 export * from './tables/presets';
 export * from './tables/queue';
 export * from './tables/plugs';
+export * from './tables/kids';
