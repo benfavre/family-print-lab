@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { replaceState } from '$app/navigation';
+	import { afterNavigate, replaceState } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { useApp } from '$lib/client/app.svelte';
 	import { download } from '$lib/client/actions';
@@ -59,8 +59,13 @@
 			});
 		return () => controller.abort();
 	});
+	// replaceState throws until the router has started, which is after this page hydrates when it is
+	// opened directly (a reload, a bookmark); the first afterNavigate comes once it is ready.
+	let routed = $state(false);
+	afterNavigate(() => (routed = true));
 	$effect(() => {
 		const params = filterParams({ ...filter, tz: undefined });
+		if (!routed) return;
 		if (!filter.from && !filter.to) params.set('range', 'all');
 		const search = params.toString();
 		if (`?${search}` !== page.url.search && (search || page.url.search))

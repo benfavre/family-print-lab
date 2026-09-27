@@ -11,6 +11,10 @@
 			(i) => i.id !== 'printer' && i.id !== 'openscad' && (i.id !== 'anthropic-api' || i.available)
 		)
 	);
+	// Packages add many integrations; the bar shows the first few and a count, the page lists them all.
+	const FIRST = 4;
+	const first = $derived(items.slice(0, FIRST));
+	const more = $derived(items.length - first.length);
 	const summary = $derived(
 		items.length
 			? items.map((i) => `${i.name}: ${i.available ? 'ready' : 'not ready'}`).join(' · ')
@@ -26,13 +30,14 @@
 	aria-label="Integrations: {summary}"
 >
 	{#if items.length}
-		{#each items as i (i.id)}
+		{#each first as i (i.id)}
 			<span class="tool" class:ok={i.available}
 				><span class="glyph" aria-hidden="true">{integrationGlyph(i.id)}</span><span class="name"
 					>{i.name}</span
 				><i></i></span
 			>
 		{/each}
+		{#if more > 0}<span class="tool more" aria-hidden="true">+{more}</span>{/if}
 	{:else}
 		<span class="tool checking">Integrations…</span>
 	{/if}
@@ -88,7 +93,11 @@
 		color: var(--dim);
 		padding: 3px 8px;
 	}
-	@media (max-width: 1500px) {
+	.more {
+		font: 500 11px var(--mono);
+		color: var(--dim);
+	}
+	@media (max-width: 2099px) {
 		.name {
 			display: none;
 		}

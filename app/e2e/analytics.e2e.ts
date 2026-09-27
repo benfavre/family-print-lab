@@ -58,3 +58,17 @@ test('Stats shows the fixture’s numbers and exports them as CSV', async ({ pag
 		'2026-09-23 14:53,Desk pen station,You,No printer set,Succeeded,PETG,96,2.4,176,,j3'
 	]);
 });
+
+test('Stats opened straight from a plain link loads and writes its filter into the address', async ({
+	page
+}) => {
+	const errors: string[] = [];
+	page.on('pageerror', (e) => errors.push(e.message));
+	await page.goto('/analytics');
+	await ready(page);
+	await expect(page).toHaveURL(/\/analytics\?from=/);
+	await expect(page.getByText('Adding up your prints…')).toHaveCount(0);
+	await page.getByRole('button', { name: 'All time' }).click();
+	await expect(page).toHaveURL(/range=all/);
+	expect(errors).toEqual([]);
+});

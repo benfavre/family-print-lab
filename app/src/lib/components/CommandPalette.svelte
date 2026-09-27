@@ -8,24 +8,35 @@
 	import { weight } from '$lib/client/format';
 	import Modal from './Modal.svelte';
 	import { UI } from '$lib/client/registry';
+	import { INTEGRATIONS_NAV, NAV } from '$lib/client/nav';
+	import { searchPalette, type PaletteItem } from '$lib/client/palette';
 
 	const app = useApp();
 	const { lab, ui } = app;
 	let q = $state('');
 	let index = $state(0);
 
-	interface Item {
-		label: string;
-		hint: string;
+	interface Item extends PaletteItem {
 		run: () => unknown;
 	}
+	// Longer names and search words for some sections, by their G shortcut key.
+	const SECTION_NAMES: Record<string, { label?: string; keywords?: string }> = {
+		r: { label: 'Printers (live)' },
+		f: { label: 'Filament shelf', keywords: 'spools' },
+		i: { label: 'Integrations (Claude, ChatGPT, Blender, printer)' }
+	};
 	const source = $derived.by((): Item[] => {
 		const act = actions(app);
 		const current = page.params.id ? lab.project(page.params.id) : undefined;
 		return [
-			{ label: 'Projects', hint: 'Go to', run: () => goto(resolve('/')) },
-			{ label: 'Print jobs', hint: 'Go to', run: () => goto(resolve('/jobs')) },
-			{ label: 'Printers (live)', hint: 'Go to', run: () => goto(resolve('/printers')) },
+			// Every section, including the ones packages register (NAV hrefs are built with resolve()).
+			...[...NAV, INTEGRATIONS_NAV].map((n) => ({
+				label: SECTION_NAMES[n.key]?.label ?? n.label,
+				hint: 'Go to',
+				keywords: SECTION_NAMES[n.key]?.keywords,
+				// eslint-disable-next-line svelte/no-navigation-without-resolve -- see above
+				run: () => goto(n.href)
+			})),
 			...lab.printerList.map((p) => ({
 				label: `${p.name} (printer)`,
 				hint: 'Go to',
@@ -33,16 +44,10 @@
 			})),
 			...UI.paletteCommands.map((c) => ({
 				label: c.label,
-				hint: c.keywords ?? 'Action',
+				hint: c.hint ?? 'Action',
+				keywords: c.keywords,
 				run: () => c.run(app)
 			})),
-			{ label: 'Filament shelf', hint: 'Go to', run: () => goto(resolve('/filament')) },
-			{ label: 'Family', hint: 'Go to', run: () => goto(resolve('/family')) },
-			{
-				label: 'Integrations (Claude, ChatGPT, Blender, printer)',
-				hint: 'Go to',
-				run: () => goto(resolve('/integrations'))
-			},
 			{ label: 'Keyboard shortcuts', hint: 'Help', run: () => (ui.shortcutsOpen = true) },
 			{ label: 'New idea', hint: 'Action', run: () => ui.openEditor('project') },
 			{
@@ -91,11 +96,7 @@
 			}))
 		];
 	});
-	const items = $derived(
-		source
-			.filter((i) => `${i.label} ${i.hint}`.toLowerCase().includes(q.trim().toLowerCase()))
-			.slice(0, 12)
-	);
+	const items = $derived(searchPalette(source, q));
 
 	function close() {
 		ui.paletteOpen = false;

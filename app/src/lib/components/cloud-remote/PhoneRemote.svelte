@@ -63,7 +63,12 @@
 				type="checkbox"
 				checked={cloud[t.key]}
 				disabled={t.needsStatus && !cloud.shareProgress}
-				onchange={(e) => set({ [t.key]: e.currentTarget.checked })}
+				onchange={(e) => {
+					// The box follows the saved setting, so a refused change never shows as made.
+					const on = e.currentTarget.checked;
+					e.currentTarget.checked = cloud[t.key];
+					void set({ [t.key]: on });
+				}}
 			/>
 			{t.label}</label
 		>

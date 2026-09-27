@@ -1,7 +1,18 @@
 <script lang="ts">
 	import Modal from './Modal.svelte';
+	import { INTEGRATIONS_NAV, NAV } from '$lib/client/nav';
 
 	let { onclose }: { onclose: () => void } = $props();
+	// "G then …" for every section, packages' ones included, three to a row.
+	const sections = [...NAV, INTEGRATIONS_NAV];
+	const GO_TO: [string, string][] = [];
+	for (let i = 0; i < sections.length; i += 3) {
+		const row = sections.slice(i, i + 3);
+		GO_TO.push([
+			row.map((n) => `G ${n.key.toUpperCase()}`).join(' · '),
+			`Go to ${row.map((n) => n.label).join(', ')}`
+		]);
+	}
 	const GROUPS: [string, [string, string][]][] = [
 		[
 			'Everywhere',
@@ -9,8 +20,7 @@
 				['Ctrl K', 'Search projects, models, views and actions'],
 				['/', 'Search the project list'],
 				['N', 'New item for this page (idea, print, spool, person)'],
-				['G P · G J · G R', 'Go to Projects, Print jobs, Printer'],
-				['G F · G M · G I', 'Go to Filament, Family, Integrations'],
+				...GO_TO,
 				['Right-click · Shift F10', 'Menu for a project, job or model'],
 				['?', 'This list']
 			]

@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { useApp } from '$lib/client/app.svelte';
+	import { settingsAnchor } from '$lib/client/onboarding';
 	import { CalibrationData } from '$lib/client/modules/slicer-calibration/store.svelte';
 	import PageHero from '$lib/components/PageHero.svelte';
 	import StatTiles from '$lib/components/StatTiles.svelte';
@@ -71,7 +72,12 @@
 					{noProfiles ? 'Needs the slicer profiles' : 'Needs Print Lab Slicer'}
 				</h2>
 				<p class="panel-empty">{o?.tests[0]?.reason}</p>
-				<a class="mini" href="{resolve('/integrations')}#slicer">See Integrations</a>
+				<a
+					class="mini"
+					href="{resolve('/integrations')}#{noProfiles
+						? settingsAnchor('slicer-profiles')
+						: 'integration-slicer'}">See Integrations</a
+				>
 			</section>
 		{/if}
 

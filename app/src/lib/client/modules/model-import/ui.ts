@@ -14,7 +14,7 @@ export default defineUi({
 		{
 			id: 'model-import',
 			label: 'Import a model from a link (Printables, Thingiverse, MakerWorld)',
-			keywords: 'Action',
+			keywords: 'printables thingiverse makerworld link url',
 			run: () => importWindows.openLink()
 		}
 	],

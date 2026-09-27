@@ -635,6 +635,11 @@ kbd {
 .views {
 	display: flex;
 	gap: 2px;
+	/* Never push the actions (search, profile, menu) off the edge: the sections give way first. */
+	min-width: 0;
+	overflow: hidden;
+	padding: 2px;
+	margin: -2px;
 }
 .nav {
 	display: flex;
@@ -706,6 +711,10 @@ kbd {
 	align-items: center;
 	gap: 6px;
 	min-width: 0;
+	flex-shrink: 0;
+}
+.topbar-actions > * {
+	flex-shrink: 0;
 }
 .save-indicator {
 	font-size: 12px;
@@ -722,7 +731,7 @@ kbd {
 	align-items: center;
 	gap: 8px;
 	height: 32px;
-	width: clamp(170px, 17vw, 260px);
+	width: clamp(170px, 12vw, 240px);
 	padding: 0 6px 0 10px;
 	border: 0;
 	border-radius: var(--r-md);
@@ -3369,8 +3378,9 @@ html[data-transition='swap']::view-transition-old(main) {
 		grid-template-columns: 1fr;
 	}
 }
-/* Narrower screens: the sections show as icons (names in tooltips), then move to a bottom tab bar. */
-@media (max-width: 1100px) {
+/* Narrower screens: the sections show as icons (names in tooltips), then move to a bottom tab bar.
+   Ten sections with their names need a very wide screen next to search, status and profile. */
+@media (max-width: 1899px) {
 	.nav-label {
 		display: none;
 	}
@@ -3383,6 +3393,13 @@ html[data-transition='swap']::view-transition-old(main) {
 }
 @media (max-width: 900px) {
 	.capsule-sep {
+		display: none;
+	}
+}
+/* Tablets: the section icons need the room the name and brand would take. */
+@media (min-width: 701px) and (max-width: 1100px) {
+	.brand-text,
+	.profile-switcher .profile-name {
 		display: none;
 	}
 }
@@ -3505,7 +3522,8 @@ html[data-transition='swap']::view-transition-old(main) {
 	}
 }
 @media (max-width: 420px) {
-	.brand-text {
+	.brand-text,
+	.profile-switcher .profile-name {
 		display: none;
 	}
 }

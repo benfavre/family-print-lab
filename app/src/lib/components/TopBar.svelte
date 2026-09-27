@@ -25,6 +25,24 @@
 		lab.printerActive ? 'p-live' : lab.printerList.some((p) => p.connected) ? 'p-on' : ''
 	);
 	const saveLabel = $derived(lab.saving ? 'Saving…' : '');
+	// Up to eight sections fit; with more (packages add sections), the first seven and a More menu.
+	const shown = $derived(NAV.length > 8 ? NAV.slice(0, 7) : NAV);
+	const rest = $derived(NAV.length > 8 ? NAV.slice(7) : []);
+	const current = $derived(rest.find((n) => n.match(page.url.pathname)));
+	function moreSections(e: MouseEvent) {
+		const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		ui.menu = {
+			title: 'More sections',
+			items: rest.map((n) => ({
+				label: n.label,
+				href: n.href,
+				current: n.match(page.url.pathname)
+			})),
+			x: r.left,
+			y: r.bottom + 6,
+			returnTo: e.currentTarget as HTMLElement
+		};
+	}
 
 	function closeMenus(e: MouseEvent) {
 		if (!(e.target as HTMLElement).closest('.more-picker')) moreOpen = false;
@@ -64,7 +82,7 @@
 	</a>
 	<nav class="views" aria-label="Main navigation">
 		<!-- eslint-disable svelte/no-navigation-without-resolve -- NAV hrefs are built with resolve() in nav.ts -->
-		{#each NAV as item (item.href)}
+		{#each shown as item (item.href)}
 			{@const active = item.match(page.url.pathname)}
 			<a
 				class="nav {item.href === PRINTERS_HREF ? printerDot : ''}"
@@ -89,6 +107,27 @@
 			</a>
 		{/each}
 		<!-- eslint-enable svelte/no-navigation-without-resolve -->
+		{#if rest.length}
+			<button
+				class="nav more-sections"
+				class:active={!!current}
+				aria-haspopup="menu"
+				aria-expanded={ui.menu?.title === 'More sections'}
+				aria-label={current ? `More sections, ${current.label} selected` : 'More sections'}
+				title={rest.map((n) => n.label).join(', ')}
+				onclick={moreSections}
+			>
+				<svg class="nav-icon" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"
+					><path
+						d="M3.5 8h.01M8 8h.01M12.5 8h.01"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2.2"
+						stroke-linecap="round"
+					/></svg
+				><span class="nav-label">{current?.label ?? 'More'}</span>
+			</button>
+		{/if}
 	</nav>
 	<div class="topbar-actions">
 		{#each UI.topBarItems as item (item.id)}<item.component />{/each}

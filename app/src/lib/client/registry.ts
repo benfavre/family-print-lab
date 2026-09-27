@@ -61,6 +61,9 @@ export interface SlotComponent extends SlotEntry {
 export interface PaletteCommand {
 	id: string;
 	label: string;
+	/** Shown after the label; default 'Action'. */
+	hint?: string;
+	/** Extra search words, never shown. */
 	keywords?: string;
 	run: (app: AppContext) => void;
 }

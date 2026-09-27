@@ -43,4 +43,10 @@
 			display: none;
 		}
 	}
+	/* Phones: no room in the top bar; the palette and the Projects page import links too. */
+	@media (max-width: 700px) {
+		.import-button {
+			display: none;
+		}
+	}
 </style>
