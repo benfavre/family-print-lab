@@ -14,9 +14,25 @@ const esc = (s: string) =>
 
 /** Only same-app paths, so the login page cannot be used to send people elsewhere. */
 export function safeNext(next: string | null | undefined): string {
-	if (!next || !next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\')) return '/';
-	if (next.startsWith('/login') || next.startsWith('/api/')) return '/';
-	return next;
+	// Browsers drop tabs and newlines from URLs and read "\" as "/", so "/\t/evil.example" is
+	// "//evil.example": refuse control characters and backslashes outright, then let the URL parser
+	// confirm the path stays on this app.
+	if (
+		!next ||
+		!next.startsWith('/') ||
+		[...next].some((c) => c === '\\' || c <= ' ' || c === '\x7f')
+	)
+		return '/';
+	let url: URL;
+	try {
+		url = new URL(next, 'http://app.invalid');
+	} catch {
+		return '/';
+	}
+	if (url.origin !== 'http://app.invalid') return '/';
+	if (url.pathname === '/login' || url.pathname.startsWith('/login/')) return '/';
+	if (url.pathname.startsWith('/api/')) return '/';
+	return url.pathname + url.search + url.hash;
 }
 
 const STYLE = `

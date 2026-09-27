@@ -5,6 +5,7 @@ import type { DB } from '../../db';
 import { profilePins, profiles } from '../../db/schema';
 import type { SettingsStore } from '../../module-settings';
 import { AppError, parse } from '../../validation';
+import { ParentPin } from '../../kid/pin';
 import { PIN_PATTERN, type AuthMode, type AuthStatus } from '$lib/shared/lan-auth';
 import { hashSecret, verifySecret } from './password';
 import { RateLimiter } from './limiter';
@@ -48,11 +49,14 @@ function tooMany(ms: number) {
 
 export class LanAuth {
 	readonly sessions: SessionStore;
+	private parentPin: ParentPin;
 	/** Per IP address. */
 	readonly ipLimiter: RateLimiter;
 	/** For the household as a whole (there are no user names); shorter lockouts, so a stranger
 	 * hammering it cannot lock the family out for long. */
 	readonly accountLimiter: RateLimiter;
+	/** Password and PIN checks run one at a time (see serial). */
+	private queue: Promise<unknown> = Promise.resolve();
 
 	constructor(
 		private db: DB,
@@ -63,6 +67,7 @@ export class LanAuth {
 		private cost?: number
 	) {
 		this.sessions = new SessionStore(db, now);
+		this.parentPin = new ParentPin(db);
 		this.ipLimiter = new RateLimiter({ now });
 		this.accountLimiter = new RateLimiter({ now, maxLockMs: 15 * 60_000 });
 	}
@@ -114,6 +119,13 @@ export class LanAuth {
 	 */
 	async login(input: unknown, who: { ip: string; userAgent: string }): Promise<LoginResult> {
 		const { secret } = parse(loginInput, input);
+		return this.serial(() => this.checkLogin(secret, who));
+	}
+
+	private async checkLogin(
+		secret: string,
+		who: { ip: string; userAgent: string }
+	): Promise<LoginResult> {
 		const ipKey = `ip:${who.ip}`;
 		const wait = Math.max(this.ipLimiter.wait(ipKey), this.accountLimiter.wait(ACCOUNT));
 		if (wait > 0) throw tooMany(wait);
@@ -189,6 +201,9 @@ export class LanAuth {
 		const { pin } = parse(pinInput, input);
 		const profile = this.db.select().from(profiles).where(eq(profiles.id, profileId)).get();
 		if (!profile) throw new AppError(404, 'That profile no longer exists.');
+		// A kid's PIN opens kid mode, which only the parent PIN closes (as for /api/kid/enter).
+		if (profile.kid && !this.parentPin.isSet())
+			throw new AppError(409, 'Set a parent PIN first, so only grown-ups can leave kid mode.');
 		const owner = await this.pinOwner(pin);
 		if (owner !== undefined && owner !== profileId)
 			throw new AppError(409, 'Another profile already uses that PIN.');
@@ -237,8 +252,22 @@ export class LanAuth {
 			throw new AppError(403, 'Log in with the household password to change this.');
 	}
 
+	/**
+	 * Runs password checks one after another. Each check awaits scrypt, so without this a burst of
+	 * parallel guesses would all pass the limiter before the first wrong one was counted.
+	 */
+	private serial<T>(check: () => Promise<T>): Promise<T> {
+		const run = this.queue.then(check, check);
+		this.queue = run.catch(() => {});
+		return run;
+	}
+
 	/** Checks the current household password (throttled like a login). */
-	private async confirm(current: string | undefined, ctx: AuthContext) {
+	private confirm(current: string | undefined, ctx: AuthContext) {
+		return this.serial(() => this.checkCurrent(current, ctx));
+	}
+
+	private async checkCurrent(current: string | undefined, ctx: AuthContext) {
 		const hash = this.store.get().passwordHash;
 		if (!hash) return;
 		const ipKey = `ip:${ctx.ip}`;

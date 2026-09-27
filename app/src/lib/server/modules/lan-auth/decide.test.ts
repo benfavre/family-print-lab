@@ -30,6 +30,26 @@ describe('where a request comes from', () => {
 		expect(isLocalRequest('192.168.1.20', 'localhost')).toBe(false);
 	});
 
+	it('trusts an ADDRESS_HEADER address only while the app listens on loopback', () => {
+		// A device reaching the app directly could send "X-Forwarded-For: 127.0.0.1" itself.
+		expect(isLocalRequest('127.0.0.1', 'localhost', { ADDRESS_HEADER: 'x-forwarded-for' })).toBe(
+			false
+		);
+		expect(
+			isLocalRequest('127.0.0.1', 'localhost', {
+				ADDRESS_HEADER: 'x-forwarded-for',
+				HOST: '0.0.0.0'
+			})
+		).toBe(false);
+		expect(
+			isLocalRequest('127.0.0.1', 'localhost', {
+				ADDRESS_HEADER: 'x-forwarded-for',
+				HOST: '127.0.0.1'
+			})
+		).toBe(true);
+		expect(isLocalRequest('127.0.0.1', 'localhost', { HOST: '0.0.0.0' })).toBe(true);
+	});
+
 	it('says why the app is reachable from other devices', () => {
 		expect(exposedBy({})).toBeNull();
 		expect(exposedBy({ HOST: '127.0.0.1', ALLOWED_HOSTS: 'localhost' })).toBeNull();
@@ -37,6 +57,26 @@ describe('where a request comes from', () => {
 		expect(exposedBy({ HOST: '127.0.0.1', ALLOWED_HOSTS: 'printlab.local, 192.168.1.20' })).toBe(
 			'ALLOWED_HOSTS=printlab.local,192.168.1.20'
 		);
+	});
+});
+
+describe('machine endpoints with their own token', () => {
+	const password = { hasPassword: true, requireLocal: false };
+	const base = { local: false, session: false, settings: password };
+	it('let a bearer token through to the routes that check it, and nowhere else', () => {
+		for (const pathname of ['/api/ha/printers', '/metrics'])
+			expect(authDecision({ ...base, pathname, bearer: true })).toBe('allow');
+		expect(authDecision({ ...base, pathname: '/metrics' })).toBe('login');
+		for (const pathname of ['/api/workspace', '/api/ha/printers/x', '/api/ha/token', '/'])
+			expect(authDecision({ ...base, pathname, bearer: true })).toBe('login');
+		expect(
+			authDecision({
+				...base,
+				settings: { hasPassword: false, requireLocal: false },
+				pathname: '/api/ha/printers',
+				bearer: true
+			})
+		).toBe('allow');
 	});
 });
 

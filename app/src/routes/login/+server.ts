@@ -1,4 +1,4 @@
-// The login page for other devices (lan-auth). Plain HTML and a form post: see modules/lan-auth/page.ts
+// The login page for other devices (lan-auth). Plain HTML, with a form post as the fallback: see modules/lan-auth/page.ts
 // for why it does not use the app layout.
 import type { RequestHandler } from '@sveltejs/kit';
 import { runtime } from '$lib/server/runtime';
@@ -48,6 +48,7 @@ export const POST: RequestHandler = async (event) => {
 			{ secret: form?.get('secret')?.toString() ?? '' },
 			{ ip: ctx.ip, userAgent: ctx.userAgent }
 		);
+		if (ctx.session) service.sessions.end(ctx.session.id);
 		startSession(event.cookies, result, isSecure(event));
 		return go(result.kidProfileId ? '/kid' : next);
 	} catch (error) {

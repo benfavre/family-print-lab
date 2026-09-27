@@ -134,6 +134,29 @@ describe('logging in', () => {
 	});
 });
 
+describe('parallel guesses', () => {
+	it('are counted one by one, so a burst cannot slip past the limiter', async () => {
+		await auth.setPassword({ password: 'correct horse' }, here);
+		const tries = await Promise.allSettled(
+			Array.from({ length: 12 }, (_, i) => auth.login({ secret: `guess ${i}` }, lan))
+		);
+		const statuses = tries.map((r) =>
+			r.status === 'rejected' ? (r.reason as AppError).status : 200
+		);
+		expect(statuses).toEqual([403, 403, 403, 403, 429, 429, 429, 429, 429, 429, 429, 429]);
+	});
+
+	it('keep going after a check fails', async () => {
+		await auth.setPassword({ password: 'correct horse' }, here);
+		const [bad, good] = await Promise.allSettled([
+			auth.login({ secret: 'nope' }, lan),
+			auth.login({ secret: 'correct horse' }, lan)
+		]);
+		expect(bad.status).toBe('rejected');
+		expect(good.status).toBe('fulfilled');
+	});
+});
+
 describe('profile PINs', () => {
 	let mum: string, kid: string;
 	beforeEach(async () => {
@@ -160,6 +183,15 @@ describe('profile PINs', () => {
 		expect([r.row.profileId, r.kidProfileId]).toEqual([kid, kid]);
 		const mine = await auth.login({ secret: '1234' }, lan);
 		expect(auth.canManage({ local: false, session: mine.row, ...lan })).toBe(false);
+	});
+
+	it('for a kid need a parent PIN, so only a grown-up can leave the kid mode it opens', async () => {
+		// Kid profiles already need one to exist; a restored backup can still lack it.
+		db.$client.prepare("delete from meta where key = 'parent_pin'").run();
+		expect((await fails(auth.setPin(kid, { pin: '2468' }, here))).message).toMatch(
+			/parent PIN first/
+		);
+		await auth.setPin(mum, { pin: '2468' }, here);
 	});
 
 	it('are unique, never the password, 4 to 8 digits', async () => {

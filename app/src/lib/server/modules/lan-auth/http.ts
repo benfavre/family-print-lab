@@ -17,8 +17,12 @@ export function setSessionCookie(cookies: Cookies, token: string, secure: boolea
 	});
 }
 
-export function clearSessionCookie(cookies: Cookies) {
-	cookies.delete(SESSION_COOKIE, { path: '/' });
+/**
+ * `secure` must match how the cookie was set: SvelteKit otherwise marks the deletion Secure (it trusts
+ * adapter-node's https guess), and a browser ignores a Secure Set-Cookie over plain http.
+ */
+export function clearSessionCookie(cookies: Cookies, secure: boolean) {
+	cookies.delete(SESSION_COOKIE, { path: '/', httpOnly: true, sameSite: 'lax', secure });
 }
 
 /** After a login: the session cookie, and kid mode when the PIN was a kid's. */
@@ -55,4 +59,17 @@ export function isSecure(
 	const origin = event.request.headers.get('origin');
 	if (origin && origin !== 'null') return origin.startsWith('https:');
 	return event.url.protocol === 'https:' && !!(env.ORIGIN || env.PROTOCOL_HEADER);
+}
+
+/**
+ * Whether isSecure really knows the scheme (an Origin header, or ORIGIN / PROTOCOL_HEADER). A page
+ * load carries no Origin, so renewing the cookie there could drop the Secure flag of a cookie set
+ * over HTTPS; the auth handle renews it only when this is true.
+ */
+export function knowsScheme(
+	event: Pick<RequestEvent, 'request'>,
+	env: Record<string, string | undefined> = process.env
+): boolean {
+	const origin = event.request.headers.get('origin');
+	return (!!origin && origin !== 'null') || !!(env.ORIGIN || env.PROTOCOL_HEADER);
 }

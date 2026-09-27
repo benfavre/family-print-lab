@@ -15,7 +15,17 @@ export function isLoopbackAddress(ip: string): boolean {
 
 export const isLocalHostname = (hostname: string) => LOCAL_HOSTS.has(hostname.toLowerCase());
 
-export function isLocalRequest(ip: string, hostname: string): boolean {
+/**
+ * With ADDRESS_HEADER set, adapter-node takes the client address from a request header instead of the
+ * socket. A device that reaches the app directly can set that header itself, so the address is only
+ * trusted when the app listens on loopback (HOST), where only a proxy on this computer can connect.
+ */
+export function isLocalRequest(
+	ip: string,
+	hostname: string,
+	env: Record<string, string | undefined> = {}
+): boolean {
+	if (env.ADDRESS_HEADER && !isLocalHostname(env.HOST?.trim() ?? '')) return false;
 	return isLoopbackAddress(ip) && isLocalHostname(hostname);
 }
 
@@ -35,6 +45,15 @@ export function isPublicPath(pathname: string): boolean {
 	return pathname === '/login' || pathname === '/api/auth/login';
 }
 
+/**
+ * Machine endpoints that check their own bearer token (home-automation: Home Assistant's REST sensor
+ * and Prometheus). A request to one of them that carries `Authorization: Bearer …` goes on without a
+ * session, and the route itself refuses a wrong token.
+ */
+const TOKEN_PATHS = [/^\/api\/ha\/printers$/, /^\/metrics$/];
+
+export const isTokenPath = (pathname: string) => TOKEN_PATHS.some((re) => re.test(pathname));
+
 export type AuthDecision =
 	/** Go on. */
 	| 'allow'
@@ -50,12 +69,15 @@ export function authDecision(o: {
 	local: boolean;
 	/** Whether this request carries a live session. */
 	session: boolean;
+	/** Whether it carries an `Authorization: Bearer` token (checked by the route, see isTokenPath). */
+	bearer?: boolean;
 	/** null when the login module is not running. */
 	settings: { hasPassword: boolean; requireLocal: boolean } | null;
 }): AuthDecision {
 	if (o.session) return 'allow';
 	const s = o.settings;
 	if (o.local && !(s?.hasPassword && s.requireLocal)) return 'allow';
+	if (o.bearer && isTokenPath(o.pathname)) return 'allow';
 	if (!s) return 'unavailable';
 	if (!s.hasPassword) return 'setup';
 	return isPublicPath(o.pathname) ? 'allow' : 'login';

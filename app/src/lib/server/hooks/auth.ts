@@ -10,7 +10,7 @@ import { KID_COOKIE, setKidCookie } from '../kid/session';
 import { authDecision, isLocalRequest } from '../modules/lan-auth/decide';
 import { PAGE_CSP, setupPage } from '../modules/lan-auth/page';
 import { SESSION_COOKIE } from '../modules/lan-auth/sessions';
-import { isSecure, setSessionCookie } from '../modules/lan-auth/http';
+import { isSecure, knowsScheme, setSessionCookie } from '../modules/lan-auth/http';
 import type { AuthContext } from '../modules/lan-auth/service';
 
 declare global {
@@ -48,10 +48,16 @@ export const auth: Handle = async ({ event, resolve }) => {
 	const rt = runtime();
 	const service = rt.module('lan-auth');
 	const ip = clientAddress(event);
-	const local = isLocalRequest(ip, event.url.hostname);
-	const found = service?.sessions.find(event.cookies.get(SESSION_COOKIE), { ip }) ?? null;
+	const local = isLocalRequest(ip, event.url.hostname, process.env);
+	const token = event.cookies.get(SESSION_COOKIE);
+	const found = service?.sessions.find(token, { ip }) ?? null;
 	const secure = isSecure(event);
-	if (found?.touched) setSessionCookie(event.cookies, event.cookies.get(SESSION_COOKIE)!, secure);
+	const write = !['GET', 'HEAD'].includes(event.request.method);
+	// Keep the browser's cookie as long-lived as the session it slid forward, but only when the
+	// scheme is known (see knowsScheme); writes renew it too, since the 10-minute touch may have
+	// landed on a page load.
+	if (found && token && (found.touched || write) && knowsScheme(event))
+		setSessionCookie(event.cookies, token, secure);
 	event.locals.auth = {
 		local,
 		session: found?.row ?? null,
@@ -64,9 +70,10 @@ export const auth: Handle = async ({ event, resolve }) => {
 		pathname,
 		local,
 		session: !!found,
+		bearer: /^Bearer\s/i.test(event.request.headers.get('authorization') ?? ''),
 		settings: service?.settings() ?? null
 	});
-	const api = pathname.startsWith('/api/') || !['GET', 'HEAD'].includes(event.request.method);
+	const api = pathname.startsWith('/api/') || write;
 	if (decision === 'login') {
 		if (api) return refuse(401, 'Log in first.');
 		const next = pathname + event.url.search;
@@ -91,18 +98,23 @@ export const auth: Handle = async ({ event, resolve }) => {
 	// A kid who logged in with their own PIN stays in kid mode even if the kid cookie goes missing;
 	// only the parent PIN (which releases the session below) lets this device out.
 	const profileId = found?.row.profileId;
-	if (profileId && !event.cookies.get(KID_COOKIE)) {
-		const kid = rt.db
-			.select({ kid: profiles.kid })
-			.from(profiles)
-			.where(eq(profiles.id, profileId))
-			.get()?.kid;
-		if (kid) setKidCookie(event.cookies, profileId, secure);
-	}
+	const kidSession =
+		!!profileId &&
+		!!rt.db.select({ kid: profiles.kid }).from(profiles).where(eq(profiles.id, profileId)).get()
+			?.kid;
+	if (kidSession && !event.cookies.get(KID_COOKIE)) setKidCookie(event.cookies, profileId, secure);
 
 	const response = await resolve(event);
 	if (!found || !service) return response;
-	if (profileId && pathname === '/api/kid/exit' && event.request.method === 'POST' && response.ok)
+	// Only a kid's session is released, and only by a real parent PIN: /api/kid/exit also answers 200
+	// when no parent PIN is set, which must not turn a PIN session into a household one.
+	if (
+		kidSession &&
+		pathname === '/api/kid/exit' &&
+		event.request.method === 'POST' &&
+		response.ok &&
+		rt.pin.isSet()
+	)
 		service.sessions.release(found.row.id);
 	// Logging a device out also closes its live updates stream.
 	if ((response.headers.get('content-type') ?? '').startsWith('text/event-stream') && response.body)
@@ -136,8 +148,9 @@ export function closeWhenEnded(response: Response, id: string, events: EventEmit
 					off();
 					controller.close();
 				} else controller.enqueue(value);
-			} catch {
+			} catch (error) {
 				off();
+				controller.error(error);
 			}
 		},
 		cancel(reason) {

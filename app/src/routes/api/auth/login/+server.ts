@@ -12,7 +12,10 @@ import { safeNext } from '$lib/server/modules/lan-auth/page';
 export const POST = api(async (event, rt) => {
 	const input = await readJson(event.request, 10_000);
 	const ctx = authContext(event);
-	const result = await authService(rt).login(input, { ip: ctx.ip, userAgent: ctx.userAgent });
+	const service = authService(rt);
+	const result = await service.login(input, { ip: ctx.ip, userAgent: ctx.userAgent });
+	// Logging in again replaces this browser's old session rather than leaving it in the list.
+	if (ctx.session) service.sessions.end(ctx.session.id);
 	startSession(event.cookies, result, isSecure(event));
 	const next = (input as { next?: unknown }).next;
 	return json({

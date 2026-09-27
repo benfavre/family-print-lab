@@ -6,13 +6,17 @@ import type { Cookies, RequestEvent } from '@sveltejs/kit';
 import { startTestLab, type TestLab } from '../testing/harness';
 import { ParentPin } from '../kid/pin';
 import { KID_COOKIE } from '../kid/session';
-import { SESSION_COOKIE } from '../modules/lan-auth/sessions';
+import { eq } from 'drizzle-orm';
+import { sessions } from '../db/schema';
+import { SESSION_COOKIE, tokenHash } from '../modules/lan-auth/sessions';
 import type { LanAuth } from '../modules/lan-auth/service';
 import { isSecure } from '../modules/lan-auth/http';
 import { auth } from './auth';
 import { crossSiteGuard, kidGuard } from './index';
 import { GET as loginGet, POST as loginPost } from '../../../routes/login/+server';
 import { POST as logoutPost } from '../../../routes/api/auth/logout/+server';
+import { POST as kidEnter } from '../../../routes/api/kid/enter/+server';
+import { POST as kidExit } from '../../../routes/api/kid/exit/+server';
 
 let t: TestLab, service: LanAuth;
 const holder = globalThis as Record<symbol, unknown>;
@@ -40,14 +44,21 @@ beforeEach(async () => {
 /** A cookie jar that behaves like SvelteKit's (newly set cookies are visible to later gets). */
 function jar(initial: Record<string, string> = {}) {
 	const values = new Map(Object.entries(initial));
+	const sets: { name: string; secure: boolean }[] = [];
 	const cookies = {
 		get: (name: string) => values.get(name),
 		getAll: () => [...values].map(([name, value]) => ({ name, value })),
-		set: (name: string, value: string) => void values.set(name, value),
-		delete: (name: string) => void values.delete(name),
+		set: (name: string, value: string, o: { secure: boolean }) => {
+			values.set(name, value);
+			sets.push({ name, secure: o.secure });
+		},
+		delete: (name: string, o: { secure: boolean }) => {
+			values.delete(name);
+			sets.push({ name, secure: o.secure });
+		},
 		serialize: () => ''
 	} as unknown as Cookies;
-	return { cookies, values };
+	return { cookies, values, sets };
 }
 
 function event(
@@ -61,7 +72,7 @@ function event(
 		headers?: Record<string, string>;
 	} = {}
 ) {
-	const { cookies, values } = jar(o.cookies);
+	const { cookies, values, sets } = jar(o.cookies);
 	const u = new URL(url);
 	const request = new Request(u, {
 		method: o.method ?? 'GET',
@@ -77,15 +88,15 @@ function event(
 		route: { id: o.routeId === undefined ? u.pathname : o.routeId },
 		getClientAddress: () => o.ip ?? '127.0.0.1'
 	} as unknown as RequestEvent;
-	return { ev, values };
+	return { ev, values, sets };
 }
 
 const ok = async () => new Response('ok');
 
 async function through(url: string, o: Parameters<typeof event>[1] = {}) {
-	const { ev, values } = event(url, o);
+	const { ev, values, sets } = event(url, o);
 	const res = await auth({ event: ev, resolve: ok });
-	return { res, values, ev };
+	return { res, values, ev, sets };
 }
 
 async function setPassword(password = 'correct horse') {
@@ -203,12 +214,37 @@ describe('the login page and form', () => {
 			'https://evil.example',
 			'//evil.example',
 			'/\\evil.example',
-			'/api/export'
+			// Browsers drop tabs and newlines, which would make these "//evil.example".
+			'/\t/evil.example',
+			'/\n/evil.example',
+			'/\r\n/evil.example',
+			'/api/export',
+			'/login?next=//evil.example'
 		]) {
 			const r = event('http://printlab.local/login', form({ secret: 'correct horse', next }));
 			r.ev.locals.auth = { local: false, session: null, ip: '192.168.1.20', userAgent: '' };
 			expect((await loginPost(r.ev)).headers.get('location')).toBe('/');
 		}
+	});
+
+	it('keeps a same-app next path as it was', async () => {
+		await setPassword();
+		const r = event(
+			'http://printlab.local/login',
+			form({ secret: 'correct horse', next: '/jobs?printer=p1#queue' })
+		);
+		r.ev.locals.auth = { local: false, session: null, ip: '192.168.1.20', userAgent: '' };
+		expect((await loginPost(r.ev)).headers.get('location')).toBe('/jobs?printer=p1#queue');
+	});
+
+	it('replaces the old session when a browser logs in again', async () => {
+		await setPassword();
+		const old = service.sessions.create({ profileId: null, userAgent: '', ip: '' });
+		const r = event('http://printlab.local/login', form({ secret: 'correct horse' }));
+		r.ev.locals.auth = { local: false, session: old.row, ip: '192.168.1.20', userAgent: '' };
+		expect((await loginPost(r.ev)).status).toBe(303);
+		expect(service.sessions.find(old.token)).toBeNull();
+		expect(service.sessions.find(r.values.get(SESSION_COOKIE))).not.toBeNull();
 	});
 
 	it('throttles brute force from the form', async () => {
@@ -268,6 +304,27 @@ describe('kids and PINs', () => {
 		expect(
 			(await chain('http://printlab.local/projects', { [SESSION_COOKIE]: token })).res.status
 		).toBe(200);
+	});
+
+	it('a grown-up’s PIN session stays theirs through /api/kid/exit (it answers 200 without a PIN too)', async () => {
+		await setPassword();
+		const dad = t.rt.lab.createProfile({ name: 'Dad', color: 'green' });
+		await service.update({ profilePins: true }, HERE);
+		await service.setPin(dad, { pin: '2468' }, HERE);
+		const { token } = await service.login(
+			{ secret: '2468' },
+			{ ip: '192.168.1.20', userAgent: '' }
+		);
+		const { ev } = event('http://printlab.local/api/kid/exit', {
+			ip: '192.168.1.20',
+			method: 'POST',
+			cookies: { [SESSION_COOKIE]: token },
+			body: '{"pin":""}',
+			headers: { 'content-type': 'application/json', origin: 'http://printlab.local' }
+		});
+		expect((await auth({ event: ev, resolve: ok })).status).toBe(200);
+		expect(service.sessions.find(token)?.row.profileId).toBe(dad);
+		expect(service.canManage(ev.locals.auth!)).toBe(false);
 	});
 
 	it('the login page is reachable in kid mode', async () => {
@@ -339,6 +396,75 @@ describe('CSRF and logging out', () => {
 		expect((await reader.read()).done).toBe(true);
 		expect(cancelled).toBe(true);
 		expect(service.sessions.find(token)).toBeNull();
+	});
+});
+
+describe('machine endpoints', () => {
+	it('let a bearer token through to the routes that check it themselves', async () => {
+		await setPassword();
+		const bearer = { authorization: 'Bearer plab_abc' };
+		const ha = await through('http://printlab.local/api/ha/printers', {
+			ip: '192.168.1.30',
+			headers: bearer
+		});
+		expect(ha.res.status).toBe(200);
+		const other = await through('http://printlab.local/api/workspace', {
+			ip: '192.168.1.30',
+			headers: bearer
+		});
+		expect(other.res.status).toBe(401);
+	});
+});
+
+describe('renewing the cookie', () => {
+	const stale = (token: string) =>
+		t.rt.db
+			.update(sessions)
+			.set({ lastSeenAt: new Date(Date.now() - 60 * 60_000).toISOString() })
+			.where(eq(sessions.id, tokenHash(token)))
+			.run();
+
+	it('happens only when the scheme is known, so an HTTPS cookie never loses Secure', async () => {
+		await setPassword();
+		const { token } = service.sessions.create({ profileId: null, userAgent: '', ip: '' });
+		const cookies = { [SESSION_COOKIE]: token };
+		stale(token);
+		// A page load has no Origin: the session slides, the cookie is left alone.
+		const page = await through('http://printlab.local/jobs', { ip: '192.168.1.20', cookies });
+		expect(page.res.status).toBe(200);
+		expect(page.sets).toEqual([]);
+		// A write names its origin: renewed, Secure as the browser's scheme says.
+		const write = await through('http://printlab.local/api/jobs', {
+			ip: '192.168.1.20',
+			cookies,
+			method: 'POST',
+			headers: { origin: 'https://printlab.local' }
+		});
+		expect(write.sets).toEqual([{ name: SESSION_COOKIE, secure: true }]);
+	});
+});
+
+describe('kid mode cookies on a LAN name over plain http', () => {
+	it('are set and cleared without Secure, so the browser keeps (and drops) them', async () => {
+		if (!new ParentPin(t.rt.db).isSet()) t.rt.pin.set({ pin: '9999' });
+		const cy = t.rt.lab.createProfile({ name: 'Cy', color: 'pink', age: 7, kid: 'little' });
+		const headers = { 'content-type': 'application/json', origin: 'http://printlab.local' };
+		const enter = event('https://printlab.local/api/kid/enter', {
+			method: 'POST',
+			body: JSON.stringify({ profileId: cy }),
+			headers
+		});
+		expect((await kidEnter(enter.ev)).status).toBe(200);
+		expect(enter.sets).toEqual([{ name: KID_COOKIE, secure: false }]);
+		const exit = event('https://printlab.local/api/kid/exit', {
+			method: 'POST',
+			body: '{"pin":"9999"}',
+			headers,
+			cookies: { [KID_COOKIE]: cy }
+		});
+		expect((await kidExit(exit.ev)).status).toBe(200);
+		expect(exit.sets).toEqual([{ name: KID_COOKIE, secure: false }]);
+		expect(exit.values.has(KID_COOKIE)).toBe(false);
 	});
 });
 

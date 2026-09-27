@@ -13,6 +13,7 @@
 
 	const { lab, ui } = useApp();
 	let auth = $state<AuthStatus | null>(null);
+	let loadFailed = $state(false);
 	let working = $state<string | null>(null);
 
 	// Password form (set, or change with the current one).
@@ -32,7 +33,9 @@
 	const profiles = $derived(lab.ws.profiles);
 
 	async function load() {
-		auth = await lab.call<AuthStatus>('GET', '/api/auth');
+		const res = await lab.call<AuthStatus>('GET', '/api/auth');
+		loadFailed = !res;
+		if (res) auth = res;
 	}
 	onMount(load);
 
@@ -41,6 +44,8 @@
 		const res = await lab.call<{ auth: AuthStatus }>(method, path, body, done);
 		working = null;
 		if (res?.auth) auth = res.auth;
+		// A refused change leaves the radio the browser ticked: redraw them from the server (keyed below).
+		else if (!res) await load();
 		return !!res;
 	}
 
@@ -171,7 +176,11 @@
 		<code>.env.example</code>).
 	</p>
 
-	{#if !auth}
+	{#if !auth && loadFailed}
+		<p class="panel-empty">
+			Could not load these settings. <button class="mini" onclick={load}>Try again</button>
+		</p>
+	{:else if !auth}
 		<p class="panel-empty">Loading…</p>
 	{:else}
 		{#if auth.exposedBy && !on}
@@ -235,27 +244,30 @@
 
 			{#if on}
 				<div class="ac-options">
-					<fieldset>
-						<legend>Other devices log in with</legend>
-						<label
-							><input
-								type="radio"
-								name="ac-mode"
-								checked={auth.mode === 'password'}
-								disabled={!!working}
-								onchange={() => run('mode', 'PATCH', '/api/auth/settings', { profilePins: false })}
-							/> The household password</label
-						>
-						<label
-							><input
-								type="radio"
-								name="ac-mode"
-								checked={auth.mode === 'profiles'}
-								disabled={!!working}
-								onchange={() => run('mode', 'PATCH', '/api/auth/settings', { profilePins: true })}
-							/> The password, or each person’s own PIN (a kid’s PIN opens kid mode)</label
-						>
-					</fieldset>
+					{#key auth}
+						<fieldset>
+							<legend>Other devices log in with</legend>
+							<label
+								><input
+									type="radio"
+									name="ac-mode"
+									checked={auth.mode === 'password'}
+									disabled={!!working}
+									onchange={() =>
+										run('mode', 'PATCH', '/api/auth/settings', { profilePins: false })}
+								/> The household password</label
+							>
+							<label
+								><input
+									type="radio"
+									name="ac-mode"
+									checked={auth.mode === 'profiles'}
+									disabled={!!working}
+									onchange={() => run('mode', 'PATCH', '/api/auth/settings', { profilePins: true })}
+								/> The password, or each person’s own PIN (a kid’s PIN opens kid mode)</label
+							>
+						</fieldset>
+					{/key}
 					<label class="ac-check"
 						><input
 							type="checkbox"
