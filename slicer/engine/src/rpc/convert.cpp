@@ -199,6 +199,7 @@ Project project_from(const Json &j, const std::string &where) {
 		plate.locked = opt_bool(pl, "locked", false);
 		plate.bed_type = opt_string(pl, "bedType");
 		plate.print_sequence = opt_string(pl, "printSequence");
+		plate.filament_map_mode = opt_string(pl, "filamentMapMode");
 		plate.spiral_vase = opt_bool(pl, "spiralVase", false);
 		for (size_t k = 0; k < pl["filamentMaps"].size(); ++k)
 			if (pl["filamentMaps"][k].is_number()) plate.filament_maps.push_back(static_cast<int>(pl["filamentMaps"][k].as_int()));
@@ -384,6 +385,12 @@ Json to_json(const Project &p, const std::map<std::string, MeshInfo> &meshes) {
 		Json pj(Json::Object{{"index", pl.index}, {"name", pl.name}, {"locked", pl.locked}, {"instances", instances}, {"config", to_json(pl.config)}});
 		if (!pl.bed_type.empty()) pj["bedType"] = pl.bed_type;
 		if (!pl.print_sequence.empty()) pj["printSequence"] = pl.print_sequence;
+		if (!pl.filament_map_mode.empty()) pj["filamentMapMode"] = pl.filament_map_mode;
+		if (!pl.filament_maps.empty()) {
+			Json maps = Json::array();
+			for (int map : pl.filament_maps) maps.push_back(map);
+			pj["filamentMaps"] = std::move(maps);
+		}
 		if (pl.spiral_vase) pj["spiralVase"] = true;
 		plates.push_back(pj);
 	}

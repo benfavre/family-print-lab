@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <fstream>
 #include <thread>
 
@@ -19,6 +20,8 @@
 #include "libslic3r/Format/bbs_3mf.hpp"
 #include "libslic3r/ProjectTask.hpp"
 #include "upstream.hpp"
+#include "facade/flush.hpp"
+#include "facade/slice_config.hpp"
 
 namespace printlab::upstream {
 
@@ -52,11 +55,15 @@ int layers_from_header(const std::string &gcode_file) {
 // upstream colour/material calculator, nozzle volume and long-retraction rules for each nozzle.
 void prepare_flush_volumes(DynamicPrintConfig &config, int extruders) {
 	const auto *colours = config.option<ConfigOptionStrings>("filament_colour");
-	if (!colours || colours->values.size() < 2) return;
-	const size_t count = colours->values.size();
-	auto &matrix = config.option<ConfigOptionFloats>("flush_volumes_matrix", true)->values;
 	config.option<ConfigOptionFloats>("flush_multiplier", true)->values.resize(extruders, 1.0);
 	config.option<ConfigOptionFloats>("flush_multiplier_fast", true)->values.resize(extruders, 1.2);
+	if (!colours || colours->values.empty()) return;
+	const size_t count = colours->values.size();
+	auto &matrix = config.option<ConfigOptionFloats>("flush_volumes_matrix", true)->values;
+	if (count == 1) {
+		matrix.assign(extruders, 0.);
+		return;
+	}
 	if (matrix.size() == count * count * extruders) return;
 	std::vector<ColorRGBA> rgba(count);
 	for (size_t i = 0; i < count; ++i)
@@ -75,30 +82,46 @@ void prepare_flush_volumes(DynamicPrintConfig &config, int extruders) {
 	const auto *volumes = config.option<ConfigOptionEnumsGeneric>("nozzle_volume_type");
 	matrix.assign(count * count * extruders, 0);
 	for (int nozzle = 0; nozzle < extruders; ++nozzle) {
+		const auto extruder_type = ExtruderType(types ? flush::value(types->values, nozzle, int(etDirectDrive)) : int(etDirectDrive));
+		const auto volume_type = NozzleVolumeType(volumes ? flush::value(volumes->values, nozzle, int(nvtStandard)) : int(nvtStandard));
 		int dataset_index = nozzle;
-		if (config.has("printer_extruder_variant") && config.has("printer_extruder_id") && types && volumes)
+		if (config.has("printer_extruder_variant") && config.has("printer_extruder_id") &&
+		    !config.option<ConfigOptionInts>("printer_extruder_id")->values.empty())
 			dataset_index = config.get_index_for_extruder(nozzle + 1, "printer_extruder_id",
-				ExtruderType(types->get_at(nozzle)), NozzleVolumeType(volumes->get_at(nozzle)), "printer_extruder_variant");
-		const int dataset = datasets && !datasets->values.empty() ? datasets->get_at(std::max(0, dataset_index)) : 0;
+				extruder_type, volume_type, "printer_extruder_variant");
+		const size_t printer_index = dataset_index < 0 ? static_cast<size_t>(nozzle) : static_cast<size_t>(dataset_index);
+		int dataset = datasets ? flush::value(datasets->values, printer_index, 0) : 0;
+		if (dataset == ConfigOptionIntsNullable::nil_value()) dataset = 0;
 		for (size_t from = 0; from < count; ++from) {
-			const double printer_length = machine_length ? machine_length->get_at(nozzle) : 18.;
-			int retract = level && level->value && machine_on && machine_on->get_at(nozzle) == 1 ? int(printer_length) : 0;
-			const auto active = filament_on ? filament_on->get_at(from) : 0;
-			if (active == 0) retract = 0;
-			else if (active == 1 && level && level->value == EnableFilament) {
-				const double length = filament_length ? filament_length->get_at(from) : 18.;
-				retract = int(std::isnan(length) ? printer_length : length);
+			// Raw projects may keep more than one variant per filament. Resolved bundles already
+			// have one entry per filament, so retain that entry if the requested variant is absent.
+			int filament_index = -1;
+			if (config.has("filament_extruder_variant") && config.has("filament_self_index") &&
+			    !config.option<ConfigOptionInts>("filament_self_index")->values.empty())
+				filament_index = config.get_index_for_extruder(from + 1, "filament_self_index",
+					extruder_type, volume_type, "filament_extruder_variant");
+			const size_t fi = filament_index < 0 ? from : static_cast<size_t>(filament_index);
+			int minimum;
+			try {
+				minimum = flush::minimum(volume ? flush::value(volume->values, printer_index, 0.) : 0.,
+					level && level->value, level && level->value == EnableFilament,
+					machine_on ? flush::value(machine_on->values, printer_index, static_cast<unsigned char>(0)) : 0,
+					machine_length ? flush::value(machine_length->values, printer_index, 18.) : 18.,
+					filament_on ? flush::value(filament_on->values, fi, static_cast<unsigned char>(255)) : 255,
+					filament_length ? flush::value(filament_length->values, fi, std::nan("")) : std::nan(""));
+			} catch (const std::invalid_argument &e) {
+				throw EngineError(err::INVALID_CONFIG, e.what(), "", "flush_volumes_matrix");
 			}
-			int minimum = volume ? int(volume->get_at(nozzle)) : 0;
-			minimum -= PI * 1.75 * 1.75 / 4 * retract;
 			FlushVolCalculator calculator(minimum, g_max_flush_volume, dataset);
 			for (size_t to = 0; to < count; ++to) {
 				if (from == to) continue;
 				const auto &a = rgba[from], &b = rgba[to];
-				int amount = support && support->get_at(to) ? g_flush_volume_to_support : calculator.calc_flush_vol(
-					ids ? ids->get_at(from) : "", ids ? ids->get_at(to) : "",
+				const bool to_support = support && flush::value(support->values, to, static_cast<unsigned char>(0));
+				int amount = to_support ? g_flush_volume_to_support : calculator.calc_flush_vol(
+					ids && from < ids->values.size() ? ids->values[from] : "", ids && to < ids->values.size() ? ids->values[to] : "",
 					a.a_uchar(), a.r_uchar(), a.g_uchar(), a.b_uchar(), b.a_uchar(), b.r_uchar(), b.g_uchar(), b.b_uchar());
-				if (support && support->get_at(from) && !support->get_at(to)) amount = std::max(g_min_flush_volume_from_support, amount);
+				if (support && flush::value(support->values, from, static_cast<unsigned char>(0)) && !to_support)
+					amount = std::max(g_min_flush_volume_from_support, amount);
 				matrix[nozzle * count * count + from * count + to] = amount;
 			}
 		}
@@ -151,11 +174,7 @@ PlateStats UpstreamFacade::slice(const std::string &project_id, int plate_index,
 	if (result->model->objects.empty()) throw EngineError(err::NOTHING_TO_SLICE, "There is nothing on this plate to slice.");
 
 	DynamicPrintConfig config = state->config;
-	ConfigMap plate_overrides = plate->config;
-	if (!plate->bed_type.empty()) plate_overrides["curr_bed_type"] = plate->bed_type;
-	if (!plate->print_sequence.empty()) plate_overrides["print_sequence"] = plate->print_sequence;
-	if (plate->spiral_vase) plate_overrides["spiral_mode"] = std::string("1");
-	config.apply(to_config(plate_overrides, scratch()), true);
+	config.apply(to_config(slice_config::plate_overrides(*plate), scratch()), true);
 
 	// filament_map: one extruder per filament, extruder 1 unless the plate says otherwise (BambuStudio.cpp ~6950).
 	int filament_count = 1;
@@ -168,11 +187,12 @@ PlateStats UpstreamFacade::slice(const std::string &project_id, int plate_index,
 	// extruder's volume type.
 	int extruders = 1;
 	if (auto *n = config.option<ConfigOptionFloatsNullable>("nozzle_diameter")) extruders = std::max<int>(1, n->values.size());
+	// CLI 3399: missing nozzle slots inherit the printer defaults, not always Standard.
+	sync_nozzle_volume_type_to_extruder_count(config, true);
 	std::vector<int> &volumes = config.option<ConfigOptionEnumsGeneric>("nozzle_volume_type", true)->values;
-	if (volumes.size() < static_cast<size_t>(extruders)) volumes.resize(extruders, nvtStandard);
+	volumes.resize(extruders, nvtStandard);
 	std::vector<int> &volume_maps = config.option<ConfigOptionInts>("filament_volume_map", true)->values;
-	volume_maps.resize(filament_count, volumes[0]);
-	for (int i = 0; i < filament_count; ++i) volume_maps[i] = volumes[std::clamp(maps[i], 1, extruders) - 1];
+	slice_config::prepare_maps(maps, volume_maps, volumes, filament_count);
 	restore_enum_maps(config);
 	prepare_flush_volumes(config, extruders);
 
