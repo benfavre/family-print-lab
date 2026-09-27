@@ -14,6 +14,7 @@ const lookups: Lookups = {
 			: id === 'j1'
 				? { title: 'Cable dock', kid: null }
 				: null,
+	jobIdForTask: (printerId, task) => (printerId === 'p1' && task === 'rocket_v2' ? 'j1' : null),
 	project: (id) => (id === 'pj' ? { title: 'Dragon', kid: 'Mia' } : null),
 	profile: (id) => (id === 'kid' ? { name: 'Mia' } : null),
 	hms: (code) =>
@@ -83,6 +84,16 @@ describe('event messages', () => {
 		expect(m.title).toBe('Mia’s Pencil rocket is ready');
 		expect(m.body).toBe('100 %');
 		expect(m.kidJob).toBe(true);
+	});
+
+	it('an alert or runout during a kid’s print counts as the kid’s (no picture without say-so)', () => {
+		const kidRunning: Lookups = { ...lookups, jobIdForTask: () => 'kid-job' };
+		const alert = { ...ref, hms: { attr: 0x07000200, code: 0x00020001 } };
+		expect(buildMessage({ name: 'hms.raised', data: alert }, kidRunning, {})!.kidJob).toBe(true);
+		expect(
+			buildMessage({ name: 'ams.runout', data: { ...ref, tray: 0 } }, kidRunning, {})!.kidJob
+		).toBe(true);
+		expect(build('hms.raised', alert)!.kidJob).toBe(false);
 	});
 
 	it('print paused: says why; a runout pause is left to ams.runout', () => {

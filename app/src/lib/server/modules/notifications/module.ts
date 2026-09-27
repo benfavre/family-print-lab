@@ -64,6 +64,7 @@ export default defineModule({
 						)
 						.get(id) as never
 				),
+			jobIdForTask: (printerId, task) => ctx.lab.jobIdForTask(printerId, task),
 			project: (id) =>
 				kidTitle(
 					sql

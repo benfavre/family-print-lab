@@ -16,6 +16,7 @@ const lookups: Lookups = {
 	printerName: () => 'X2D',
 	printerState: () => null,
 	job: (id) => (id === 'kid-job' ? { title: 'Rocket', kid: 'Mia' } : null),
+	jobIdForTask: () => null,
 	project: () => null,
 	profile: () => null,
 	hms: () => ({ text: 'Fan is slow.', severity: 'serious' }),

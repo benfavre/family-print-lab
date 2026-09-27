@@ -18,6 +18,8 @@ export interface Lookups {
 	printerState(id: string): { task: string; percent: number | null } | null;
 	/** A job's project title and, when a kid's profile owns it, that profile's display name. */
 	job(id: string): { title: string; kid: string | null } | null;
+	/** The job a printer is running for this task, if the lab linked one. */
+	jobIdForTask(printerId: string, task: string): string | null;
 	project(id: string): { title: string; kid: string | null } | null;
 	profile(id: string): { name: string } | null;
 	/** Plain words for an alert (the hms package when present, else the code). */
@@ -113,7 +115,12 @@ export function buildMessage(
 		kid: job?.kid ?? ''
 	};
 	let level = def.level;
-	let kidJob = !!job?.kid;
+	// Alerts and runouts name no job, but a picture would still show the print that is running.
+	const running =
+		!job && printerId && state?.task
+			? lookups.job(lookups.jobIdForTask(printerId, state.task) ?? '')
+			: null;
+	let kidJob = !!(job ?? running)?.kid;
 	let severity: Message['hmsSeverity'] = null;
 	let dedupe: string | null = null;
 	let link: string | null = printerId ? `/printers/${printerId}` : null;
