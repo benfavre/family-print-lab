@@ -9,7 +9,13 @@ import path from 'node:path';
 import { AppError } from '../validation';
 import { PRINTER_MODELS } from '$lib/shared/printers/models';
 import { ERROR, type Progress } from '$lib/shared/slicer/protocol';
-import { IDENTITY, emptyProject, type ConfigMap, type Project } from '$lib/shared/slicer/project';
+import {
+	IDENTITY,
+	emptyProject,
+	type ConfigMap,
+	type ConfigValue,
+	type Project
+} from '$lib/shared/slicer/project';
 import type { ProfileService, ResolvedBundle } from '$lib/shared/slicer/profiles';
 import { EngineError, openSlicer, slicerWorkDir, type SlicerEngine } from './engine';
 import {
@@ -63,6 +69,11 @@ export interface SliceOutcome {
 	/** Which backend sliced it. */
 	backend: SlicerEngine['info']['engine'];
 	warnings: string[];
+}
+
+/** A per-filament value's first entry (config values are a string or a list of them). */
+function first(v: ConfigValue | undefined, fallback: string): string {
+	return (Array.isArray(v) ? v[0] : v) || fallback;
 }
 
 /** Plain words for the task list from an engine's progress. */
@@ -202,8 +213,9 @@ export async function sliceModel(req: SliceRequest): Promise<SliceOutcome> {
 			{
 				index: 1,
 				preset: selection.filaments[0],
-				color: s.color ?? '#888888',
-				type: String(bundle.filaments[0]?.config.filament_type?.[0] ?? 'PLA')
+				// The spool's colour, else the preset's own (a made-up grey would reach the printer's AMS mapping).
+				color: s.color ?? first(bundle.filaments[0]?.config.filament_colour, '#FFFFFF'),
+				type: first(bundle.filaments[0]?.config.filament_type, 'PLA')
 			}
 		];
 		project.meshes[meshId] = {

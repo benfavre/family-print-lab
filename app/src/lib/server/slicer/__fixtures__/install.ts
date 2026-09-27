@@ -16,7 +16,14 @@ export interface FakeInstall {
 	resources: string;
 	/** One JSON line per run of the fake CLI. */
 	log: string;
-	runs(): { args: string[]; machine: Record<string, unknown>; process: Record<string, unknown>; filaments: Record<string, unknown>[] }[];
+	runs(): {
+		args: string[];
+		machine: Record<string, unknown>;
+		process: Record<string, unknown>;
+		filaments: Record<string, unknown>[];
+		/** Each input STL's bounds as loaded: [minX, minY, minZ, maxX, maxY, maxZ]. */
+		inputs: number[][];
+	}[];
 	remove(): void;
 }
 

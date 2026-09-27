@@ -332,7 +332,15 @@ export class StdioEngine implements SlicerEngine {
 	}
 }
 
-let shared: { key: string; engine: Promise<SlicerEngine | null> } | null = null;
+let shared: {
+	key: string;
+	engine: Promise<SlicerEngine | null>;
+	/** Set when the engine was found but did not start: when to try it again. */
+	retryAt?: number;
+} | null = null;
+
+/** How long a found engine that did not start is left alone before it is tried again. */
+export const ENGINE_RETRY_MS = 60_000;
 
 /** Scratch space for both backends (one per server process). */
 export const slicerWorkDir = () => path.join(os.tmpdir(), `printlab-slicer-${process.pid}`);
@@ -341,17 +349,23 @@ export const slicerWorkDir = () => path.join(os.tmpdir(), `printlab-slicer-${pro
  * Our engine if one is found (slicer/locate.ts) and it negotiates, else the stock Bambu Studio or
  * OrcaSlicer command line behind the same interface, else null. Shared by the whole server; the engine
  * itself restarts after a crash and stops when idle. A different environment (tests, a changed
- * PRINTLAB_SLICER_PATH) opens a fresh one.
+ * PRINTLAB_SLICER_PATH) opens a fresh one. A found engine that does not start is tried again after
+ * ENGINE_RETRY_MS (the binary may have been fixed meanwhile), not on every call: each try costs a
+ * process start and the hello timeout.
  */
 export async function openSlicer(
 	env: Record<string, string | undefined> = process.env,
-	o: { cwd?: string; host?: SlicerHost } = {}
+	o: { cwd?: string; host?: SlicerHost; now?: number } = {}
 ): Promise<SlicerEngine | null> {
 	const found = locateEngine(env, o.cwd, o.host);
 	const cli = locateCli(env, o.cwd, o.host);
 	const key = `${found?.path ?? ''}|${cli?.path ?? ''}`;
-	if (shared?.key !== key) {
-		const old = shared;
+	const now = o.now ?? Date.now();
+	const retry = shared?.key === key && shared.retryAt !== undefined && now >= shared.retryAt;
+	if (shared?.key !== key || retry) {
+		// A different install replaces the old backend; a retry leaves it to the jobs still using it
+		// (the command line holds no process, and its project folders are its own).
+		const old = retry ? null : shared;
 		shared = {
 			key,
 			engine: (async (): Promise<SlicerEngine | null> => {
@@ -376,9 +390,8 @@ export async function openSlicer(
 	}
 	const mine = shared;
 	const engine = await mine.engine;
-	// A failed engine start is retried on the next call (the binary may have been fixed meanwhile).
-	if ((!engine || engine.info.engine !== 'printlab-slicer') && found && shared === mine)
-		shared = null;
+	if (found && engine?.info.engine !== 'printlab-slicer' && mine.retryAt === undefined)
+		mine.retryAt = now + ENGINE_RETRY_MS;
 	return engine;
 }
 

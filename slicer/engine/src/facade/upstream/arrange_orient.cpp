@@ -22,10 +22,20 @@ std::vector<Oriented> UpstreamFacade::orient(const std::string &project_id, cons
 		if (std::find(object_ids.begin(), object_ids.end(), ids[i]) == object_ids.end()) continue;
 		if (cancel()) throw EngineError(err::CANCELLED, "Cancelled.");
 		ModelObject *mo = model->objects[i];
-		if (mo->instances.empty()) continue;
+		if (mo->instances.empty() || mo->volumes.empty()) continue;
 		progress({"orienting", int(100 * out.size() / std::max<size_t>(1, object_ids.size())), "Finding the best way up…"});
+		// orient() turns the volumes, not the instance, then centres them again (Orient.cpp orient(ModelObject*),
+		// ModelObject::rotate): our parts keep their transforms, so the change goes into the instance:
+		// instance' × volume' = new × volume, so new = instance' × volume' × volume⁻¹ (the same for every volume).
+		// It also moves the object onto its instance's origin; like the CLI backend, keep it where it stood.
+		const Transform3d volume_before = mo->volumes.front()->get_matrix();
+		const Vec3d centre_before = mo->instance_bounding_box(0).center();
 		orientation::orient(mo);
-		out.push_back({ids[i], from_transform3d(mo->instances.front()->get_matrix())});
+		mo->invalidate_bounding_box();
+		const Vec3d centre_after = mo->instance_bounding_box(0).center();
+		Transform3d placed = mo->instances.front()->get_matrix() * mo->volumes.front()->get_matrix() * volume_before.inverse();
+		placed.pretranslate(Vec3d(centre_before.x() - centre_after.x(), centre_before.y() - centre_after.y(), 0));
+		out.push_back({ids[i], from_transform3d(placed)});
 	}
 	return out;
 }

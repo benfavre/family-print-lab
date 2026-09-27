@@ -31,7 +31,13 @@ import {
 	type PlateStats,
 	type SliceWarning
 } from '$lib/shared/slicer/protocol';
-import type { ConfigMap, Project, Transform } from '$lib/shared/slicer/project';
+import {
+	IDENTITY,
+	type ConfigMap,
+	type ConfigValue,
+	type Project,
+	type Transform
+} from '$lib/shared/slicer/project';
 import type { ResolvedBundle, ResolvedPreset } from '$lib/shared/slicer/profiles';
 import type { SlicedPlate } from '$lib/shared/domain';
 import { DIR, profileBook, type ProfileBook } from './profile-book';
@@ -67,6 +73,7 @@ export interface CliRun {
 	/** 1-based filament of each input. */
 	filamentIds: number[];
 	orient?: boolean;
+	/** true arranges, false keeps the positions baked into the inputs, undefined leaves it to the CLI. */
 	arrange?: boolean;
 	allowRotations?: boolean;
 	/** Plate to slice (1-based); undefined exports the arranged/oriented project without slicing. */
@@ -87,10 +94,11 @@ export function cliArgs(r: CliRun): string[] {
 	if (r.inputs.length > 1 || r.filamentIds.some((f) => f !== 1))
 		args.push('--load-filament-ids', r.filamentIds.join(','));
 	if (r.orient) args.push('--orient', '1');
+	// STL inputs are arranged unless told not to (BambuStudio.cpp: need_arrange starts true for them).
 	if (r.arrange) {
 		args.push('--arrange', '1');
 		if (r.allowRotations === false) args.push('--allow-rotations=0');
-	}
+	} else if (r.arrange === false) args.push('--arrange', '0');
 	if (r.slice !== undefined) args.push('--slice', String(r.slice));
 	args.push('--outputdir', 'out', '--export-3mf', r.output);
 	for (const input of r.inputs) {
@@ -130,22 +138,83 @@ export function parseResult(json: unknown): CliResult {
 	};
 }
 
-/** Build item transforms of a 3MF in order: one per object instance (bbs_3mf.cpp _add_build_to_model_stream). */
-export function readBuildItems(buf: Buffer): Transform[] {
+function transformAttr(tag: string): Transform {
+	const t = tag.match(/\btransform="([^"]*)"/)?.[1];
+	const nums = t ? t.trim().split(/\s+/).map(Number) : [];
+	return (nums.length === 12 && nums.every(Number.isFinite) ? nums : [...IDENTITY]) as Transform;
+}
+
+/**
+ * Where each build item's geometry ends up, in order (one per object instance). Bambu Studio writes
+ * vertices untransformed, the volume matrix on the object's component and the instance matrix on the
+ * build item (bbs_3mf.cpp _add_mesh_to_object_stream, _add_build_to_model_stream), and its auto-orient
+ * turns the volumes rather than the instance (ModelObject::rotate), so both are needed: the object's
+ * first component, then the item.
+ */
+export function readPlacements(buf: Buffer): Transform[] {
 	const model = readZip(buf, (name) => (name === '3D/3dmodel.model' ? 'all' : false)).get(
 		'3D/3dmodel.model'
 	);
 	if (!model) throw new Error('The 3MF has no 3D/3dmodel.model.');
-	const build = model.toString('utf8').match(/<build\b[^>]*>([\s\S]*?)<\/build>/)?.[1] ?? '';
+	const text = model.toString('utf8');
+	const components = new Map<string, Transform>();
+	for (const m of text.matchAll(/<object\b([^>]*)>([\s\S]*?)<\/object>/g)) {
+		const id = m[1].match(/\bid="([^"]*)"/)?.[1];
+		const component = m[2].match(/<component\b[^>]*>/)?.[0];
+		if (id && component) components.set(id, transformAttr(component));
+	}
+	const build = text.match(/<build\b[^>]*>([\s\S]*?)<\/build>/)?.[1] ?? '';
 	return [...build.matchAll(/<item\b[^>]*>/g)].map((m) => {
-		const t = m[0].match(/\btransform="([^"]*)"/)?.[1];
-		const nums = t ? t.trim().split(/\s+/).map(Number) : [];
-		return (
-			nums.length === 12 && nums.every(Number.isFinite)
-				? nums
-				: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]
-		) as Transform;
+		const id = m[0].match(/\bobjectid="([^"]*)"/)?.[1] ?? '';
+		return compose(components.get(id) ?? [...IDENTITY], transformAttr(m[0]));
 	});
+}
+
+/** A translation as a transform. */
+export const move = (x: number, y: number, z = 0): Transform => [
+	1,
+	0,
+	0,
+	0,
+	1,
+	0,
+	0,
+	0,
+	1,
+	x,
+	y,
+	z
+];
+
+/** The printable area's bounds [minX, minY, maxX, maxY] from printable_area ("0x0", "256x0", …). */
+export function bedBounds(
+	printableArea: ConfigValue | undefined
+): [number, number, number, number] {
+	const points = (Array.isArray(printableArea) ? printableArea : [])
+		.map((p) => p.split('x').map(Number))
+		.filter((p) => p.length === 2 && p.every(Number.isFinite));
+	if (!points.length) return [0, 0, 256, 256];
+	const xs = points.map((p) => p[0]);
+	const ys = points.map((p) => p[1]);
+	return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+}
+
+/**
+ * A plate's origin in project coordinates. Bambu Studio lays plates out in a grid with a fifth of a
+ * plate between them (PartPlate.hpp compute_colum_count, PartPlate.cpp LOGICAL_PART_PLATE_GAP); the
+ * engine does the same (facade/upstream/model_io.cpp plate_origin), so both backends agree.
+ */
+export function plateOrigin(
+	printableArea: ConfigValue | undefined,
+	plates: number,
+	index: number
+): [number, number] {
+	const [minX, minY, maxX, maxY] = bedBounds(printableArea);
+	const value = Math.sqrt(Math.max(1, plates));
+	const round = Math.round(value);
+	const cols = value > round ? round + 1 : round;
+	const i = Math.max(0, index - 1);
+	return [(i % cols) * (maxX - minX) * 1.2, 0 - Math.floor(i / cols) * (maxY - minY) * 1.2];
 }
 
 /**
@@ -270,6 +339,11 @@ export function modelOfPrinter(printerModel: string): ModelCode | null {
 // ---------------------------------------------------------------------------------------------
 // The backend
 
+type SceneObject = Project['objects'][number];
+type Instance = SceneObject['instances'][number];
+/** An instance for the CLI and the origin of the plate it is on. */
+type Row = { object: SceneObject; instance: Instance; plate: number; origin: [number, number] };
+
 interface CliProject {
 	project: Project | null;
 	bundle: ResolvedBundle | null;
@@ -277,6 +351,8 @@ interface CliProject {
 	sliced: Map<number, { file: string; stats: PlateStats }>;
 	dir: string;
 }
+
+type Ready = CliProject & { project: Project; bundle: ResolvedBundle };
 
 export interface CliEngineOptions {
 	location: SlicerLocation;
@@ -380,7 +456,7 @@ export class CliEngine implements SlicerEngine {
 		const p = this.project(id);
 		if (!p.project || !p.bundle)
 			throw new EngineError(ERROR.INVALID_REQUEST, 'The project has not been synced yet.');
-		return p as CliProject & { project: Project; bundle: ResolvedBundle };
+		return p as Ready;
 	}
 
 	private handlers: {
@@ -423,7 +499,8 @@ export class CliEngine implements SlicerEngine {
 			return { ok: true };
 		},
 		'project.create': () => {
-			const projectId = `cli-${this.nextProject++}`;
+			// Unique on disk too: another CliEngine may share the work folder (openSlicer retries).
+			const projectId = `cli-${this.nextProject++}-${crypto.randomBytes(4).toString('hex')}`;
 			const dir = path.join(this.o.workDir, projectId);
 			fs.mkdirSync(dir, { recursive: true });
 			this.projects.set(projectId, {
@@ -474,55 +551,67 @@ export class CliEngine implements SlicerEngine {
 		},
 		orient: async (p, o) => {
 			const cp = this.ready(p.projectId);
-			const objects = cp.project.objects.filter((ob) => p.objectIds.includes(ob.id));
-			const rows = objects
-				.filter((ob) => ob.instances.length)
-				.map((ob) => ({ object: ob, instance: ob.instances[0] }));
+			const rows = cp.project.objects
+				.filter((ob) => p.objectIds.includes(ob.id) && ob.instances.length)
+				.map((ob) => this.row(cp, ob, ob.instances[0]));
 			if (!rows.length) return { objects: [] };
 			o.onProgress?.({ stage: 'orienting', percent: 10, message: 'Finding the best way up…' });
-			const items = await this.runProject(cp, rows, { orient: true }, o);
+			// Positions stay (--arrange 0): only the way up changes, as the engine's orient does.
+			const run = await this.runPlaced(cp, rows, { orient: true, arrange: false }, o);
 			return {
-				objects: rows.map((r, i) => ({
-					objectId: r.object.id,
-					transform: compose(r.instance.transform, items[i])
-				}))
+				objects: rows.map((r, i) => {
+					// The CLI centres the turned object on the bed origin; put it back where it stood.
+					const before = centreOf(run.baked[i]);
+					const after = centreOf(bake(run.baked[i], run.moves[i]));
+					const back = move(before[0] - after[0], before[1] - after[1]);
+					return { objectId: r.object.id, transform: this.placed(r, compose(run.moves[i], back)) };
+				})
 			};
 		},
 		arrange: async (p, o) => {
 			const cp = this.ready(p.projectId);
 			const plates =
 				p.plate === 'all'
-					? cp.project.plates
+					? cp.project.plates.filter((pl) => !pl.locked)
 					: cp.project.plates.filter((pl) => pl.index === p.plate);
 			const out: EngineMethods['arrange']['result']['instances'] = [];
+			const [minX, minY, maxX, maxY] = bedBounds(cp.bundle.printer.config.printable_area);
 			for (const plate of plates) {
-				const rows = this.plateRows(cp.project, plate.index).rows;
+				const rows = this.plateRows(cp, plate.index).rows;
 				if (!rows.length) continue;
 				o.onProgress?.({ stage: 'arranging', percent: 10, message: 'Arranging the plate…' });
-				const items = await this.runProject(
+				const run = await this.runPlaced(
 					cp,
 					rows,
 					{ arrange: true, allowRotations: p.allowRotation },
 					o
 				);
-				rows.forEach((r, i) =>
+				rows.forEach((r, i) => {
+					// What did not fit went to plates the CLI made up; the engine says the same.
+					const b = bboxOf(bake(run.baked[i], run.moves[i]));
+					if (b[0] < minX - 0.5 || b[1] < minY - 0.5 || b[3] > maxX + 0.5 || b[4] > maxY + 0.5)
+						throw new EngineError(ERROR.OUTSIDE_PLATE, 'Some objects do not fit on the plate.', {
+							message: 'Some objects do not fit on the plate.',
+							objectId: r.object.id
+						});
 					out.push({
 						objectId: r.object.id,
 						instanceId: r.instance.id,
 						plate: plate.index,
-						transform: compose(r.instance.transform, items[i])
-					})
-				);
+						transform: this.placed(r, run.moves[i])
+					});
+				});
 			}
 			return { instances: out };
 		},
 		slice: async (p, o) => {
 			const cp = this.ready(p.projectId);
-			const { rows, warnings } = this.plateRows(cp.project, p.plate);
+			const { rows, warnings } = this.plateRows(cp, p.plate);
 			if (!rows.length)
 				throw new EngineError(ERROR.NOTHING_TO_SLICE, 'There is nothing on this plate to slice.');
 			o.onProgress?.({ stage: 'slicing', percent: 5, message: 'Slicing in Bambu Studio…' });
-			const run = await this.run(cp, rows, { slice: 1 }, o);
+			// Sliced where the objects stand (--arrange 0), on its own plate at the bed origin.
+			const run = await this.run(cp, rows, { slice: 1, arrange: false }, o, p.plate);
 			const target = path.join(cp.dir, `plate_${p.plate}.gcode.3mf`);
 			fs.copyFileSync(run.output, target);
 			const file = readSliced(fs.readFileSync(target));
@@ -592,14 +681,12 @@ export class CliEngine implements SlicerEngine {
 	}
 
 	/** What the CLI can print from a plate: model parts per instance, and warnings for the rest. */
-	private plateRows(project: Project, plateIndex: number) {
+	private plateRows(cp: Ready, plateIndex: number) {
+		const { project } = cp;
 		const plate = project.plates.find((pl) => pl.index === plateIndex);
 		if (!plate) throw new EngineError(ERROR.INVALID_PARAMS, `There is no plate ${plateIndex}.`);
 		const warnings: SliceWarning[] = [];
-		const rows: {
-			object: Project['objects'][number];
-			instance: Project['objects'][number]['instances'][number];
-		}[] = [];
+		const rows: Row[] = [];
 		for (const ref of plate.instances) {
 			const object = project.objects.find((ob) => ob.id === ref.objectId);
 			const instance = object?.instances.find((i) => i.id === ref.instanceId);
@@ -623,44 +710,75 @@ export class CliEngine implements SlicerEngine {
 					objectId: object.id,
 					plate: plateIndex
 				});
-			rows.push({ object, instance });
+			rows.push(this.row(cp, object, instance, plateIndex));
 		}
 		return { rows, warnings };
 	}
 
-	/** Runs the CLI without slicing and returns the build item transform of each row. */
-	private async runProject(
-		cp: CliProject & { project: Project; bundle: ResolvedBundle },
-		rows: {
-			object: Project['objects'][number];
-			instance: Project['objects'][number]['instances'][number];
-		}[],
+	/** An instance to hand the CLI, with the origin of its plate (it slices every plate at the bed origin). */
+	private row(cp: Ready, object: SceneObject, instance: Instance, plate?: number): Row {
+		plate ??=
+			cp.project.plates.find((pl) =>
+				pl.instances.some((i) => i.objectId === object.id && i.instanceId === instance.id)
+			)?.index ?? 1;
+		const origin = plateOrigin(
+			cp.bundle.printer.config.printable_area,
+			cp.project.plates.length,
+			plate
+		);
+		return { object, instance, plate, origin };
+	}
+
+	/** An instance transform back in project coordinates after the CLI moved its baked mesh by `m`. */
+	private placed(r: Row, m: Transform): Transform {
+		const [x, y] = r.origin;
+		return compose(compose(compose(r.instance.transform, move(-x, -y)), m), move(x, y));
+	}
+
+	/**
+	 * Runs the CLI without slicing and returns, for each row, how it moved the mesh it was given. The
+	 * CLI centres a loaded mesh in its volume (ModelVolume::center_geometry_after_creation), so the
+	 * move is: back from that centre, then the placement it wrote.
+	 */
+	private async runPlaced(
+		cp: Ready,
+		rows: Row[],
 		what: { orient?: boolean; arrange?: boolean; allowRotations?: boolean },
 		o: CallOptions
-	): Promise<Transform[]> {
-		const run = await this.run(cp, rows, what, o);
-		const items = readBuildItems(fs.readFileSync(run.output));
-		if (items.length !== rows.length)
+	): Promise<{ baked: Float32Array[]; moves: Transform[] }> {
+		const run = await this.run(cp, rows, what, o, rows[0].plate);
+		let placements: Transform[];
+		try {
+			placements = readPlacements(fs.readFileSync(run.output));
+		} finally {
+			fs.rmSync(run.output, { force: true });
+		}
+		if (placements.length !== rows.length)
 			throw new EngineError(
 				ERROR.UPSTREAM_EXCEPTION,
 				'The slicer returned a different number of objects than it was given.'
 			);
-		return items;
+		return {
+			baked: run.baked,
+			moves: placements.map((t, i) => {
+				const [x, y, z] = centreOf(run.baked[i]);
+				return compose(move(-x, -y, -z), t);
+			})
+		};
 	}
 
+	/** One run of the CLI on `rows`, each baked into bed coordinates of its plate; `plateIndex` gives the settings. */
 	private async run(
-		cp: CliProject & { project: Project; bundle: ResolvedBundle },
-		rows: {
-			object: Project['objects'][number];
-			instance: Project['objects'][number]['instances'][number];
-		}[],
+		cp: Ready,
+		rows: Row[],
 		what: { orient?: boolean; arrange?: boolean; allowRotations?: boolean; slice?: number },
-		o: CallOptions
-	): Promise<{ output: string; result: CliResult; log: string }> {
+		o: CallOptions,
+		plateIndex: number
+	): Promise<{ output: string; result: CliResult; log: string; baked: Float32Array[] }> {
 		const dir = fs.mkdtempSync(path.join(cp.dir, 'run-'));
 		try {
 			const { project, bundle } = cp;
-			const plate = project.plates[0];
+			const plate = project.plates.find((pl) => pl.index === plateIndex);
 			const split = splitOverrides(bundle, { ...project.projectConfig, ...(plate?.config ?? {}) });
 			const write = (file: string, data: unknown) =>
 				fs.writeFileSync(path.join(dir, file), JSON.stringify(data));
@@ -678,6 +796,7 @@ export class CliEngine implements SlicerEngine {
 			});
 			const inputs: string[] = [];
 			const filamentIds: number[] = [];
+			const baked: Float32Array[] = [];
 			rows.forEach((r, i) => {
 				const parts = r.object.parts.filter((pt) => pt.type === 'model');
 				const soups = parts.map((pt) => {
@@ -690,7 +809,10 @@ export class CliEngine implements SlicerEngine {
 								fs.readFileSync(file),
 								file.toLowerCase().endsWith('.obj') ? 'obj' : '3mf'
 							);
-					return bake(soup, compose(pt.transform, r.instance.transform));
+					return bake(
+						soup,
+						compose(compose(pt.transform, r.instance.transform), move(-r.origin[0], -r.origin[1]))
+					);
 				});
 				const all = new Float32Array(soups.reduce((a, s) => a + s.length, 0));
 				let at = 0;
@@ -698,6 +820,7 @@ export class CliEngine implements SlicerEngine {
 					all.set(s, at);
 					at += s.length;
 				}
+				baked.push(all);
 				const name = `object ${i + 1}.stl`;
 				fs.writeFileSync(path.join(dir, name), writeStl(all, r.object.name.slice(0, 60)));
 				inputs.push(name);
@@ -735,7 +858,7 @@ export class CliEngine implements SlicerEngine {
 			// Keep the output past the run directory's removal.
 			const kept = path.join(cp.dir, `out-${crypto.randomBytes(4).toString('hex')}.3mf`);
 			fs.renameSync(output, kept);
-			return { output: kept, result, log };
+			return { output: kept, result, log, baked };
 		} finally {
 			fs.rmSync(dir, { recursive: true, force: true });
 		}
@@ -797,6 +920,11 @@ function bboxOf(soup: Float32Array) {
 			b[k + 3] = Math.max(b[k + 3], soup[i + k]);
 		}
 	return soup.length ? b : ([0, 0, 0, 0, 0, 0] as typeof b);
+}
+
+function centreOf(soup: Float32Array): [number, number, number] {
+	const b = bboxOf(soup);
+	return [(b[0] + b[3]) / 2, (b[1] + b[4]) / 2, (b[2] + b[5]) / 2];
 }
 
 function lastError(log: string) {

@@ -6,6 +6,7 @@ import { ERROR, type Progress } from '$lib/shared/slicer/protocol';
 import {
 	EngineError,
 	StdioEngine,
+	ENGINE_RETRY_MS,
 	closeSlicer,
 	openSlicer,
 	type StdioEngineOptions
@@ -201,6 +202,25 @@ describe('openSlicer', () => {
 			};
 			const slicer = await openSlicer(env, { cwd: '/nowhere' });
 			expect(slicer?.info.engine).toBe('bambu-studio-cli');
+		} finally {
+			install.remove();
+		}
+	});
+
+	it('tries an engine that did not start again after a minute, not on every call', async () => {
+		const install = fakeInstall();
+		try {
+			const env = {
+				PRINTLAB_SLICER_PATH: engineBinary({ FAKE_MAJOR: '2' }),
+				BAMBU_STUDIO_PATH: install.bin
+			};
+			const now = Date.now();
+			const first = await openSlicer(env, { cwd: '/nowhere', now });
+			expect(first?.info.engine).toBe('bambu-studio-cli');
+			expect(await openSlicer(env, { cwd: '/nowhere', now: now + 1000 })).toBe(first);
+			const later = await openSlicer(env, { cwd: '/nowhere', now: now + ENGINE_RETRY_MS + 1 });
+			expect(later?.info.engine).toBe('bambu-studio-cli');
+			expect(later).not.toBe(first);
 		} finally {
 			install.remove();
 		}

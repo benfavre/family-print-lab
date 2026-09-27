@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ResolvedBundle } from '$lib/shared/slicer/profiles';
+import { PLATES } from '$lib/shared/domain';
+import { bedTypeFor } from './profile-book';
 import { applyOverrides, jobOverrides } from './service';
 
 const preset = (
@@ -74,5 +76,19 @@ describe('job settings on top of the presets', () => {
 		expect(out.process.origin.sparse_infill_density).toBe('job');
 		expect(out.filaments[1].config.filament_colour).toEqual(['#FF7A2F']);
 		expect(bundle.full.sparse_infill_density).toBe('15%');
+	});
+});
+
+describe('the job’s build plate', () => {
+	it('names each plate the way Bambu Studio’s curr_bed_type does', () => {
+		expect(PLATES.map(bedTypeFor)).toEqual([
+			'Textured PEI Plate',
+			'High Temp Plate',
+			'Cool Plate',
+			'Engineering Plate',
+			'Textured PEI Plate'
+		]);
+		expect(bedTypeFor('Cool Plate SuperTack')).toBe('Supertack Plate');
+		expect(bedTypeFor('')).toBe('Textured PEI Plate');
 	});
 });

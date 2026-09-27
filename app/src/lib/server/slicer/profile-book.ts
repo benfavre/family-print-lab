@@ -229,14 +229,17 @@ export interface SliceChoice {
 	bedType: string;
 }
 
-/** Job plate words → Bambu Studio curr_bed_type values. */
+/**
+ * Job plate words → Bambu Studio curr_bed_type values (PrintConfig.cpp s_keys_map_BedType); the first
+ * match wins, so "Cool Plate SuperTack" is the SuperTack and a plain cool plate is the Cool Plate.
+ */
 const BED_TYPES: Record<string, string> = {
+	supertack: 'Supertack Plate',
 	'textured pei': 'Textured PEI Plate',
 	'smooth pei': 'High Temp Plate',
 	'high temp': 'High Temp Plate',
 	engineering: 'Engineering Plate',
-	'cool plate': 'Supertack Plate',
-	supertack: 'Supertack Plate'
+	'cool plate': 'Cool Plate'
 };
 
 export function bedTypeFor(plate: string): string {

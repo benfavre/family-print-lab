@@ -3,7 +3,10 @@
 // SplitModel | WithGcode | SkipModel, PartPlateList::store_to_3mf_structure): G-code, prediction,
 // weight, filaments, printer_model_id and nozzle_diameters. Plate pictures come from files (the
 // client's, or ours from features/thumbnails); the exporter copies them in when no GL render exists.
+#include <algorithm>
 #include <boost/filesystem.hpp>
+#include <cctype>
+#include <cstdlib>
 #include <iomanip>
 #include <sstream>
 
@@ -20,10 +23,12 @@ namespace fs = boost::filesystem;
 
 namespace {
 
+/** "#RRGGBB[AA]" as RGBA; anything else (a user's odd colour) keeps the default orange rather than throwing. */
 std::array<uint8_t, 4> parse_colour(const std::string &hex) {
 	std::array<uint8_t, 4> c{0xEB, 0x81, 0x43, 0xFF};
-	if (hex.size() >= 7 && hex[0] == '#')
-		for (int i = 0; i < 3; ++i) c[i] = static_cast<uint8_t>(std::stoi(hex.substr(1 + 2 * i, 2), nullptr, 16));
+	if (hex.size() < 7 || hex[0] != '#' || !std::all_of(hex.begin() + 1, hex.begin() + 7, [](char ch) { return std::isxdigit(static_cast<unsigned char>(ch)) != 0; }))
+		return c;
+	for (int i = 0; i < 3; ++i) c[i] = static_cast<uint8_t>(std::strtol(hex.substr(1 + 2 * i, 2).c_str(), nullptr, 16));
 	return c;
 }
 

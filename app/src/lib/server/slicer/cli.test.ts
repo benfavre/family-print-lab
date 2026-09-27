@@ -14,13 +14,20 @@ import {
 	compose,
 	finishSliced,
 	parseResult,
-	readBuildItems,
+	plateOrigin,
+	readPlacements,
 	splitOverrides,
 	versionFromPath
 } from './cli';
 import { machinePreset, selectionOf } from './profile-book';
 import { sliceModel, type SliceSettings } from './service';
 import { fakeInstall, type FakeInstall } from './__fixtures__/install';
+
+/** Transforms equal to float precision. */
+function near(actual: Transform, expected: Transform) {
+	expect(actual).toHaveLength(12);
+	actual.forEach((v, i) => expect(v, `number ${i}`).toBeCloseTo(expected[i], 3));
+}
 
 /** A 20 × 20 × 10 mm box as a triangle soup. */
 function box(w = 20, d = 20, h = 10): Float32Array {
@@ -95,6 +102,10 @@ describe('command line arguments', () => {
 		);
 		expect(args).not.toContain('--slice');
 		expect(args.slice(-2)).toEqual(['object 1.stl', 'object 2.stl']);
+		// Positions kept on request: STL inputs are arranged otherwise.
+		expect(cliArgs({ ...base, slice: 1, arrange: false }).join(' ')).toContain(
+			'--arrange 0 --slice 1'
+		);
 	});
 
 	it('never passes an input that looks like an option', () => {
@@ -143,18 +154,39 @@ describe('reading what the command line wrote', () => {
 		expect(parseResult(null).ok).toBe(false);
 	});
 
-	it('reads build item transforms in order', () => {
-		const model = `<model><resources/><build p:UUID="x">
+	it('reads where each object ended up: its component (the volume), then its build item', () => {
+		const model = `<model><resources>
+  <object id="2" p:UUID="00010000" type="model">
+   <components>
+    <component p:path="/3D/Objects/object_1.model" objectid="1" transform="1 0 0 0 0 1 0 -1 0 0 0 10"/>
+   </components>
+  </object>
+  <object id="4" type="model"><mesh/></object>
+ </resources><build p:UUID="x">
   <item objectid="2" p:UUID="0002" transform="1 0 0 0 1 0 0 0 1 128 128 5" printable="1"/>
   <item objectid="4" transform="0 1 0 -1 0 0 0 0 1 10 20 0" printable="1"/>
   <item objectid="6" printable="1"/>
  </build></model>`;
 		const file = writeZip([['3D/3dmodel.model', Buffer.from(model)]]);
-		expect(readBuildItems(file)).toEqual([
-			[1, 0, 0, 0, 1, 0, 0, 0, 1, 128, 128, 5],
+		expect(readPlacements(file)).toEqual([
+			// Turned about X by the volume, lifted 10 by it, then moved by the item.
+			[1, 0, 0, 0, 0, 1, 0, -1, 0, 128, 128, 15],
 			[0, 1, 0, -1, 0, 0, 0, 0, 1, 10, 20, 0],
 			[...IDENTITY]
 		]);
+	});
+
+	it('lays plates out in Bambu Studio’s grid', () => {
+		const bed = ['0x0', '256x0', '256x256', '0x256'];
+		expect(plateOrigin(bed, 1, 1)).toEqual([0, 0]);
+		expect(plateOrigin(bed, 2, 2)[0]).toBeCloseTo(307.2);
+		// Four plates: two columns, so plate 3 starts the second row (rows go towards -y).
+		expect(plateOrigin(bed, 4, 3)).toEqual([0, -307.2]);
+		expect(plateOrigin(bed, 4, 4)[0]).toBeCloseTo(307.2);
+		// Five plates: three columns.
+		expect(plateOrigin(bed, 5, 3)[0]).toBeCloseTo(614.4);
+		expect(plateOrigin(['0x0', '180x0', '180x180', '0x180'], 2, 2)[0]).toBeCloseTo(216);
+		expect(plateOrigin(undefined, 1, 1)).toEqual([0, 0]);
 	});
 
 	it('composes transforms: the first one applies first', () => {
@@ -426,21 +458,137 @@ describe('CliEngine against a fake Bambu Studio', () => {
 		];
 		await e.call('project.sync', { projectId, project, presets });
 		const { objects } = await e.call('orient', { projectId, objectIds: ['o1'] });
-		expect(objects[0].transform).toEqual([1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 0, 0]);
+		// Stood up about X where it stood: the same centre (10, 10), resting on the bed.
+		near(objects[0].transform, [1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 15, 0]);
 		project.objects[0].instances[0].transform = objects[0].transform;
 		await e.call('project.sync', { projectId, project, presets });
 		const { instances } = await e.call('arrange', { projectId, plate: 1 });
-		// Arranging keeps the orientation and adds the position.
-		expect(instances[0]).toMatchObject({
-			objectId: 'o1',
-			instanceId: 'i1',
-			plate: 1,
-			transform: [1, 0, 0, 0, 0, 1, 0, -1, 0, 60, 100, 0]
-		});
+		// Arranging keeps the orientation and moves the centre to where the fake puts it (60, 100).
+		expect(instances[0]).toMatchObject({ objectId: 'o1', instanceId: 'i1', plate: 1 });
+		near(instances[0].transform, [1, 0, 0, 0, 0, 1, 0, -1, 0, 50, 105, 0]);
 		// Sliced with the orientation baked in: 20 mm tall, 100 layers.
 		project.objects[0].instances[0].transform = instances[0].transform;
 		await e.call('project.sync', { projectId, project, presets });
 		expect((await e.call('slice', { projectId, plate: 1 })).layers).toBe(100);
+	});
+
+	/** A synced project of 20 × 20 × 10 boxes for the P1S: `at` is each instance's plate and position. */
+	async function boxes(e: CliEngine, at: { plate: number; x: number; y: number }[], plates = 1) {
+		const selection = selectionOf({
+			machine: 'Bambu Lab P1S 0.4 nozzle',
+			process: '0.20mm Standard @BBL P1S',
+			filament: 'Bambu PLA Basic @BBL P1S'
+		});
+		const presets = await e.call('profiles.resolve', { selection });
+		const stl = path.join(work, 'box.stl');
+		fs.writeFileSync(stl, writeStl(box()));
+		await e.call('mesh.put', { meshId: 'box', path: stl, format: 'stl' });
+		const { projectId } = await e.call('project.create', { presets: selection });
+		const project = emptyProject(selection);
+		project.objects = at.map((a, i) => ({
+			id: `o${i + 1}`,
+			name: `Box ${i + 1}`,
+			parts: [
+				{
+					id: 'p1',
+					name: 'Box',
+					type: 'model' as const,
+					mesh: 'box',
+					transform: [...IDENTITY] as Transform,
+					config: {}
+				}
+			],
+			instances: [
+				{
+					id: 'i1',
+					transform: [1, 0, 0, 0, 1, 0, 0, 0, 1, a.x, a.y, 0] as Transform,
+					printable: true
+				}
+			],
+			config: {},
+			heightRanges: [],
+			printable: true
+		}));
+		project.plates = Array.from({ length: plates }, (_, p) => ({
+			index: p + 1,
+			name: '',
+			locked: false,
+			instances: at
+				.map((a, i) => ({ a, ref: { objectId: `o${i + 1}`, instanceId: 'i1' } }))
+				.filter(({ a }) => a.plate === p + 1)
+				.map(({ ref }) => ref),
+			config: {}
+		}));
+		await e.call('project.sync', { projectId, project, presets });
+		return { projectId, project, presets };
+	}
+
+	it('slices and arranges a later plate at the bed origin, with that plate’s settings', async () => {
+		const e = open();
+		// Two plates side by side: plate 2 starts 256 × 1.2 = 307.2 mm along x.
+		const { projectId, project, presets } = await boxes(
+			e,
+			[
+				{ plate: 1, x: 20, y: 20 },
+				{ plate: 2, x: 307.2 + 100, y: 100 }
+			],
+			2
+		);
+		project.plates[1].bedType = 'Cool Plate';
+		project.plates[1].config = { wall_loops: '5' };
+		await e.call('project.sync', { projectId, project, presets });
+		const before = install.runs().length;
+		expect((await e.call('slice', { projectId, plate: 2 })).layers).toBe(50);
+		const run = install.runs().slice(before)[0];
+		// Only plate 2's box, where it stands on that plate, kept there (--arrange 0).
+		expect(run.inputs).toHaveLength(1);
+		expect(run.inputs[0][0]).toBeCloseTo(100, 3);
+		expect(run.inputs[0][1]).toBeCloseTo(100, 3);
+		expect(run.args.join(' ')).toContain('--curr-bed-type Cool Plate');
+		expect(run.args.join(' ')).toContain('--arrange 0');
+		expect(run.process.wall_loops).toBe('5');
+
+		const { instances } = await e.call('arrange', { projectId, plate: 2 });
+		// The fake centres it at (60, 100) on the bed: back in project coordinates on plate 2.
+		expect(instances).toHaveLength(1);
+		expect(instances[0]).toMatchObject({ objectId: 'o2', plate: 2 });
+		near(instances[0].transform, [1, 0, 0, 0, 1, 0, 0, 0, 1, 307.2 + 50, 90, 0]);
+	});
+
+	it('says so when the plate cannot take everything it arranges', async () => {
+		const e = open();
+		// The fake puts object i at x = 60 + 70·i: the fourth box lands off the 256 mm bed.
+		const { projectId } = await boxes(
+			e,
+			[0, 1, 2, 3].map(() => ({ plate: 1, x: 0, y: 0 }))
+		);
+		await expect(e.call('arrange', { projectId, plate: 1 })).rejects.toMatchObject({
+			code: ERROR.OUTSIDE_PLATE
+		});
+		const { projectId: three } = await boxes(
+			e,
+			[0, 1, 2].map(() => ({ plate: 1, x: 0, y: 0 }))
+		);
+		expect((await e.call('arrange', { projectId: three, plate: 'all' })).instances).toHaveLength(3);
+	});
+
+	it('keeps each project’s files apart, even across engines sharing a folder', async () => {
+		const dir = fs.mkdtempSync(path.join(work, 'shared-'));
+		const location = {
+			kind: 'bambu-studio-cli' as const,
+			path: install.bin,
+			resourcesDir: install.resources,
+			source: 'installed' as const
+		};
+		const a = new CliEngine({ location, workDir: dir });
+		const b = new CliEngine({ location, workDir: dir });
+		const presets = selectionOf({ machine: 'x', process: 'y', filament: 'z' });
+		const pa = (await a.call('project.create', { presets })).projectId;
+		const pb = (await b.call('project.create', { presets })).projectId;
+		expect(pa).not.toBe(pb);
+		await a.call('project.close', { projectId: pa });
+		expect(fs.existsSync(path.join(dir, pb))).toBe(true);
+		await Promise.all([a.close(), b.close()]);
 	});
 
 	it('reports a failed slice in the slicer’s own words', async () => {

@@ -10,6 +10,7 @@ import { blenderInfo, runJob } from './cad/blender';
 import { OPENSCAD_VERSION, renderScad } from './cad/openscad';
 import { writeStl } from './cad/mesh';
 import { sliceModel } from './slicer/service';
+import { PRINTER_MODELS } from '$lib/shared/printers/models';
 import { AppError } from './validation';
 import {
 	AI_PROVIDERS,
@@ -239,12 +240,13 @@ export async function testIntegration(
 		}
 		// The slicer's row comes from the slicer-engine module; its test is a real slice of a cube.
 		if (id === 'slicer') {
+			const printer = rt.printers.primary()?.model ?? PRINTER_MODELS.N6;
 			const r = await renderScad('cube([20, 20, 10]);');
 			const out = await sliceModel({
 				stl: writeStl(r.soup!),
 				name: 'Test cube',
 				settings: {
-					model: rt.printers.primary()?.model.code ?? 'N6',
+					model: printer.code,
 					nozzle: '0.4',
 					layerHeight: '0.20',
 					material: 'PLA',
@@ -257,7 +259,7 @@ export async function testIntegration(
 			return {
 				ok: true,
 				ms: ms(),
-				detail: `Sliced a test cube for the ${rt.printers.primary()?.model.short ?? 'X2D'} with ${out.backend === 'printlab-slicer' ? 'Print Lab Slicer' : 'the Bambu Studio command line'}: ${out.minutes} min, ${out.grams} g (${out.choice.process}).`
+				detail: `Sliced a test cube for the ${printer.short} with ${out.backend === 'printlab-slicer' ? 'Print Lab Slicer' : 'the Bambu Studio command line'}: ${out.minutes} min, ${out.grams} g (${out.choice.process}).`
 			};
 		}
 		if (id === 'printer') {
