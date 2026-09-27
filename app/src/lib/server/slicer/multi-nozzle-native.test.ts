@@ -54,6 +54,13 @@ describe.runIf(!!BIN)('native multi-extruder grouping', () => {
 				});
 				selection.filaments.push({ ...selection.filaments[0] });
 				const presets = await engine.call('profiles.resolve', { selection });
+				if (model === 'X2D') {
+					// Resolving before grouping must retain both material profiles' Bowden variants.
+					const variants = presets.full.filament_extruder_variant as string[];
+					const owners = presets.full.filament_self_index as string[];
+					for (const id of ['1', '2'])
+						expect(variants.some((v, i) => v === 'Bowden Standard' && owners[i] === id)).toBe(true);
+				}
 				const meshPath = path.join(work, 'cube.stl');
 				fs.writeFileSync(meshPath, cube());
 				const mesh = await engine.call('mesh.put', {
@@ -107,6 +114,9 @@ describe.runIf(!!BIN)('native multi-extruder grouping', () => {
 				];
 
 				project.projectConfig.filament_map_mode = 'Auto For Flush';
+				// Print::get_physical_unprintable_filaments (Print.cpp:3086 at the pin) uses bit N
+				// for physical nozzle N. Keep automatic grouping, but require one material on each.
+				if (model === 'X2D') project.projectConfig.filament_printable = ['1', '2'];
 				project.projectConfig.wipe_tower_x = ['80'];
 				project.projectConfig.wipe_tower_y = ['200'];
 				project.projectConfig.filament_colour = ['#FF0000', '#0000FF'];
@@ -137,6 +147,15 @@ describe.runIf(!!BIN)('native multi-extruder grouping', () => {
 					.map(Number);
 				expect(maps).toHaveLength(2);
 				expect(maps!.every((n) => n === 1 || n === 2)).toBe(true);
+				if (model === 'X2D') {
+					expect(maps).toEqual([1, 2]);
+					const retractions = gcode
+						.match(/^; filament_retraction_length = (.+)$/m)?.[1]
+						.split(/[;,]/)
+						.map(Number);
+					// The pinned PLA Basic profile retracts 0.4 mm on Direct Drive, 3 mm on Bowden.
+					expect(retractions).toEqual([0.4, 3]);
+				}
 			} finally {
 				await engine.close();
 				fs.rmSync(work, { recursive: true, force: true });

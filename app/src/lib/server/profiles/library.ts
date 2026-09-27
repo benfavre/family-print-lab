@@ -14,6 +14,7 @@
 //     print_compatible_printers), as PresetBundle::full_fff_config does (~3255–3545) without the
 //     per-extruder variant expansion, which the engine applies from the *_extruder_variant keys.
 //
+// origin: BambuStudio src/libslic3r/PresetBundle.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
 // origin: BambuStudio src/libslic3r/Preset.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
 import fs from 'node:fs';
 import { AppError } from '../validation';
@@ -590,6 +591,14 @@ export class ProfileLibrary implements ProfileService {
 					: first(values[0] ?? known);
 			}
 		}
+		// full_fff_config(false): variants stay in filament order, with an owner for every entry.
+		// Print uses these ids when automatic grouping moves a filament to another nozzle.
+		const variants = filaments.map((f) => {
+			const values = arr(f.config.filament_extruder_variant);
+			return values.length ? values : ['Direct Drive Standard'];
+		});
+		full.filament_extruder_variant = variants.flat();
+		full.filament_self_index = variants.flatMap((values, i) => values.map(() => String(i + 1)));
 		for (const k of BUNDLE_ERASED) delete full[k];
 		full.print_settings_id = process.name;
 		full.filament_settings_id = filaments.map((f) => f.name);
