@@ -1,4 +1,4 @@
-// Builds the offline printer-error database: app/resources/hms/hms-en.json.gz, the pictures Bambu
+// Builds the offline English/French databases: app/resources/hms/hms-{en,fr}.json.gz, the pictures Bambu
 // shows with some errors (app/resources/hms/images/*.webp) and app/resources/hms/SOURCES.md.
 //   bun run hms:build [--from <bambu studio checkout>] [--allow-unpinned] [--ha <ha-bambulab checkout>]
 // Bambu Studio's resources/hms files come from the tag pinned in slicer/upstream.lock (read through
@@ -46,7 +46,7 @@ const HA_DEVICES: Record<string, string> = {
 	X2D: '20P',
 	A2L: '26A'
 };
-const LANGUAGE = 'en';
+const LANGUAGES = ['en', 'fr'] as const;
 /** Pictures: Bambu shows them at 320×180, so 640 px wide is plenty; each capped, and all together. */
 const IMAGE_WIDTH = 640;
 const IMAGE_MAX_BYTES = 80_000;
@@ -122,23 +122,23 @@ function toWebp(png: Buffer, name: string, tmp: string): Buffer | null {
 	return null;
 }
 
-async function main() {
+async function buildLanguage(language: string) {
 	const lock = readUpstreamLock(root);
 	const up = { from, root, allowUnpinned };
 	const names = await upstreamList('resources/hms', up);
 	const devices = [
 		...new Set(
-			names.map((n) => n.match(new RegExp(`^hms_${LANGUAGE}_(\\w{3})\\.json$`))?.[1] ?? '')
+			names.map((n) => n.match(new RegExp(`^hms_${language}_(\\w{3})\\.json$`))?.[1] ?? '')
 		)
 	]
 		.filter(Boolean)
 		.sort();
-	if (!devices.length) throw new Error('No resources/hms/hms_en_*.json upstream.');
+	if (!devices.length) throw new Error(`No resources/hms/hms_${language}_*.json upstream.`);
 	console.log(`Bambu Studio ${lock.tag}: HMS files for ${devices.join(' ')}`);
 	const bambu = [];
 	for (const device of devices) {
 		const info = JSON.parse(
-			(await upstreamFile(`resources/hms/hms_${LANGUAGE}_${device}.json`, up)).toString('utf8')
+			(await upstreamFile(`resources/hms/hms_${language}_${device}.json`, up)).toString('utf8')
 		) as BambuHmsFile;
 		const actionName = `hms_action_${device}.json`;
 		const actions = names.includes(actionName)
@@ -148,7 +148,7 @@ async function main() {
 			: null;
 		bambu.push({ device, info, actions });
 	}
-	const ha = JSON.parse(zlib.gunzipSync(await haFile(`hms_${LANGUAGE}.json.gz`)).toString('utf8'));
+	const ha = JSON.parse(zlib.gunzipSync(await haFile(`hms_${language}.json.gz`)).toString('utf8'));
 	const wiki = JSON.parse(zlib.gunzipSync(await haFile('wiki_links.json.gz')).toString('utf8'));
 
 	// Which models each prefix covers, from the catalogue.
@@ -167,20 +167,20 @@ async function main() {
 			url: 'https://github.com/bambulab/BambuStudio',
 			ref: `${lock.tag} (${lock.commit})`,
 			licence: 'AGPL-3.0',
-			used: `\`resources/hms/hms_${LANGUAGE}_<device>.json\` and \`hms_action_<device>.json\` for ${devices.join(', ')}; pictures from \`resources/hms/local_image\` (converted to WebP)`
+			used: `\`resources/hms/hms_${language}_<device>.json\` and \`hms_action_<device>.json\` for ${devices.join(', ')}; pictures from \`resources/hms/local_image\` (converted to WebP)`
 		},
 		{
 			name: 'ha-bambulab',
 			url: HA.url,
 			ref: HA.commit,
 			licence: 'MIT',
-			used: `\`${HA.dir}/hms_${LANGUAGE}.json.gz\` (texts for every model, from Bambu's public HMS query) and \`wiki_links.json.gz\``
+			used: `\`${HA.dir}/hms_${language}.json.gz\` (texts for every model, from Bambu's public HMS query) and \`wiki_links.json.gz\``
 		}
 	];
 
 	// First pass to learn which pictures are referenced, then convert them and build for real.
 	const first = buildDatabase({
-		language: LANGUAGE,
+		language,
 		bambu,
 		ha: ha as HaHmsFile,
 		wiki: wiki as HaWikiFile,
@@ -188,7 +188,6 @@ async function main() {
 		devices: byDevice,
 		sources
 	});
-	fs.rmSync(imageDir, { recursive: true, force: true });
 	fs.mkdirSync(imageDir, { recursive: true });
 	const shipped = new Map<string, string>();
 	let total = 0;
@@ -196,6 +195,14 @@ async function main() {
 		const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fpl-hms-'));
 		try {
 			for (const name of first.imageNames) {
+				// Pictures are shared by every language; preserve the already shipped English assets.
+				const existing = name.replace(/\.png$/, '.webp');
+				const target = path.join(imageDir, existing);
+				if (fs.existsSync(target)) {
+					shipped.set(name, existing);
+					total += fs.statSync(target).size;
+					continue;
+				}
 				let png: Buffer;
 				try {
 					png = await upstreamFile(`resources/hms/local_image/${name}`, up);
@@ -220,7 +227,7 @@ async function main() {
 	} else console.warn(`No ffmpeg at ${FFMPEG}: pictures left out.`);
 
 	const { file, unknownModels } = buildDatabase({
-		language: LANGUAGE,
+		language,
 		bambu,
 		ha: ha as HaHmsFile,
 		wiki: wiki as HaWikiFile,
@@ -235,14 +242,12 @@ async function main() {
 		);
 	const json = Buffer.from(JSON.stringify(file));
 	const gz = zlib.gzipSync(json, { level: 9 });
-	fs.writeFileSync(path.join(outDir, `hms-${LANGUAGE}.json.gz`), gz);
-	fs.writeFileSync(
-		path.join(outDir, 'SOURCES.md'),
-		sourcesMd(file, lock.tag, devices, shipped.size, total)
-	);
+	fs.writeFileSync(path.join(outDir, `hms-${language}.json.gz`), gz);
+
 	console.log(
-		`Wrote hms-${LANGUAGE}.json.gz (${(gz.length / 1024).toFixed(0)} KB; ${Object.keys(file.hms).length} HMS codes, ${Object.keys(file.errors).length} print errors, ${file.messages.length} texts) and ${shipped.size} pictures (${(total / 1024).toFixed(0)} KB).`
+		`Wrote hms-${language}.json.gz (${(gz.length / 1024).toFixed(0)} KB; ${Object.keys(file.hms).length} HMS codes, ${Object.keys(file.errors).length} print errors, ${file.messages.length} texts) and ${shipped.size} pictures (${(total / 1024).toFixed(0)} KB).`
 	);
+	return sourcesMd(file, lock.tag, devices, shipped.size, total);
 }
 
 function sourcesMd(
@@ -252,7 +257,7 @@ function sourcesMd(
 	pictures: number,
 	bytes: number
 ) {
-	return `# Printer error help: sources
+	return `## ${file.language === 'fr' ? 'French' : 'English'}
 
 Generated by \`app/tools/hms/build-hms.ts\` (\`bun run hms:build\`); do not edit by hand. The slicer
 update workflow reruns it when \`slicer/upstream.lock\` moves, so these texts follow the pinned Bambu
@@ -269,6 +274,15 @@ Bambu Studio's files win for the devices they cover (${bambuDevices
 tables fill in the rest. Bambu Studio is AGPL-3.0 like Family Print Lab; ha-bambulab is MIT
 (Copyright (c) Greg Hesp and contributors).
 `;
+}
+
+async function main() {
+	const sources = [];
+	for (const language of LANGUAGES) sources.push(await buildLanguage(language));
+	fs.writeFileSync(
+		path.join(outDir, 'SOURCES.md'),
+		'# Printer error help: sources\n\n' + sources.join('\n')
+	);
 }
 
 main().catch((error) => {

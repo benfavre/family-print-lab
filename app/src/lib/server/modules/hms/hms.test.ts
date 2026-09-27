@@ -12,6 +12,10 @@ import { GET as printerHms } from '../../../../routes/api/printers/[id]/hms/+ser
 import { POST as pressAction } from '../../../../routes/api/printers/[id]/hms/action/+server';
 import { GET as lookup } from '../../../../routes/api/hms/lookup/+server';
 import { GET as jobEvents } from '../../../../routes/api/hms/jobs/[jobId]/+server';
+import {
+	GET as getSettings,
+	PUT as putSettings
+} from '../../../../routes/api/hms/settings/+server';
 
 let t: TestLab;
 const holder = globalThis as Record<symbol, unknown>;
@@ -113,6 +117,33 @@ describe('hms module with a simulated printer', () => {
 			true
 		);
 		expect(service.history(info.id, { severity: ['serious'] }).total).toBe(1);
+
+		// A language change refreshes the current alert in every tab, keeping its code and actions.
+		const refreshed = vi.fn();
+		t.rt.live.on('live', refreshed);
+		try {
+			expect((await call(getSettings, '/api/hms/settings', {})).body).toEqual({ language: 'en' });
+			const changed = await call(putSettings, '/api/hms/settings', {}, { language: 'fr' });
+			expect(changed.status).toBe(200);
+			expect(changed.body).toMatchObject({ language: 'fr' });
+			expect(refreshed).toHaveBeenCalledWith({
+				channel: 'hms:changed',
+				data: { printerId: info.id }
+			});
+			const translated = service.active(info.id).find((a) => a.key === error.key)!;
+			expect(translated.text).not.toBe(error.text);
+			expect(translated.text).toMatch(/filament/i);
+			expect(translated.actions).toEqual(error.actions);
+			expect(translated.image).toBe(error.image);
+			expect((await call(getSettings, '/api/hms/settings', {})).body).toEqual({ language: 'fr' });
+			expect((await call(putSettings, '/api/hms/settings', {}, { language: 'de' })).status).toBe(
+				400
+			);
+		} finally {
+			t.rt.live.off('live', refreshed);
+			service.saveSettings({ language: 'en' });
+		}
+		expect(service.active(info.id).find((a) => a.key === error.key)?.text).toBe(error.text);
 
 		// A button that is not the alert's is refused; the right one resumes the print.
 		expect(
