@@ -51,7 +51,7 @@ jobs:
       - name: Build tools
         run: |
           case "${{ runner.os }}" in
-            Linux) sudo apt-get update && sudo apt-get install -y build-essential cmake git m4 pkg-config libdbus-1-dev autoconf automake libtool texinfo ;;
+            Linux) sudo apt-get update && sudo apt-get install -y build-essential cmake git m4 pkg-config libdbus-1-dev libgl1-mesa-dev autoconf automake libtool texinfo ;;
             macOS) brew install cmake m4 autoconf automake libtool texinfo ;;
           esac
       - name: Dependency target discovery and build option tests
