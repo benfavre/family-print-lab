@@ -158,30 +158,28 @@ void prepare_filament_grouping(Print &print, DynamicPrintConfig &config, int ext
 	print.set_extruder_filament_info(filaments);
 }
 
-} // namespace
+struct PreparedPlate {
+	DynamicPrintConfig config;
+	int filament_count = 1;
+	bool bbl_printer = false;
+};
 
-PlateStats UpstreamFacade::slice(const std::string &project_id, int plate_index, const ProgressFn &progress,
-                                 const CancelToken &cancel) {
-	auto state = project(project_id);
-	std::lock_guard<std::mutex> lock(state->mutex);
-	const Plate *plate = nullptr;
-	for (const Plate &p : state->project.plates)
-		if (p.index == plate_index) plate = &p;
-	if (!plate) throw EngineError(err::INVALID_PARAMS, "That plate does not exist.", std::to_string(plate_index), "plate");
-
-	auto result = std::make_shared<PlateResult>();
-	result->model = build_model(*state, plate_index, &result->object_ids);
-	if (result->model->objects.empty()) throw EngineError(err::NOTHING_TO_SLICE, "There is nothing on this plate to slice.");
-
-	DynamicPrintConfig config = state->config;
-	config.apply(to_config(slice_config::plate_overrides(*plate), scratch()), true);
+// The same pre-apply preparation for validation and slicing. All changes belong to this local
+// config/model/Print, never ProjectState or cached slices. The caller owns calib_params until after
+// Print is destroyed: upstream retains that reference for calibration G-code generation.
+PreparedPlate prepare_plate(UpstreamFacade &facade, const ProjectState &state, const Plate &plate,
+                            Model &model, Print &print, Calib_Params &calib_params) {
+	PreparedPlate prepared;
+	prepared.config = state.config;
+	auto &config = prepared.config;
+	config.apply(to_config(slice_config::plate_overrides(plate), facade.scratch()), true);
 
 	// filament_map: one extruder per filament, extruder 1 unless the plate says otherwise (BambuStudio.cpp ~6950).
 	int filament_count = 1;
 	if (auto *colours = config.option<ConfigOptionStrings>("filament_colour")) filament_count = std::max<int>(1, colours->values.size());
 	std::vector<int> &maps = config.option<ConfigOptionInts>("filament_map", true)->values;
 	maps.resize(filament_count, 1);
-	for (size_t i = 0; i < plate->filament_maps.size() && i < maps.size(); ++i) maps[i] = plate->filament_maps[i];
+	for (size_t i = 0; i < plate.filament_maps.size() && i < maps.size(); ++i) maps[i] = plate.filament_maps[i];
 	// Nozzle volume per extruder and per filament, as BambuStudio.cpp sets them before Print::apply
 	// (~6948-6970): standard flow unless the printer's preset says otherwise, each filament on its
 	// extruder's volume type.
@@ -196,13 +194,69 @@ PlateStats UpstreamFacade::slice(const std::string &project_id, int plate_index,
 	restore_enum_maps(config);
 	prepare_flush_volumes(config, extruders);
 
-	Print print;
 	// PartPlate::set_print supplies this before validation/export. Print's Eigen vector is
 	// otherwise uninitialised, and export_gcode uses it as the processor's XY offset. Our
 	// build_model already moves this plate into local coordinates, so its origin is zero.
 	print.set_plate_origin(Vec3d::Zero());
-	print.set_plate_index(plate_index - 1);
+	print.set_plate_index(plate.index - 1);
 	prepare_filament_grouping(print, config, extruders);
+	std::string printer_model;
+	if (auto *m = config.option<ConfigOptionString>("printer_model")) printer_model = m->value;
+	const bool bbl_printer = printer_model.compare(0, 9, "Bambu Lab") == 0;
+	// Calibration projects (calib.cpp): upstream's per-layer changes and the PA pattern's G-code.
+	facade.apply_calib(state, model, config, bbl_printer, calib_params);
+	print.set_calib_params(calib_params);
+	print.apply(model, config);
+	prepared.filament_count = filament_count;
+	prepared.bbl_printer = bbl_printer;
+	return prepared;
+}
+
+} // namespace
+
+ValidateResult UpstreamFacade::config_validate(const std::string &project_id, int plate) {
+	auto state = project(project_id);
+	std::lock_guard<std::mutex> lock(state->mutex);
+	if (plate && std::none_of(state->project.plates.begin(), state->project.plates.end(),
+	                         [plate](const Plate &p) { return p.index == plate; }))
+		throw EngineError(err::INVALID_PARAMS, "That plate does not exist.", std::to_string(plate), "plate");
+	ValidateResult out;
+	for (const Plate &p : state->project.plates) {
+		if (plate && p.index != plate) continue;
+		try {
+			std::vector<std::string> ids;
+			auto model = build_model(*state, p.index, &ids);
+			if (model->objects.empty()) continue;
+			Calib_Params calib_params;
+			Print print;
+			auto prepared = prepare_plate(*this, *state, p, *model, print, calib_params);
+			StringObjectException warning;
+			StringObjectException error = print.validate(&warning);
+			if (!error.string.empty()) out.errors.push_back({error.opt_key, error.string, ""});
+			if (!warning.string.empty()) out.warnings.push_back({"VALIDATE", warning.string, "", p.index});
+		} catch (const EngineError &e) {
+			if (e.code != err::INVALID_CONFIG) throw;
+			out.errors.push_back({e.key, e.what(), e.object_id});
+		}
+	}
+	return out;
+}
+
+PlateStats UpstreamFacade::slice(const std::string &project_id, int plate_index, const ProgressFn &progress,
+                                 const CancelToken &cancel) {
+	auto state = project(project_id);
+	std::lock_guard<std::mutex> lock(state->mutex);
+	const Plate *plate = nullptr;
+	for (const Plate &p : state->project.plates)
+		if (p.index == plate_index) plate = &p;
+	if (!plate) throw EngineError(err::INVALID_PARAMS, "That plate does not exist.", std::to_string(plate_index), "plate");
+
+	auto result = std::make_shared<PlateResult>();
+	result->model = build_model(*state, plate_index, &result->object_ids);
+	if (result->model->objects.empty()) throw EngineError(err::NOTHING_TO_SLICE, "There is nothing on this plate to slice.");
+
+	Calib_Params calib_params;
+	Print print;
 	std::vector<SliceWarning> warnings;
 	print.set_status_callback([&](const PrintBase::SlicingStatus &s) {
 		if (s.flags & (PrintBase::SlicingStatus::UPDATE_PRINT_STEP_WARNINGS | PrintBase::SlicingStatus::UPDATE_PRINT_OBJECT_STEP_WARNINGS)) {
@@ -211,22 +265,16 @@ PlateStats UpstreamFacade::slice(const std::string &project_id, int plate_index,
 		}
 		if (s.percent >= 0) progress({stage_for(s.percent), s.percent, s.text});
 	});
-	std::string printer_model;
-	if (auto *m = config.option<ConfigOptionString>("printer_model")) printer_model = m->value;
-	const bool bbl_printer = printer_model.compare(0, 9, "Bambu Lab") == 0;
-	// Calibration projects (calib.cpp): upstream's per-layer changes and the PA pattern's G-code.
-	Calib_Params calib_params;
-	apply_calib(*state, *result->model, config, bbl_printer, calib_params);
-	print.set_calib_params(calib_params);
-	print.apply(*result->model, config);
+	auto prepared = prepare_plate(*this, *state, *plate, *result->model, print, calib_params);
+	auto &config = prepared.config;
 	StringObjectException warning;
 	StringObjectException error = print.validate(&warning);
 	if (!error.string.empty()) throw EngineError(err::INVALID_CONFIG, error.string, error.string);
 	if (!warning.string.empty()) warnings.push_back({"VALIDATE", warning.string, "", plate_index});
 	if (print.empty()) throw EngineError(err::NOTHING_TO_SLICE, "Nothing on this plate is inside the printable area.");
 
-	print.set_BBL_Printer(bbl_printer);
-	Model::setExtruderParams(config, filament_count);
+	print.set_BBL_Printer(prepared.bbl_printer);
+	Model::setExtruderParams(config, prepared.filament_count);
 	Model::setPrintSpeedTable(config, print.config());
 
 	// $/cancel → Print::cancel(), which makes process() throw CanceledException.
