@@ -10,8 +10,8 @@
 #   upstream.sh status                          pin, checkout, patch count and dirty state
 #   upstream.sh resources                       copy profiles, printers and HMS texts out of the checkout
 #   upstream.sh ports                           list ported files whose upstream origin changed
-#   upstream.sh build [--deps-only|--no-upstream] [-j N]  build the engine into slicer/dist/<plat>
-#   upstream.sh test                            ctest, then the app's slicer tests against the build
+#   upstream.sh build [--deps-only|--no-upstream] [--sanitize|--debug-symbols] [-j N]
+#   upstream.sh test [--sanitize|--debug-symbols] [--no-upstream] [--native-only]
 #
 # Environment: PRINTLAB_UPSTREAM_DIR (default slicer/.upstream), PRINTLAB_SLICER_BUILD_DIR
 # (default slicer/.build).
@@ -87,7 +87,7 @@ gq() {
 }
 
 state_file() { echo "$UP/.git/$STATE_NAME"; }
-state_get() { [ -f "$(state_file)" ] && sed -n "s/^$1=//p" "$(state_file)" || true; }
+state_get() { if [ -f "$(state_file)" ]; then sed -n "s/^$1=//p" "$(state_file)"; fi; }
 # What fetch/rebase/export left behind: the tag, the queue hash, the HEAD it wrote and whether that
 # HEAD is exported to slicer/patches (so fetch never throws away work that only lives in the checkout).
 state_write() {
@@ -226,7 +226,7 @@ cmd_rebase() {
 	[ -n "$report" ] && report="$(cd "$(dirname "$report")" && pwd)/$(basename "$report")"
 
 	local oldBase oldTag newCommit
-	oldBase="$(g rev-parse printlab-base^{commit})"
+	oldBase="$(g rev-parse 'printlab-base^{commit}')"
 	oldTag="$(state_get tag)"
 	link_rr_cache
 	fetch_tag "$new"
@@ -242,7 +242,7 @@ cmd_rebase() {
 	fi
 
 	local stopped
-	stopped="$(cat "$UP/.git/rebase-merge/message" 2>/dev/null | head -n 1 || true)"
+	stopped="$(head -n 1 "$UP/.git/rebase-merge/message" 2>/dev/null || true)"
 	if [ -z "$report" ]; then
 		cat >&2 <<EOF
 upstream.sh: a patch no longer applies cleanly to $new${stopped:+ ("$stopped")}.
@@ -319,7 +319,7 @@ cmd_export() {
 		die "printlab does not sit on printlab-base (was a rebase aborted?): run FORCE=1 upstream.sh fetch."
 
 	local base tag
-	base="$(g rev-parse printlab-base^{commit})"
+	base="$(g rev-parse 'printlab-base^{commit}')"
 	tag="$(g tag --points-at "$base" | grep -v -E '^printlab-' | head -n 1)"
 	[ -n "$tag" ] || die "no upstream tag points at printlab-base."
 
@@ -329,6 +329,8 @@ cmd_export() {
 	{
 		echo "# The patch queue applied on top of the Bambu Studio tag in ../upstream.lock, in order."
 		echo "# Written by upstream.sh export; see ../UPSTREAM.md before adding a patch."
+		# format-patch generates plain numbered filenames; list only those in the queue root.
+		# shellcheck disable=SC2012
 		(cd "$PATCHES" && ls -1 -- *.patch 2>/dev/null | sort) || true
 	} >"$SERIES"
 
@@ -367,7 +369,7 @@ cmd_status() {
 		return 0
 	fi
 	local base ahead
-	base="$(g rev-parse --verify --quiet printlab-base^{commit} || echo none)"
+	base="$(g rev-parse --verify --quiet 'printlab-base^{commit}' || echo none)"
 	ahead="$(g rev-list --count printlab-base..printlab 2>/dev/null || echo '?')"
 	echo "checkout:   ${UP#"$ROOT"/} at $(state_get tag) (base $base), $ahead patch commit(s)"
 	[ "$base" = "$commit" ] || echo "            base differs from the lock: run upstream.sh export (after a rebase) or fetch"
@@ -435,11 +437,21 @@ platform_key() {
 	echo "$os-$arch"
 }
 
+engine_binary() {
+	local dir="$1" config="$2" exe=""
+	case "$(platform_key)" in win32-*) exe=".exe" ;; esac
+	if grep -q '^CMAKE_CONFIGURATION_TYPES:' "$dir/CMakeCache.txt"; then
+		echo "$dir/$config/printlab-slicer$exe"
+	else
+		echo "$dir/printlab-slicer$exe"
+	fi
+}
+
 # build: dependencies (build-deps.sh), then the engine against the checkout, then slicer/dist/<plat>
 # with the binary, the resources it reads at runtime (profiles, printers, info, calib) from the same tag,
 # the licence and engine.json. --no-upstream builds the protocol layer only (minutes, no checkout).
 cmd_build() {
-	local deps_only=0 jobs=2 upstream=1
+	local deps_only=0 jobs=2 upstream=1 mode="" config=Release
 	while [ $# -gt 0 ]; do
 		case "$1" in
 		--deps-only)
@@ -448,6 +460,12 @@ cmd_build() {
 			;;
 		--no-upstream)
 			upstream=0
+			shift
+			;;
+		--sanitize | --debug-symbols)
+			[ -z "$mode" ] || die "choose either --sanitize or --debug-symbols."
+			if [ "$1" = --sanitize ]; then mode=sanitize; else mode=debug; fi
+			config=RelWithDebInfo
 			shift
 			;;
 		-j)
@@ -462,20 +480,29 @@ cmd_build() {
 		esac
 	done
 	[ -f "$SLICER/engine/CMakeLists.txt" ] || die "slicer/engine/CMakeLists.txt is missing."
-	local plat exe="" engine
+	local plat engine binary
+	local flags=()
 	plat="$(platform_key)"
-	case "$plat" in win32-*) exe=".exe" ;; esac
+	if [ "$mode" = sanitize ]; then
+		case "$plat" in win32-*) die "--sanitize needs GCC or Clang on Linux or macOS (MSVC has no UBSan)." ;; esac
+		# Global flags reach libslic3r in add_subdirectory, not just our executable. The dependency
+		# prefix stays uninstrumented and reusable by Release; no sanitizer artifacts enter dist/<plat>.
+		local sanitizer='-fsanitize=address,undefined,float-cast-overflow -fno-omit-frame-pointer'
+		flags+=("-DCMAKE_C_FLAGS=${CFLAGS:-} $sanitizer" "-DCMAKE_CXX_FLAGS=${CXXFLAGS:-} $sanitizer"
+			"-DCMAKE_EXE_LINKER_FLAGS=$sanitizer" "-DCMAKE_SHARED_LINKER_FLAGS=$sanitizer")
+	fi
 	if [ $upstream = 0 ]; then
-		engine="$BUILD/engine-protocol"
-		cmake -S "$SLICER/engine" -B "$engine" -DPRINTLAB_WITH_UPSTREAM=OFF -DCMAKE_BUILD_TYPE=Release
-		cmake --build "$engine" -j "$jobs"
-		say "built the protocol-only engine: ${engine#"$ROOT"/}/printlab-slicer$exe (no slicing core)."
+		[ $deps_only = 0 ] || die "--deps-only and --no-upstream cannot be combined."
+		engine="$BUILD/engine-protocol${mode:+-$mode}"
+		cmake -S "$SLICER/engine" -B "$engine" -DPRINTLAB_WITH_UPSTREAM=OFF -DCMAKE_BUILD_TYPE="$config" "${flags[@]}"
+		cmake --build "$engine" --config "$config" -j "$jobs"
+		say "built the protocol-only engine: $(engine_binary "$engine" "$config") (no slicing core)."
 		return 0
 	fi
 	need_checkout
 	PRINTLAB_UPSTREAM_DIR="$UP" PRINTLAB_SLICER_BUILD_DIR="$BUILD" bash "$SLICER/scripts/build-deps.sh" -j "$jobs"
 	[ $deps_only = 1 ] && return 0
-	engine="$BUILD/engine"
+	engine="$BUILD/engine${mode:+-$mode}"
 	# libslic3r stamps its version header with the configure time (string(TIMESTAMP) in
 	# src/libslic3r/CMakeLists.txt), so every re-configure (a new patch, a lock change) would rebuild all
 	# of it. CMake takes the time from SOURCE_DATE_EPOCH when set: the pinned commit's time keeps the
@@ -483,16 +510,25 @@ cmd_build() {
 	SOURCE_DATE_EPOCH="$(g log -1 --format=%ct printlab-base)"
 	export SOURCE_DATE_EPOCH
 	cmake -S "$SLICER/engine" -B "$engine" -DPRINTLAB_UPSTREAM_DIR="$UP" \
-		-DCMAKE_PREFIX_PATH="$BUILD/deps/usr/local" -DCMAKE_BUILD_TYPE=Release
-	nice -n 10 cmake --build "$engine" -j "$jobs" --target printlab-slicer test_json test_rpc test_thumbnails test_calib test_facade
+		-DCMAKE_PREFIX_PATH="$BUILD/deps/usr/local" -DCMAKE_BUILD_TYPE="$config" "${flags[@]}"
+	# The upstream subdirectory is EXCLUDE_FROM_ALL. Build our default targets so new engine tests
+	# are included automatically without maintaining a second list in this script.
+	nice -n 10 cmake --build "$engine" --config "$config" -j "$jobs"
+	binary="$(engine_binary "$engine" "$config")"
 	# Never ship Bambu's proprietary network plugin or the GUI (slicer/UPSTREAM.md rule 7).
-	if grep -a -q -E 'bambu_networking|NetworkAgent' "$engine/printlab-slicer$exe"; then
+	if grep -a -q -E 'bambu_networking|NetworkAgent' "$binary"; then
 		die "the engine references bambu_networking or NetworkAgent; it must not."
 	fi
-	local dist="$SLICER/dist/$plat"
+	local dist="$SLICER/dist/${mode:+$mode/}$plat"
 	rm -rf "$dist"
 	mkdir -p "$dist/resources/profiles"
-	cp "$engine/printlab-slicer$exe" "$dist/"
+	cp "$binary" "$dist/"
+	case "$plat" in
+	win32-*)
+		cmake "-DENGINE=$binary" "-DPREFIX=$BUILD/deps/usr/local" "-DDESTINATION=$dist" \
+			-P "$SLICER/scripts/bundle-windows-runtime.cmake"
+		;;
+	esac
 	cp -R "$UP/resources/profiles/BBL" "$UP/resources/profiles/BBL.json" "$dist/resources/profiles/"
 	# calib/: the calibration tests' models (features/calib); printlab/: our own (ported from OrcaSlicer).
 	for d in printers info calib; do [ -d "$UP/resources/$d" ] && cp -R "$UP/resources/$d" "$dist/resources/"; done
@@ -506,14 +542,33 @@ cmd_build() {
 }
 
 cmd_test() {
-	local engine="" dir
-	for dir in "$BUILD/engine" "$BUILD/engine-protocol"; do
+	local engine="" dir mode="" config=Release native_only=0 protocol_only=0
+	while [ $# -gt 0 ]; do
+		case "$1" in
+		--sanitize | --debug-symbols)
+			[ -z "$mode" ] || die "choose either --sanitize or --debug-symbols."
+			if [ "$1" = --sanitize ]; then mode=sanitize; else mode=debug; fi
+			config=RelWithDebInfo
+			;;
+		--native-only) native_only=1 ;;
+		--no-upstream) protocol_only=1 ;;
+		*) die "unknown option $1" ;;
+		esac
+		shift
+	done
+	# GMP/MPFR are DLLs on Windows; ctest binaries are in their own configuration directories.
+	PATH="$SLICER/dist/${mode:+$mode/}$(platform_key):$BUILD/deps/usr/local/bin:$BUILD/deps/usr/local/lib:$PATH"
+	export PATH
+	local dirs=("$BUILD/engine${mode:+-$mode}" "$BUILD/engine-protocol${mode:+-$mode}")
+	[ $protocol_only = 0 ] || dirs=("$BUILD/engine-protocol${mode:+-$mode}")
+	for dir in "${dirs[@]}"; do
 		if [ -f "$dir/CTestTestfile.cmake" ]; then
-			ctest --test-dir "$dir" --output-on-failure
-			[ -n "$engine" ] || engine="$dir/printlab-slicer"
+			ctest --test-dir "$dir" --build-config "$config" --output-on-failure
+			[ -n "$engine" ] || engine="$(engine_binary "$dir" "$config")"
 		fi
 	done
-	[ -n "$engine" ] || say "no engine build, skipping the C++ tests and the protocol conformance tests."
+	[ -n "$engine" ] || die "no matching engine build: run build with the same options first."
+	[ $native_only = 0 ] || return 0
 	(cd "$ROOT/app" && PRINTLAB_SLICER_PATH="$engine" bunx vitest --run src/lib/server/slicer/)
 }
 
