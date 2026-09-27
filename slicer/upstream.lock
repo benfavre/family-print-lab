@@ -5,5 +5,5 @@ name=BambuStudio
 url=https://github.com/bambulab/BambuStudio.git
 tag=v02.08.02.61
 commit=926a7192574bcb9b3a732e1ec59a46d79cb45466
-queue=6
-queue_hash=4b47b86ca2e8f5d32b87b51c8935ad1c9458d3a6e6019e2be500d021aed354c0
+queue=7
+queue_hash=c0fcb78443f56333fd2b3bdb6f4fb89c88e2360b2a8eb3a3fd790ecd13c184b4

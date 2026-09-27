@@ -11,7 +11,7 @@ new Bambu Studio release is a rebase of a handful of small patches, not a merge 
 
 | Upstream     | Tag            | Commit                                     | Patch queue                                                                                     |
 | ------------ | -------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 6, 5 patch(es), hash `4b47b86ca2e8f5d32b87b51c8935ad1c9458d3a6e6019e2be500d021aed354c0` |
+| Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 7, 5 patch(es), hash `c0fcb78443f56333fd2b3bdb6f4fb89c88e2360b2a8eb3a3fd790ecd13c184b4` |
 
 <!-- pin:end -->
 
@@ -178,7 +178,7 @@ and the `slicer-protocol` job in ci.yml need (it runs on every pull request, so 
 changes are checked against the engine too). `upstream.sh test` runs ctest, then the app's slicer tests with
 `PRINTLAB_SLICER_PATH` set to the build (protocol conformance and golden slices included).
 
-The patch queue holds two build fixes, both marked upstreamable, both proven by the build:
+The patch queue holds two build fixes and three memory-safety fixes, all marked upstreamable:
 
 - 0001: the top-level `CMakeLists.txt` asked for OpenGL, GLEW and GLFW even with the GUI off, and
   those are what fails on a headless host.
@@ -186,6 +186,12 @@ The patch queue holds two build fixes, both marked upstreamable, both proven by 
   precompiled headers, which hides it; the engine builds without them (`SLIC3R_PCH=OFF`, to keep each
   compiler process small), so a missing include shows up as a compile error. Any further one found the
   same way gets the same one-line treatment.
+- 0003: a concentric-infill edge grid retained references into a temporary point vector; keep the
+  vector alive until the intersection check completes.
+- 0004: initialise bed-temperature/layer caches and the no-tower heating-position sentinel; do not
+  construct an exclusion polygon from undefined wipe-tower bounds.
+- 0005: release placeholder strings when comparisons change their type or move assignment replaces
+  them, and release the 3MF exporter's temporary heap ZIP buffers after their readers finish.
 
 ## State of the engine
 
@@ -193,7 +199,7 @@ The patch queue holds two build fixes, both marked upstreamable, both proven by 
   fake engine, `CliEngine` (`cli.ts`) against a fake Bambu Studio for every model in the catalogue,
   `service.ts` (what jobs call) through both, and the protocol conformance tests against the real
   protocol-only binary.
-- The protocol layer, the thumbnails and their tests build and pass everywhere (`--no-upstream`).
+- The protocol layer and features pass locally with Make, Ninja and Ninja Multi-Config (`--no-upstream`); native Windows and macOS verification remains outstanding.
 - The full engine builds, links and runs on Linux x64 (Ubuntu 22.04, GCC 11, `-j 2`: about 75
   minutes for the dependencies and about two hours for libslic3r and the engine). ctest passes
   (`test_facade` slices a cube for the P1S), the protocol conformance tests pass, the golden boxes
@@ -214,8 +220,11 @@ The patch queue holds two build fixes, both marked upstreamable, both proven by 
   an incomplete PNG IHDR (fixed in our thumbnail encoder), and upstream memory errors. Queue patch
   0003 keeps concentric-infill edge-grid points alive through intersection checks. Patch 0004
   initialises G-code temperature/layer caches and skips an undefined wipe-tower bounding box.
-  Both patches are small and upstreamable. Full sanitizer and post-fix Valgrind validation is in
-  progress; golden time/weight recording follows those checks.
+  Patch 0005 also fixes string-comparison/move-assignment and temporary ZIP-buffer leaks. After
+  the fixes, Valgrind reports zero memory errors and zero definitely/indirectly lost bytes across
+  three repeated slices and export. Small reachable/possibly-lost runtime allocations remain
+  (5,696 bytes total in that run). Full sanitizer validation and golden time/weight recording are
+  still in progress.
 - A re-configure used to rebuild all of libslic3r, because its version header carries the configure
   time; `upstream.sh build` now sets `SOURCE_DATE_EPOCH` to the pinned commit's time.
 - Native `preview.get` writes the browser's PLPV format from `GCodeProcessorResult`. Its layers,
@@ -223,10 +232,16 @@ The patch queue holds two build fixes, both marked upstreamable, both proven by 
   already prefers this capability and displays the engine's object statistics. Upstream omits object
   labels for single-instance/calibration prints; unavailable breakdown values remain null.
 - The H2D/X2D auto-map setup now supplies the CLI's virtual AMS slots and retains the selected maps
-  for export. Two-filament native tests pass for both printers. Wipe-tower arrangement reservation
-  is implemented with portable sizing tests; full native arrangement verification is pending.
-- Native `project.open`/`project.save` round-trip work is undergoing integration. `config.validate`
-  beyond upstream's own validation remains deferred.
+  for export. Two-filament native tests pass for both printers, including an X2D regression that retains
+  Bowden-specific retraction settings after grouping. Resolvers preserve raw filament variants
+  and their owner indices until the upstream grouping pass selects them. Wipe-tower arrangement
+  reservations pass both portable sizing tests and native arrangement tests.
+- Native `project.open`/`project.save` pass all seven TypeScript reference fixtures in both
+  directions, including unknown fields, attachments, painting and transforms. Geometry import/export
+  uses libslic3r; a preservation codec retains fields its slicing model normalises. Opening/saving
+  unsupported configuration remains possible, while slicing refuses invalid settings instead of
+  silently substituting defaults. An eighth integration test covers that boundary. `config.validate`
+  still needs to share all per-plate preparation with slicing.
 - The current machine is Linux x64 (Ubuntu 24.04, GCC 13.3, 24 logical CPUs, 62 GiB RAM shared with
   other processes). The first complete dependency and release-engine build at `-j 24` took
   **1,239.93 seconds (20 minutes 40 seconds)**. The pinned source fetch took 22.48 seconds.
@@ -249,7 +264,7 @@ GOLDEN_UPDATE=1 GOLDEN_REASON='time and weight recorded' slicer/scripts/upstream
 `upstream.sh build --sanitize -j N` builds the engine **and libslic3r** with address, undefined-behaviour
 and float-cast-overflow sanitizers. It reuses the release dependency prefix but keeps instrumented
 objects in `.build/engine-sanitize` and its bundle in `dist/sanitize/<platform>`. Run
-`UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 upstream.sh test --sanitize` for strict failure on UB.
+`UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 slicer/scripts/upstream.sh test --sanitize` for strict failure on UB.
 `--debug-symbols` similarly uses `.build/engine-debug` and `dist/debug/<platform>` for Valgrind or a
 debugger. `test --native-only` runs just ctest; `test --no-upstream` selects the protocol build.
 Normal desktop packaging always reads `dist/<platform>`, never the diagnostic bundles.

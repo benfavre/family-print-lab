@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Benjamin Favre <ben@webdesign29.net>
-Date: Sun, 27 Sep 2026 09:56:53 +0000
+Date: Sun, 27 Sep 2026 10:16:29 +0000
 Subject: [PATCH] Memory: release placeholder strings and temporary 3MF buffers
 
 Why: Valgrind reports string expressions lost when comparisons overwrite their type, overwritten move targets, and heap ZIP buffers whose ownership passes to the exporter at finalisation. Reset string storage before assigning booleans or moved values, guard self-assignment, and free temporary ZIP memory after its reader finishes.

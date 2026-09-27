@@ -1,20 +1,20 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Benjamin Favre <ben@webdesign29.net>
-Date: Sun, 27 Sep 2026 09:39:14 +0000
+Date: Sun, 27 Sep 2026 10:16:29 +0000
 Subject: [PATCH] G-code: initialise caches and ignore absent wipe tower bounds
 
-Why: Valgrind on a single-filament cube reads uninitialised bed-temperature and layer caches, plus the undefined wipe tower bounding box. Initialise cache sentinels and only construct a tower exclusion polygon when its bounds exist.
+Why: Valgrind on a single-filament cube reads uninitialised bed-temperature and layer caches, plus the undefined wipe tower bounding box. Initialise cache and no-tower heating-position sentinels, and only construct a tower exclusion polygon when its bounds exist.
 
-Files: src/libslic3r/GCodeWriter.hpp, src/libslic3r/GCode/RetractWhenCrossingPerimeters.hpp, src/libslic3r/GCode/TimelapsePosPicker.cpp
+Files: src/libslic3r/GCode.cpp, src/libslic3r/GCodeWriter.hpp, src/libslic3r/GCode/RetractWhenCrossingPerimeters.hpp, src/libslic3r/GCode/TimelapsePosPicker.cpp
 Upstreamable: yes
 
 Co-Authored-By: Codex <noreply@openai.com>
 ---
  src/libslic3r/GCode.cpp                       |  3 +-
  .../GCode/RetractWhenCrossingPerimeters.hpp   |  2 +-
- src/libslic3r/GCode/TimelapsePosPicker.cpp    | 34 +++++++++++--------
+ src/libslic3r/GCode/TimelapsePosPicker.cpp    | 36 ++++++++++---------
  src/libslic3r/GCodeWriter.hpp                 |  2 +-
- 4 files changed, 22 insertions(+), 19 deletions(-)
+ 4 files changed, 23 insertions(+), 20 deletions(-)
 
 diff --git a/src/libslic3r/GCode.cpp b/src/libslic3r/GCode.cpp
 index ac30594..6f8625f 100644
@@ -44,7 +44,7 @@ index c93e8a7..c3642df 100644
      BoundingBox                         m_internal_islands_bbox;
      AABBTreeLines::LinesDistancer<Line> m_aabbtree_lines_distancer;
 diff --git a/src/libslic3r/GCode/TimelapsePosPicker.cpp b/src/libslic3r/GCode/TimelapsePosPicker.cpp
-index d9daa93..c29df91 100644
+index d9daa93..ea4b055 100644
 --- a/src/libslic3r/GCode/TimelapsePosPicker.cpp
 +++ b/src/libslic3r/GCode/TimelapsePosPicker.cpp
 @@ -87,22 +87,26 @@ namespace Slic3r {
@@ -64,7 +64,7 @@ index d9daa93..c29df91 100644
 +        if (wt_box.defined) {
 +            Point base_wp_pt = print->get_fake_wipe_tower().pos.cast<coord_t>();
 +            base_wp_pt = Point{ scale_(base_wp_pt.x()),scale_(base_wp_pt.y()) };
-+    
++
 +            auto transform_wt_pt = [base_wp_pt](const Point& pt) -> Point {
 +                Point out =pt;
 +                out += base_wp_pt;
@@ -89,6 +89,13 @@ index d9daa93..c29df91 100644
  
          for (size_t idx = 0; idx < extruder_count; ++idx) {
              ExPolygons printable_area = diff_ex(diff(m_bed_polygon, bed_exclude_area), { wipe_tower_area });
+@@ -663,4 +667,4 @@ namespace Slic3r {
+         return true;
+     }
+ 
+-}
+\ No newline at end of file
++}
 diff --git a/src/libslic3r/GCodeWriter.hpp b/src/libslic3r/GCodeWriter.hpp
 index 4527e8c..192428a 100644
 --- a/src/libslic3r/GCodeWriter.hpp
