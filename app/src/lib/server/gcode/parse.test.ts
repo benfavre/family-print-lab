@@ -207,6 +207,14 @@ describe('moves', () => {
 		expect(arc.every((i) => d.attr[i * 4] === TRAVEL_FEATURE)).toBe(true);
 	});
 
+	it('G28 homes to 0 on the named axes, or all three, as a travel', () => {
+		const d = parse('G90\nG1 X50 Y60 Z5\nG28 X\nG1 Y70\nG28\n');
+		expect(point(d, 1)).toEqual([50, 60, 5, 0, 60, 5]);
+		expect(point(d, 2)).toEqual([0, 60, 5, 0, 70, 5]);
+		expect(point(d, 3)).toEqual([0, 70, 5, 0, 0, 0]);
+		expect([1, 2, 3].every((i) => d.attr[i * 4] === TRAVEL_FEATURE)).toBe(true);
+	});
+
 	it('relative arcs (G91) as in Bambu’s nozzle wipe', () => {
 		const d = parse('G90\nG1 X128 Y261\nG91\nG2 I1 J0 X2 Y0 F2000\nG2 I-0.75 J0 X-1.5\n');
 		const end = point(d, d.header.segments - 1);
@@ -342,6 +350,29 @@ describe('large plates', () => {
 		const small = parse(lines.join('\n'));
 		expect(small.header.decimated).toBeUndefined();
 		expect(small.header.segments).toBe(42);
+	});
+
+	it('joining short moves keeps a fine curve round instead of turning it into one chord', () => {
+		// A circle of radius 2 mm drawn with 0.02 mm moves (about 630 of them).
+		const lines = ['M83', '; CHANGE_LAYER', '; Z_HEIGHT: 0.2', 'G1 X2 Y0'];
+		const steps = Math.round((2 * Math.PI * 2) / 0.02);
+		for (let i = 1; i <= steps; i++) {
+			const a = (2 * Math.PI * i) / steps;
+			lines.push(`G1 X${(2 * Math.cos(a)).toFixed(5)} Y${(2 * Math.sin(a)).toFixed(5)} E0.001`);
+		}
+		const d = parse(lines.join('\n'), { budget: 10 });
+		expect(d.header.decimated!.joined).toBeGreaterThan(steps / 2);
+		// Fewer moves, each short, every corner still on the circle, and together still all the way round.
+		expect(d.header.segments).toBeLessThan(steps / 5);
+		let around = 0;
+		for (let i = 0; i < d.header.segments; i++) {
+			const [x0, y0, , x1, y1] = point(d, i);
+			const length = Math.hypot(x1 - x0, y1 - y0);
+			expect(length).toBeLessThanOrEqual(0.5 + 1e-6);
+			expect(Math.hypot(x1, y1)).toBeCloseTo(2, 3);
+			around += length;
+		}
+		expect(around / (4 * Math.PI)).toBeCloseTo(1, 2);
 	});
 });
 

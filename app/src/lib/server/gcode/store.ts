@@ -23,6 +23,8 @@ export class PreviewStore {
 	private failed = new Map<string, string>();
 	/** One worker at a time: this machine may be small, and a queue keeps memory predictable. */
 	private queue: Promise<unknown> = Promise.resolve();
+	/** Previews queued or being read. */
+	private waiting = 0;
 
 	constructor(
 		private printing: PrintFiles,
@@ -45,12 +47,19 @@ export class PreviewStore {
 		if (cached) return { bytes: cached };
 		const failure = this.failed.get(cache);
 		if (failure) throw new AppError(422, failure);
-		const running = this.making.get(cache);
-		if (running) return running.taskId ? { taskId: running.taskId } : { bytes: await running.done };
+		const running = () => {
+			const r = this.making.get(cache);
+			return r && (r.taskId ? { taskId: r.taskId } : r.done.then((bytes) => ({ bytes })));
+		};
+		const before = running();
+		if (before) return before;
 
 		const source = this.printing.file(sliced.file);
 		const data = await fs.promises.readFile(source).catch(() => null);
 		if (!data) throw new AppError(404, 'The sliced file is missing. Attach it again.');
+		// Another request may have started this preview while the file was read.
+		const meanwhile = running();
+		if (meanwhile) return meanwhile;
 		const found = zipEntries(data).find((e) => e.name === `Metadata/plate_${plate}.gcode`);
 		if (!found) throw new AppError(404, 'That plate has no G-code in the file.');
 		const entry: PlateEntry = { raw: found.raw, method: found.method, size: found.size };
@@ -81,7 +90,9 @@ export class PreviewStore {
 				return this.store(source, cache, result);
 			});
 
-		if (found.size <= (this.opts.largeBytes ?? LARGE_GCODE_BYTES)) {
+		// Small plates are answered straight away, unless another preview is still being read: then this
+		// one would wait behind it, so it becomes a task too and the request returns.
+		if (found.size <= (this.opts.largeBytes ?? LARGE_GCODE_BYTES) && this.waiting === 0) {
 			const done = make();
 			this.track(cache, done, null);
 			return { bytes: await done };
@@ -115,15 +126,17 @@ export class PreviewStore {
 	private track(cache: string, done: Promise<Buffer>, taskId: string | null) {
 		this.making.set(cache, { done, taskId });
 		const clear = () => this.making.delete(cache);
-		done.then(clear, (error: Error) => {
+		done.then(clear, (error: unknown) => {
 			clear();
-			// A stopped task may run again; a file that cannot be read stays that way.
-			if (error?.message !== 'Stopped') this.failed.set(cache, error?.message || 'Unreadable.');
+			// A file that cannot be read stays that way; a stopped task or a passing server problem may
+			// go better next time.
+			if (error instanceof AppError && error.status === 422) this.failed.set(cache, error.message);
 		});
 	}
 
 	private enqueue<T>(fn: () => Promise<T>): Promise<T> {
-		const run = this.queue.then(fn, fn);
+		this.waiting++;
+		const run = this.queue.then(fn, fn).finally(() => this.waiting--);
 		this.queue = run.catch(() => {});
 		return run;
 	}
@@ -137,9 +150,15 @@ export class PreviewStore {
 		);
 		if (!fs.existsSync(source)) return bytes;
 		const tmp = `${cache}.tmp`;
-		await fs.promises.writeFile(tmp, bytes);
-		await fs.promises.rename(tmp, cache);
-		if (!fs.existsSync(source)) await fs.promises.rm(cache, { force: true });
+		try {
+			await fs.promises.writeFile(tmp, bytes);
+			await fs.promises.rename(tmp, cache);
+			if (!fs.existsSync(source)) await fs.promises.rm(cache, { force: true });
+		} catch (error) {
+			// A full disk only costs the cache: the preview is still shown, and read again next time.
+			console.error('Could not keep the toolpath preview:', error);
+			await fs.promises.rm(tmp, { force: true }).catch(() => {});
+		}
 		return bytes;
 	}
 }

@@ -2,7 +2,7 @@
 // background tasks for large plates, the API route, and the sweep that removes caches with their file.
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { RequestEvent } from '@sveltejs/kit';
 import { startTestLab, type TestLab } from '../testing/harness';
 import { readZip, writeZip, zipEntries } from '../cad/mesh';
@@ -100,6 +100,12 @@ describe('previewInWorker', () => {
 		});
 		abort.abort();
 		await expect(run).rejects.toThrow('Stopped');
+		// Stopped before its turn came: no worker is started.
+		await expect(
+			previewInWorker({ raw: new Uint8Array(10), method: 0, size: 10 }, opts, {
+				signal: AbortSignal.abort()
+			})
+		).rejects.toThrow('Stopped');
 	});
 });
 
@@ -152,6 +158,46 @@ describe('GET /api/jobs/[id]/sliced/preview', () => {
 		expect(res.status).toBe(422);
 		expect((await res.json()).error).toMatch(/damaged/);
 		expect((await get(job.id)).status).toBe(422);
+	});
+
+	it('reads a plate once when two requests ask for it at the same time', async () => {
+		const job = newJob(fs.readFileSync(FIXTURE));
+		const writes = vi.spyOn(fs.promises, 'writeFile');
+		try {
+			const [a, b] = await Promise.all([get(job.id), get(job.id)]);
+			expect(a.status).toBe(200);
+			expect(b.status).toBe(200);
+			expect(new Uint8Array(await a.arrayBuffer())).toEqual(new Uint8Array(await b.arrayBuffer()));
+			const caches = writes.mock.calls.filter(([f]) => String(f).endsWith('.preview.bin.tmp'));
+			expect(caches).toHaveLength(1);
+		} finally {
+			writes.mockRestore();
+		}
+	});
+
+	it('a small plate asked for while a big one is read becomes a task too; a stopped task can start again', async () => {
+		const big = newJob(bigSliced(30).file, 'big.gcode.3mf');
+		const first = await get(big.id);
+		expect(first.status).toBe(202);
+		const bigTask = (await first.json()).taskId;
+		// Rather than holding the request until the big plate is done, the small one waits as a task.
+		const small = newJob(fs.readFileSync(FIXTURE));
+		const queued = await get(small.id);
+		expect(queued.status).toBe(202);
+		const smallTask = (await queued.json()).taskId;
+		t.rt.tasks.cancel(bigTask);
+		for (let i = 0; i < 300 && t.rt.tasks.get(smallTask).status === 'running'; i++)
+			await new Promise((r) => setTimeout(r, 50));
+		expect(t.rt.tasks.get(smallTask).status).toBe('done');
+		expect((await get(small.id)).status).toBe(200);
+		// The stopped plate is not remembered as unreadable: asking again starts a new task.
+		const again = await get(big.id);
+		expect(again.status).toBe(202);
+		const next = (await again.json()).taskId;
+		expect(next).not.toBe(bigTask);
+		for (let i = 0; i < 300 && t.rt.tasks.get(next).status === 'running'; i++)
+			await new Promise((r) => setTimeout(r, 50));
+		expect((await get(big.id)).status).toBe(200);
 	});
 
 	it(

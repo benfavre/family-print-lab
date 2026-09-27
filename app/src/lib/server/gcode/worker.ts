@@ -8,8 +8,9 @@ import { createGcodeParser, packPreview, type ParseOptions } from './parse';
 const SOURCE = `
 const { parentPort, workerData } = require('node:worker_threads');
 const zlib = require('node:zlib');
-${createGcodeParser.toString()}
-${packPreview.toString()}
+// Bound to fixed names: a bundler may rename the functions themselves.
+const createGcodeParser = (${createGcodeParser.toString()});
+const packPreview = (${packPreview.toString()});
 const { raw, method, size, opts, travel } = workerData;
 const parser = createGcodeParser(opts);
 let seen = 0, told = 0;
@@ -63,6 +64,8 @@ export function previewInWorker(
 		return Promise.reject(
 			new Error('The G-code in this file is packed in a way this app cannot read.')
 		);
+	// A task stopped while it waited its turn: no worker at all.
+	if (o.signal?.aborted) return Promise.reject(new Error('Stopped'));
 	const raw = new Uint8Array(entry.raw); // its own buffer, handed over rather than copied again
 	return new Promise((resolve, reject) => {
 		const worker = new Worker(SOURCE, {

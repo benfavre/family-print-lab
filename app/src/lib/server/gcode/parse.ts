@@ -338,6 +338,12 @@ export function createGcodeParser(opts: ParseOptions): GcodeParser {
 				const p = param(words, 80),
 					sec = param(words, 83);
 				est += sec ?? (p ?? 0) / 1000;
+			} else if (num === 28) {
+				// Homing ends at 0 on the homed axes (all three when none is named), drawn as a travel like
+				// any G1 (process_G28 turns it into "G1 X0 Y0 Z0").
+				const axes = words.slice(1).filter((w) => /^[XYZ]/.test(w));
+				const named = axes.length ? axes.map((w) => w[0]) : ['X', 'Y', 'Z'];
+				move(['G1', ...named.map((a) => `${a}0`)], 0);
 			} else if (num === 90) relative = false;
 			else if (num === 91) relative = true;
 			else if (num === 92) {
@@ -395,14 +401,39 @@ export function createGcodeParser(opts: ParseOptions): GcodeParser {
 		rest = text.slice(start);
 	}
 
-	/** Thins the segments in place to fit the budget; returns what it did. */
+	/**
+	 * Thins the segments in place to fit the budget; returns what it did. A move shorter than 0.05 mm is
+	 * joined to the one before only while the joined line stays short (JOIN_MAX) and the corner it drops
+	 * sits within the arc tolerance of it, so fine curves keep their shape instead of turning into one
+	 * long chord.
+	 */
 	function decimate(list: { first: number; count: number }[]) {
+		const JOIN_MAX = 0.5;
 		const len = (i: number) =>
 			Math.hypot(
 				seg[i * 6 + 3] - seg[i * 6],
 				seg[i * 6 + 4] - seg[i * 6 + 1],
 				seg[i * 6 + 5] - seg[i * 6 + 2]
 			);
+		/** Whether segment p, stretched to where r ends, still passes within tolerance of p's end. */
+		const joinable = (p: number, r: number) => {
+			const ax = seg[p * 6],
+				ay = seg[p * 6 + 1],
+				az = seg[p * 6 + 2];
+			const dx = seg[r * 6 + 3] - ax,
+				dy = seg[r * 6 + 4] - ay,
+				dz = seg[r * 6 + 5] - az;
+			const chord = Math.hypot(dx, dy, dz);
+			if (chord === 0 || chord > JOIN_MAX) return false;
+			const px = seg[p * 6 + 3] - ax,
+				py = seg[p * 6 + 4] - ay,
+				pz = seg[p * 6 + 5] - az;
+			// Distance from the dropped corner to the new line: |corner × line| / |line|.
+			const cx = py * dz - pz * dy,
+				cy = pz * dx - px * dz,
+				cz = px * dy - py * dx;
+			return Math.hypot(cx, cy, cz) / chord <= ARC_TOLERANCE;
+		};
 		const pass = (dropTravel: boolean, minLength: number) => {
 			let w = 0,
 				joined = 0;
@@ -422,7 +453,8 @@ export function createGcodeParser(opts: ParseOptions): GcodeParser {
 							attr[p * 4 + 3] === attr[r * 4 + 3] &&
 							seg[p * 6 + 3] === seg[r * 6] &&
 							seg[p * 6 + 4] === seg[r * 6 + 1] &&
-							seg[p * 6 + 5] === seg[r * 6 + 2]
+							seg[p * 6 + 5] === seg[r * 6 + 2] &&
+							joinable(p, r)
 						) {
 							seg[p * 6 + 3] = seg[r * 6 + 3];
 							seg[p * 6 + 4] = seg[r * 6 + 4];
