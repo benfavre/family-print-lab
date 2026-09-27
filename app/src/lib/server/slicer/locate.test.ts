@@ -25,6 +25,20 @@ function host(files: string[], o: Partial<SlicerHost> & { plain?: string[] } = {
 }
 
 describe('locating the slicer', () => {
+	it('walks Windows repository paths using the inspected host, regardless of the test OS', () => {
+		const win = host(
+			[
+				'C:\\Print Lab\\slicer\\upstream.lock',
+				'C:\\Print Lab\\slicer\\dist\\win32-x64\\printlab-slicer.exe'
+			],
+			{ platform: 'win32', home: 'C:\\Users\\Maker' }
+		);
+		expect(locateEngine({}, 'C:\\Print Lab\\app\\nested', win)).toMatchObject({
+			source: 'dev-build',
+			path: 'C:\\Print Lab\\slicer\\dist\\win32-x64\\printlab-slicer.exe'
+		});
+		expect(locateEngine({}, 'C:\\Elsewhere', win)).toBeNull();
+	});
 	it('prefers the explicit engine, then the desktop bundle, then dev builds, then stock CLIs', () => {
 		const h = host([
 			'/opt/eng/printlab-slicer',

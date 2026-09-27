@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ERROR, type Progress } from '$lib/shared/slicer/protocol';
 import {
 	EngineError,
@@ -142,6 +142,16 @@ describe('StdioEngine against the fake engine', () => {
 });
 
 describe('openSlicer', () => {
+	const commands = new Map<string, Record<string, string>>();
+	beforeEach(() => {
+		const open = StdioEngine.open;
+		vi.spyOn(StdioEngine, 'open').mockImplementation((options) => {
+			const env = commands.get(options.command);
+			if (!env) throw new Error(`Unexpected test executable: ${options.command}`);
+			// Exercise real process startup and negotiation, using Node instead of a Unix-only wrapper.
+			return open({ ...options, command: process.execPath, args: [FAKE], env });
+		});
+	});
 	const nothing = {
 		platform: 'linux' as const,
 		arch: 'x64',
@@ -151,20 +161,25 @@ describe('openSlicer', () => {
 		isDir: () => false,
 		readdir: () => []
 	};
-	/** An executable that runs the fake engine, as a built printlab-slicer would sit on disk. */
+	/** Discovery marker; the launch seam above runs its real fake-engine process portably. */
 	function engineBinary(env: Record<string, string> = {}) {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fpl-engine-bin-'));
 		dirs.push(dir);
-		const bin = path.join(dir, 'printlab-slicer');
-		const vars = Object.entries(env)
-			.map(([k, v]) => `${k}=${v} `)
-			.join('');
-		fs.writeFileSync(bin, `#!/bin/sh\n${vars}exec "${process.execPath}" "${FAKE}" "$@"\n`);
+		const bin = path.join(
+			dir,
+			process.platform === 'win32' ? 'printlab-slicer.exe' : 'printlab-slicer'
+		);
+		fs.writeFileSync(bin, 'fake engine discovery marker');
 		fs.chmodSync(bin, 0o755);
+		commands.set(bin, env);
 		return bin;
 	}
 
-	afterEach(() => closeSlicer());
+	afterEach(async () => {
+		await closeSlicer();
+		vi.restoreAllMocks();
+		commands.clear();
+	});
 
 	it('is null when neither the engine nor a command line is installed', async () => {
 		expect(await openSlicer({}, { cwd: '/nowhere', host: nothing })).toBeNull();
