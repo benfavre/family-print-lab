@@ -84,6 +84,24 @@ export class Queue implements QueueService {
 		const onTask = (info: TaskInfo) => this.settled(info);
 		this.d.tasks.events.on('task', onTask);
 		this.offs.push(() => this.d.tasks.events.off('task', onTask));
+		// Diameter and feeder-binding changes do not emit ams.tray.changed. Reconsider held jobs
+		// promptly, without rerunning dispatch for temperature-only reports.
+		const hardwareKey = (id: string) => {
+			const s = this.d.printers.get(id)?.snapshot;
+			return JSON.stringify([
+				s?.nozzles.map((n) => [n.id, n.diameter]),
+				s?.ams.map((a) => [a.id, a.nozzle])
+			]);
+		};
+		const hardware = new Map(this.d.printers.list().map((p) => [p.id, hardwareKey(p.id)]));
+		const onUpdate = (id: string) => {
+			const key = hardwareKey(id);
+			if (hardware.get(id) === key) return;
+			hardware.set(id, key);
+			this.schedule();
+		};
+		this.d.printers.on('update', onUpdate);
+		this.offs.push(() => this.d.printers.off('update', onUpdate));
 		const onRegistry = () => this.schedule();
 		this.d.printers.on('changed', onRegistry);
 		this.offs.push(() => this.d.printers.off('changed', onRegistry));
@@ -460,6 +478,7 @@ export class Queue implements QueueService {
 				developerModeOff: s?.developerMode === false,
 				sending: sending.has(p.id),
 				slots: s ? loadedSlots(s) : null,
+				nozzles: s?.nozzles,
 				autoDispatch: st.autoDispatch,
 				paused: st.paused,
 				plateClearNeeded: st.plateClearNeeded
@@ -480,7 +499,12 @@ export class Queue implements QueueService {
 							status: job.status,
 							sliced:
 								job.sliced && plate
-									? { printerModelId: job.sliced.printerModelId, filaments: plate.filaments }
+									? {
+											printerModelId: job.sliced.printerModelId,
+											filaments: plate.filaments,
+											nozzleDiameters: plate.nozzleDiameters,
+											dynamicNozzleMapping: plate.dynamicNozzleMapping
+										}
 									: null
 						}
 					: null

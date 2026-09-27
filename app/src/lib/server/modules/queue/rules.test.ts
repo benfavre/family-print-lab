@@ -258,3 +258,37 @@ describe('dual-nozzle queue mapping', () => {
 		expect(fixed.dispatch).toHaveLength(1);
 	});
 });
+
+describe('queued nozzle requirements', () => {
+	it.each(['C12', 'N6'] as const)(
+		'holds an incompatible %s job or chooses a compatible printer',
+		(model) => {
+			const queued = item({}, model);
+			queued.job!.sliced!.nozzleDiameters = model === 'C12' ? [0.6] : [0.6, 0.4];
+			queued.job!.sliced!.filaments[0].extruder = 1;
+			const wrong = printer({
+				id: 'wrong',
+				model,
+				nozzles: [{ id: 0, diameter: 0.4 }, ...(model === 'N6' ? [{ id: 1, diameter: 0.4 }] : [])]
+			});
+			const right = {
+				...wrong,
+				id: 'right',
+				nozzles: [
+					{ id: 0, diameter: model === 'C12' ? 0.6 : 0.4 },
+					...(model === 'N6' ? [{ id: 1, diameter: 0.6 }] : [])
+				]
+			};
+			expect(run([wrong, right], [queued]).dispatch.map((d) => d.printerId)).toEqual(['right']);
+			const held = run([wrong], [{ ...queued, printerId: wrong.id }]);
+			expect(held.dispatch).toEqual([]);
+			expect(held.hold[0].reason).toContain('needs a 0.6 mm');
+			expect(
+				run(
+					[right],
+					[{ ...queued, printerId: right.id, status: 'held', reason: held.hold[0].reason }]
+				).dispatch
+			).toHaveLength(1);
+		}
+	);
+});

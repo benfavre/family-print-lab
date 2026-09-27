@@ -157,6 +157,10 @@ export interface SlicedPlate {
 	grams: number;
 	layers: number;
 	supports: boolean;
+	/** Slicer config order: sole nozzle, or left then right; null keeps an unknown value's position. */
+	nozzleDiameters?: (number | null)[];
+	/** Dynamic rack/switcher assignments require their own mapping, not the fixed left/right rule. */
+	dynamicNozzleMapping?: boolean;
 	filaments: SlicedFilament[];
 }
 /** A sliced print file attached to a job, ready to send to the printer. */

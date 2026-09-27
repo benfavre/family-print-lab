@@ -9,7 +9,12 @@
 // plate was confirmed clear (when the item asks for that), the file was sliced for this model and the
 // loaded filament fits (autoMapping without problems, as the send panel suggests it).
 import { autoMapping, mappingProblems, type LoadedSlot } from '$lib/shared/printing';
-import type { JobStatus, SlicedFilament } from '$lib/shared/domain';
+import {
+	nozzleProblems,
+	type NozzleReport,
+	type NozzleRequirements
+} from '$lib/shared/nozzle-compatibility';
+import type { JobStatus } from '$lib/shared/domain';
 import { PRINTER_MODELS, modelShort, sameModel, type ModelCode } from '$lib/shared/printers/models';
 import { inQuietHours, type QueueStatus, type QuietWindow } from '$lib/shared/queue';
 
@@ -27,6 +32,7 @@ export interface PrinterFacts {
 	sending: boolean;
 	/** Loaded trays as last reported; null when never reported. */
 	slots: LoadedSlot[] | null;
+	nozzles?: NozzleReport[];
 	autoDispatch: boolean;
 	paused: boolean;
 	plateClearNeeded: boolean;
@@ -42,7 +48,7 @@ export interface ItemFacts {
 	job: {
 		status: JobStatus;
 		/** The plate it prints: what it was sliced for and its filaments. */
-		sliced: { printerModelId: string | null; filaments: SlicedFilament[] } | null;
+		sliced: ({ printerModelId: string | null } & NozzleRequirements) | null;
 	} | null;
 }
 
@@ -167,7 +173,7 @@ export function decide(
 	}
 
 	const taken = new Set<string>();
-	/** "Any printer" items a free printer turned down for its filament: held if nothing takes them. */
+	/** "Any printer" items a free printer turned down for its nozzle or filament: held if nothing takes them. */
 	const amsMiss = new Map<string, string>();
 	for (const p of printers) {
 		const block = printerBlock(p, { quiet, canWake: o.canWake, manual: o.manual === p.id });
@@ -189,7 +195,10 @@ export function decide(
 			const filaments = item.job!.sliced!.filaments;
 			const useAms = slots.length > 0;
 			const amsMapping = useAms ? autoMapping(filaments, slots) : [];
-			const problems = useAms ? mappingProblems(filaments, amsMapping, slots) : [];
+			const problems = [
+				...nozzleProblems(item.job!.sliced!, p.nozzles, PRINTER_MODELS[p.model].nozzles),
+				...(useAms ? mappingProblems(filaments, amsMapping, slots) : [])
+			];
 			if (problems.length) {
 				if (item.printerId) hold(item, problems.join(' '));
 				else amsMiss.set(item.id, `${p.name}: ${problems.join(' ')}`);

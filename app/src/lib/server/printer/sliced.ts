@@ -38,6 +38,21 @@ function estimate(value: string | number | undefined): number {
 	return Number.isFinite(n) && n >= 0 && n <= Number.MAX_SAFE_INTEGER ? n : 0;
 }
 
+/** Bambu Studio v02.08.02.61 bbs_3mf.cpp _add_slice_info_config_file_to_archive writes
+ * ConfigOptionFloatsNullable::serialize() (Config.hpp): comma-separated diameters, with nil entries.
+ * Keep unknown entries in place; compacting them would exchange the left and right requirements.
+ */
+export function readNozzleDiameters(value: string): (number | null)[] | undefined {
+	if (!value.trim()) return undefined;
+	return value.split(',').map((part) => {
+		const text = part.trim();
+		const n = Number(text);
+		return /^(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(text) && Number.isFinite(n) && n > 0
+			? n
+			: null;
+	});
+}
+
 /** Reads a sliced .gcode.3mf. Throws a friendly error for files that were never sliced. */
 export function readSliced(buf: Buffer): SlicedFile {
 	const files = readZip(buf, (name) => {
@@ -86,6 +101,7 @@ export function readSliced(buf: Buffer): SlicedFile {
 					...(extruder === 1 || extruder === 2 ? { extruder } : {})
 				};
 			});
+			const nozzleDiameters = readNozzleDiameters(meta('nozzle_diameters'));
 			const grams =
 				estimate(meta('weight')) ||
 				estimate(filaments.reduce((a, f) => a + f.grams, 0)) ||
@@ -98,6 +114,11 @@ export function readSliced(buf: Buffer): SlicedFile {
 				grams: Math.round(grams * 10) / 10,
 				layers: Number(fromHead(/total layer number: (\d+)/)) || 0,
 				supports: meta('support_used') === 'true',
+				...(nozzleDiameters ? { nozzleDiameters } : {}),
+				...(meta('enable_filament_dynamic_map') === 'true' ||
+				meta('has_filament_switcher') === 'true'
+					? { dynamicNozzleMapping: true }
+					: {}),
 				filaments
 			};
 		})
@@ -134,6 +155,8 @@ export function fakeSliced(opts: {
 	filaments?: { type: string; color: string; grams: number }[];
 	/** slice_info filament_maps: the extruder (1 left, 2 right) of each filament. */
 	filamentMaps?: number[];
+	/** Slicer config order, not printer report order. Defaults to a single 0.4 mm nozzle. */
+	nozzleDiameters?: (number | null)[];
 	thumbnail?: Buffer;
 }): Buffer {
 	const layers = opts.layers ?? 120;
@@ -163,7 +186,7 @@ export function fakeSliced(opts: {
   <plate>
     <metadata key="index" value="1"/>
     <metadata key="printer_model_id" value="${opts.printerModelId ?? 'N6'}"/>
-    <metadata key="nozzle_diameters" value="0.4"/>
+    <metadata key="nozzle_diameters" value="${(opts.nozzleDiameters ?? [0.4]).map((n) => n ?? 'nil').join(',')}"/>
     <metadata key="prediction" value="${opts.minutes * 60}"/>
     <metadata key="weight" value="${opts.grams}"/>
     <metadata key="support_used" value="false"/>${opts.filamentMaps ? `\n    <metadata key="filament_maps" value="${opts.filamentMaps.join(' ')}"/>` : ''}

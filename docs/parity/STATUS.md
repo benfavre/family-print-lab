@@ -233,3 +233,12 @@ fixed by patch 0017. A later missing `<sstream>` include is fixed by patch 0018;
 reproduced and checked with Clang, using libc++ for the standard-library case. These changes are on
 `parity`, not in the published 2.2.0 installers. Complete Windows/macOS native build verification
 remains pending in GitHub Actions. No physical printer has been used.
+
+Sliced plates retain their nozzle diameter metadata. Sends and queue dispatch block a known diameter
+mismatch, including after wake-up and with a material override; the Send panel rechecks when the
+printer reports a nozzle change. Fixed dual-nozzle checks use the pinned slicer's logical left/right
+ordering and only the nozzles used by that plate. Missing legacy metadata, unknown reported diameters,
+and ambiguous dual mappings retain their previous behaviour. Dynamic rack and filament-switcher
+assignments still need a dedicated compatibility check: their metadata is recognised, but this
+fixed-nozzle comparison does not guess their physical assignment. Validation uses simulator and
+browser fixtures; no real-printer verification is claimed.
