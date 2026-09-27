@@ -154,6 +154,8 @@ fi
 	# Every dependency target except the GL ones (their dependencies come along).
 	TARGETS=()
 	while IFS= read -r t; do
+		# Native Windows CMake writes CRLF; a CR must not become part of an MSBuild target.
+		t="${t%$'\r'}"
 		[ -z "$t" ] || TARGETS+=("$t")
 	done <"$DEPS/build/printlab-dependency-targets.txt"
 	[ ${#TARGETS[@]} -gt 0 ] || die "the superbuild lists no dependency targets."

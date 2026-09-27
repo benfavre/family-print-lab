@@ -18,6 +18,16 @@ mkdir -p "$UP/deps/nested"
 cat >"$UP/deps/CMakeLists.txt" <<'CMAKE'
 cmake_minimum_required(VERSION 3.19)
 project(BambuStudio-deps)
+# Exercise Windows target-list line endings even on Linux/macOS. The collector's deferred call
+# was registered by project(), so this runs after it has written the target list.
+function(windows_target_lines)
+    set(path "${CMAKE_BINARY_DIR}/printlab-dependency-targets.txt")
+    file(READ "${path}" targets)
+    string(REPLACE "\r\n" "\n" targets "${targets}")
+    string(REPLACE "\n" "\r\n" targets "${targets}")
+    file(WRITE "${path}" "${targets}")
+endfunction()
+cmake_language(DEFER CALL windows_target_lines)
 # Match upstream deps/CMakeLists.txt and OCCT's conditional git-apply prefix.
 execute_process(COMMAND git rev-parse --is-inside-work-tree
     RESULT_VARIABLE git_status OUTPUT_VARIABLE git_inside OUTPUT_STRIP_TRAILING_WHITESPACE
@@ -89,7 +99,7 @@ for generator in "${GENERATORS[@]}"; do
 	[ "$(cat "$PRINTLAB_SLICER_BUILD_DIR/deps/.stamp")" = "$key" ] || fail 'wrong cache stamp'
 	bash "$SLICER/scripts/build-deps.sh" -j 2 >"$log" 2>&1
 	grep -q 'already built' "$log" || fail 'matching cache was not reused'
-	pass "$generator builds dependencies, applies archive patches, excludes GUI targets and reuses its cache"
+	pass "$generator builds CRLF-listed dependencies, applies archive patches, excludes GUI targets and reuses its cache"
 
 	if [ "${BUILD_PROTOCOL:-0}" = 1 ]; then
 		bash "$SLICER/scripts/upstream.sh" build --no-upstream -j 2 >"$TEMP/protocol-$index.log" 2>&1 ||
