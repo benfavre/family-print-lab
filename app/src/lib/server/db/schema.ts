@@ -3,3 +3,4 @@ export * from './tables/core';
 export * from './tables/printers';
 export * from './tables/ams';
 export * from './tables/hms';
+export * from './tables/notifications';
