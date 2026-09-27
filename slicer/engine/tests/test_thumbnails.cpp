@@ -1,5 +1,8 @@
 #include <algorithm>
+#include <chrono>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 
 #include "check.hpp"
 #include "features/thumbnails/thumbnails.hpp"
@@ -79,6 +82,26 @@ TEST("encodes a PNG with valid chunks") {
 	CHECK(png.compare(29, 4, "\xa9\xf1\x9e\x7e") == 0); // CRC of the 4 × 4 RGBA IHDR
 	CHECK(png.find("IDAT") != std::string::npos);
 	CHECK(png.compare(png.size() - 8, 4, "IEND") == 0);
+}
+
+TEST("writes PNG files to UTF-8 directories and names") {
+	namespace fs = std::filesystem;
+	const auto suffix = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+	const fs::path dir = fs::temp_directory_path() / fs::u8path(u8"printlab-é-印刷-" + suffix);
+	fs::create_directories(dir);
+	struct Cleanup {
+		fs::path path;
+		~Cleanup() { std::error_code ec; fs::remove_all(path, ec); }
+	} cleanup{dir};
+	const fs::path path = dir / fs::u8path(u8"aperçu-模型.png");
+	Options options;
+	options.width = options.height = 8;
+	CHECK(write_png(path.u8string(), {}, options));
+	CHECK(fs::exists(path));
+	std::ifstream file(path, std::ios::binary);
+	char signature[8]{};
+	file.read(signature, sizeof(signature));
+	CHECK(std::memcmp(signature, "\x89PNG\r\n\x1a\n", sizeof(signature)) == 0);
 }
 
 CHECK_MAIN

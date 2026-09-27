@@ -4,7 +4,7 @@
 // each key are read from the same JSON files, since PresetBundle keeps only the resolved result.
 // origin: BambuStudio src/libslic3r/PresetBundle.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
 // origin: BambuStudio src/libslic3r/Print.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
-#include <fstream>
+#include <boost/nowide/fstream.hpp>
 #include <sstream>
 
 #include <boost/filesystem.hpp>
@@ -51,7 +51,7 @@ struct RawPresets {
 			if (!fs::exists(dir)) continue;
 			for (auto &entry : fs::recursive_directory_iterator(dir)) {
 				if (entry.path().extension() != ".json") continue;
-				std::ifstream in(entry.path().string(), std::ios::binary);
+				boost::nowide::ifstream in(entry.path().string(), std::ios::binary);
 				std::stringstream ss;
 				ss << in.rdbuf();
 				try {

@@ -1,7 +1,7 @@
 // libslic3r owns model import/export; the project preservation layer retains fields its slicing
 // model normalises or drops. Bambu's archive constants and extension handling follow the pin.
 // origin: BambuStudio src/libslic3r/Format/bbs_3mf.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
-#include <fstream>
+#include <boost/nowide/fstream.hpp>
 #include <iomanip>
 #include <sstream>
 #include <boost/filesystem.hpp>
@@ -18,7 +18,7 @@ using namespace Slic3r;
 namespace fs = boost::filesystem;
 namespace {
 std::string file_bytes(const std::string &path) {
-	std::ifstream in(path, std::ios::binary);
+	boost::nowide::ifstream in(path, std::ios::binary);
 	if (!in)
 		throw std::runtime_error("Could not read " + path);
 	return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
@@ -117,7 +117,7 @@ OpenProjectResult UpstreamFacade::project_open(const std::string &path) {
 			std::string stl = project_io::canonical_stl(mesh), mesh_id = hash(stl);
 			std::string filename = (fs::path(dir) / (mesh_id + ".stl")).string();
 			if (!infos.count(mesh_id)) {
-				std::ofstream out(filename, std::ios::binary);
+				boost::nowide::ofstream out(filename, std::ios::binary);
 				out.write(stl.data(), static_cast<std::streamsize>(stl.size()));
 				out.close();
 				if (!out)

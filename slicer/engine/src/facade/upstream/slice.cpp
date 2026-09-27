@@ -9,7 +9,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
-#include <fstream>
+#include <boost/nowide/fstream.hpp>
 #include <thread>
 
 #include <boost/filesystem.hpp>
@@ -41,7 +41,7 @@ std::string stage_for(int percent) {
 
 /** "; total layer number: N" from the G-code header (GCodeProcessor.cpp writes it). */
 int layers_from_header(const std::string &gcode_file) {
-	std::ifstream in(gcode_file);
+	boost::nowide::ifstream in(gcode_file);
 	std::string line;
 	for (int i = 0; i < 400 && std::getline(in, line); ++i) {
 		auto at = line.find("total layer number:");

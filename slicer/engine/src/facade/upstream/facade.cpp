@@ -1,9 +1,12 @@
 // The upstream facade: projects held in memory by id, each with its full config (the resolved
 // presets' combined config plus the project's own settings), and the capabilities this build offers.
+// origin: BambuStudio src/BambuStudio.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
 #include <cstdlib>
-#include <fstream>
+#include <mutex>
 
 #include <boost/filesystem.hpp>
+#include <boost/nowide/fstream.hpp>
+#include <boost/nowide/integration/filesystem.hpp>
 
 #include "libslic3r/Utils.hpp"
 #include "../identity.hpp"
@@ -20,6 +23,10 @@ std::string opt_string_json(const Json &j) { return j["version"].is_string() ? j
 } // namespace
 
 UpstreamFacade::UpstreamFacade() {
+	// CLI::run at the pin (BambuStudio.cpp:1510) installs UTF-8 conversion before using Boost
+	// filesystem paths. RPC paths are also UTF-8, including Windows account and model directories.
+	static std::once_flag filesystem_utf8;
+	std::call_once(filesystem_utf8, [] { boost::nowide::nowide_filesystem(); });
 #ifdef PRINTLAB_UPSTREAM_RESOURCES
 	resources_dir_ = PRINTLAB_UPSTREAM_RESOURCES;
 #endif
@@ -34,7 +41,7 @@ EngineIdentity UpstreamFacade::identity() const {
 	fs::path vendor = fs::path(resources_dir_) / "profiles" / "BBL.json";
 	if (fs::exists(vendor)) {
 		id.profiles_dir = (fs::path(resources_dir_) / "profiles" / "BBL").string();
-		std::ifstream in(vendor.string(), std::ios::binary);
+		boost::nowide::ifstream in(vendor.string(), std::ios::binary);
 		std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 		try {
 			id.vendor_version = opt_string_json(Json::parse(text));

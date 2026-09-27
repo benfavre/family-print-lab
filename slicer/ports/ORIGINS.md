@@ -14,6 +14,7 @@ listed here: it is read through `app/tools/lib/upstream.ts` and regenerated on e
 
 | Our file                                                               | Repository  | Upstream path                                            | Commit                                     |
 | ---------------------------------------------------------------------- | ----------- | -------------------------------------------------------- | ------------------------------------------ |
+| `slicer/engine/src/facade/upstream/facade.cpp`                           | BambuStudio | `src/BambuStudio.cpp`                                    | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
 | `slicer/engine/src/facade/wipe_tower.hpp`                              | BambuStudio | `src/slic3r/GUI/Jobs/ArrangeJob.cpp`                     | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
 | `slicer/engine/src/facade/wipe_tower.hpp`                              | BambuStudio | `src/slic3r/GUI/PartPlate.cpp`                           | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
 | `slicer/engine/src/facade/upstream/arrange_orient.cpp`                 | BambuStudio | `src/slic3r/GUI/Jobs/ArrangeJob.cpp`                     | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
