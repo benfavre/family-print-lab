@@ -1,17 +1,17 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Benjamin Favre <ben@webdesign29.net>
 Date: Sun, 27 Sep 2026 09:56:53 +0000
-Subject: [PATCH] Memory: release moved expressions and temporary 3MF buffers
+Subject: [PATCH] Memory: release placeholder strings and temporary 3MF buffers
 
-Why: Valgrind reports leaked string expressions overwritten by move assignment and heap ZIP buffers whose ownership passes to the exporter at finalisation. Release old expression storage before taking ownership, guard self-assignment, and free temporary ZIP memory after its reader finishes.
+Why: Valgrind reports string expressions lost when comparisons overwrite their type, overwritten move targets, and heap ZIP buffers whose ownership passes to the exporter at finalisation. Reset string storage before assigning booleans or moved values, guard self-assignment, and free temporary ZIP memory after its reader finishes.
 
 Files: src/libslic3r/PlaceholderParser.cpp; src/libslic3r/Format/bbs_3mf.cpp. Upstreamable: yes; general ownership corrections independent of the facade.
 
 Co-Authored-By: Codex <noreply@openai.com>
 ---
  src/libslic3r/Format/bbs_3mf.cpp    | 2 ++
- src/libslic3r/PlaceholderParser.cpp | 3 +++
- 2 files changed, 5 insertions(+)
+ src/libslic3r/PlaceholderParser.cpp | 6 ++++--
+ 2 files changed, 6 insertions(+), 2 deletions(-)
 
 diff --git a/src/libslic3r/Format/bbs_3mf.cpp b/src/libslic3r/Format/bbs_3mf.cpp
 index 1c1ff86..99e76f6 100644
@@ -34,7 +34,7 @@ index 1c1ff86..99e76f6 100644
          }
      });
 diff --git a/src/libslic3r/PlaceholderParser.cpp b/src/libslic3r/PlaceholderParser.cpp
-index 10dd7f6..13f65f3 100644
+index 10dd7f6..bc83e00 100644
 --- a/src/libslic3r/PlaceholderParser.cpp
 +++ b/src/libslic3r/PlaceholderParser.cpp
 @@ -211,6 +211,7 @@ namespace client
@@ -54,3 +54,13 @@ index 10dd7f6..13f65f3 100644
              type            = rhs.type;
              this->it_range  = rhs.it_range;
              data.set(rhs.data);
+@@ -545,8 +548,7 @@ namespace client
+                 boost::throw_exception(qi::expectation_failure<Iterator>(
+                     lhs.it_range.begin(), rhs.it_range.end(), spirit::info("*Cannot compare the types.")));
+             }
+-            lhs.type = TYPE_BOOL;
+-            lhs.data.b = invert ? ! value : value;
++            lhs.set_b(invert ? ! value : value);
+         }
+         // Compare operators, store the result into lhs.
+         static void equal    (expr &lhs, expr &rhs) { compare_op(lhs, rhs, '=', false); }

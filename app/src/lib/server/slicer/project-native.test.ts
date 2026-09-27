@@ -20,10 +20,11 @@ function portable(project: Project): Project {
 
 describe.runIf(!!BIN)('native project files', () => {
 	for (const name of fixtures) {
-		it(`round-trips ${name} in both directions`, { timeout: 180_000 }, async () => {
+		it(`round-trips ${name} in both directions`, { timeout: 180_000 }, async ({ skip }) => {
 			const work = fs.mkdtempSync(path.join(os.tmpdir(), 'fpl-project-'));
 			const engine = await StdioEngine.open({ command: BIN!, workDir: work });
 			try {
+				if (!engine.has('slice')) skip(); // The protocol-only CI build has no upstream facade.
 				expect(engine.has('project.open')).toBe(true);
 				expect(engine.has('project.save')).toBe(true);
 				const input = path.join(dir, name);

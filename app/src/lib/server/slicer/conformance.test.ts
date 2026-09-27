@@ -135,12 +135,12 @@ describe.runIf(!!BIN)('printlab-slicer protocol conformance', () => {
 		expect(parse.error!.data.message).toMatch(/\w/);
 	});
 
-	it('answers CAPABILITY_MISSING for a method it does not offer', async () => {
+	it('answers CAPABILITY_MISSING for a method it does not offer', async ({ skip }) => {
 		const caps = (await raw.answer(1)).result?.capabilities ?? [];
 		const absent = ['slice', 'arrange', 'orient', 'preview.get'].find(
 			(m) => !caps.includes(m === 'preview.get' ? 'preview.v1' : m)
 		);
-		if (!absent) return; // a full engine offers all of them
+		if (!absent) skip(); // A full engine offers all of them.
 		raw.send({
 			jsonrpc: '2.0',
 			id: 5,

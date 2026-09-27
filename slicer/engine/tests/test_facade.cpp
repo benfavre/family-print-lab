@@ -61,6 +61,13 @@ TEST("slices a cube for the P1S and exports a printable file") {
 	p.presets = sel;
 	p.extras["printer_model_id"] = "C12";
 	p.filaments = {{1, "#FF7A2F", "PLA"}};
+	// Exercise ownership changes from string expressions to comparison results on each slice.
+	// Valgrind/LeakSanitizer must also see these strings freed, not just correct G-code text.
+	p.project_config["machine_start_gcode"] = std::get<std::string>(bundle.full.at("machine_start_gcode")) +
+	    "\n; ownership-check {if \"PLA\" == \"PLA\"}eq{endif} {if \"PLA\" != \"PETG\"}ne{endif} "
+	    "{if \"A\" < \"B\"}lt{endif} {if \"B\" > \"A\"}gt{endif} "
+	    "{if \"A\" <= \"A\"}le{endif} {if \"B\" >= \"B\"}ge{endif}\n";
+
 	SceneObject o;
 	o.id = "o1";
 	o.name = "Cube";
@@ -104,6 +111,10 @@ TEST("slices a cube for the P1S and exports a printable file") {
 			CHECK(std::abs(again.filaments[i].meters - stats.filaments[i].meters) < 0.0001);
 		}
 	}
+
+	std::ifstream generated(work + "/" + id + "/plate_1.gcode");
+	const std::string gcode((std::istreambuf_iterator<char>(generated)), std::istreambuf_iterator<char>());
+	CHECK(gcode.find("; ownership-check eq ne lt gt le ge") != std::string::npos);
 	CHECK_EQ(stats.objects.size(), size_t(1));
 	CHECK_EQ(stats.objects[0].object_id, "o1");
 	// Upstream does not emit object labels for a single-instance plate.

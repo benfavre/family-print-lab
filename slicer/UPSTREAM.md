@@ -9,9 +9,9 @@ new Bambu Studio release is a rebase of a handful of small patches, not a merge 
 
 <!-- pin:start -->
 
-| Upstream | Tag | Commit | Patch queue |
-| --- | --- | --- | --- |
-| Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 5, 5 patch(es), hash `25cd929c3245f89548b26e00ad68ebbcb8ca091ded5fd65769a9b5c2c2331088` |
+| Upstream     | Tag            | Commit                                     | Patch queue                                                                                     |
+| ------------ | -------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 6, 5 patch(es), hash `4b47b86ca2e8f5d32b87b51c8935ad1c9458d3a6e6019e2be500d021aed354c0` |
 
 <!-- pin:end -->
 
@@ -139,6 +139,7 @@ lists all of them at once. The checkout is left as it was.
    ```
 
    To change an existing patch, use `git commit --fixup` and `git rebase -i --autosquash printlab-base`.
+
 3. `slicer/scripts/upstream.sh export` and commit `slicer/` in a pull request.
 
 `fetch` refuses to throw away commits that are only in the checkout; export them first (or pass
@@ -163,8 +164,8 @@ it on every pull request.
    git tree of `deps/`, platform) that CI also uses for its cache; `build-deps.sh --print-key` shows it.
    About 75 minutes with `-j 2` on an 8-core laptop, 634 MB installed.
 2. The engine: `cmake -S slicer/engine -B .build/engine -DPRINTLAB_UPSTREAM_DIR=slicer/.upstream
-   -DCMAKE_PREFIX_PATH=.build/deps/usr/local`, which adds upstream with `add_subdirectory(…
-   EXCLUDE_FROM_ALL)` (`SLIC3R_GUI=OFF`, `FLATPAK=ON` so no FFmpeg is copied) and builds only
+-DCMAKE_PREFIX_PATH=.build/deps/usr/local`, which adds upstream with `add_subdirectory(…
+EXCLUDE_FROM_ALL)` (`SLIC3R_GUI=OFF`, `FLATPAK=ON` so no FFmpeg is copied) and builds only
    libslic3r and what it needs.
 3. The bundle in `slicer/dist/<platform>/`: `printlab-slicer`, `resources/` (profiles, printers,
    info from the same tag), `LICENSE`, `engine.json`. The app finds it there (`slicer/locate.ts`);
