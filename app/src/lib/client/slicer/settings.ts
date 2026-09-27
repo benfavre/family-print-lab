@@ -2,6 +2,8 @@
 // object settings (its "Add settings" menu uses the process tabs: Quality, Strength, Speed, Support,
 // Others; src/slic3r/GUI/Tab.cpp, as in server/profiles/groups.generated.ts, which a test checks these
 // keys against). Values are text as upstream stores them; the placeholder shows what the presets give.
+// Hints list the option values of src/libslic3r/PrintConfig.cpp (s_keys_map_SeamPosition, _SupportType,
+// _BrimType, _IroningType, _FuzzySkinType, _InfillPattern) at the tag in slicer/upstream.lock.
 import type { ConfigMap, ConfigValue } from '$lib/shared/slicer/project';
 
 export interface SettingDef {

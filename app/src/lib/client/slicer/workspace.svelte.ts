@@ -335,6 +335,11 @@ export class WorkspaceState {
 	/** Sets an instance's transform (the gizmo let go, or numbers typed in). */
 	setTransform(pick: Pick, transform: Transform, label = 'Move') {
 		this.dragging = null;
+		const current = this.project.objects
+			.find((o) => o.id === pick.objectId)
+			?.instances.find((i) => i.id === pick.instanceId)?.transform;
+		// A click on the gizmo without a drag changes nothing.
+		if (current && current.every((v, i) => Math.abs(v - transform[i]) < 1e-9)) return;
 		this.change(label, (p) =>
 			placeInstance(p, this.bed, pick.objectId, pick.instanceId, transform, this.meshSource)
 		);

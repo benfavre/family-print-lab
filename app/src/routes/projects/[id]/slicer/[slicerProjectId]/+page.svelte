@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
+	import { beforeNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { useApp } from '$lib/client/app.svelte';
 	import { download, projectHref } from '$lib/client/actions';
@@ -58,6 +59,11 @@
 		untrack(() => void load(id));
 	});
 	onDestroy(() => ws?.dispose());
+	// Leaving the page saves what is not saved yet; closing the tab asks first.
+	beforeNavigate(() => void ws?.doc.save());
+	function beforeUnload(e: BeforeUnloadEvent) {
+		if (ws?.doc.dirty) e.preventDefault();
+	}
 
 	// New presets: new placeholders.
 	let presetKey = '';
@@ -129,7 +135,7 @@
 </script>
 
 <svelte:head><title>{name || 'Slicer'} · Family Print Lab</title></svelte:head>
-<svelte:window onkeydown={keydown} />
+<svelte:window onkeydown={keydown} onbeforeunload={beforeUnload} />
 
 <div class="sw">
 	<header class="sw-top">
@@ -138,6 +144,11 @@
 				>{/if}
 			<h1>{name || 'Slicer'}</h1>
 			{#if ws}<span class="save" class:bad={!!ws.doc.problem} role="status">{saveState}</span>{/if}
+			{#if ws?.doc.problem}<button
+					class="mini"
+					onclick={() => load(slicerId)}
+					title="Drop the changes here and open the saved project">Reload</button
+				>{/if}
 		</div>
 		{#if ws}
 			<div class="top-actions">
