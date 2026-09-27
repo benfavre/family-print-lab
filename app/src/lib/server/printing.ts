@@ -12,7 +12,7 @@ import type { PrinterManager } from './printer/manager';
 import type { Hooks } from './modules';
 import { readSliced } from './printer/sliced';
 import type { ModelStore } from './models';
-import { slice } from './slicer';
+import { sliceModel } from './slicer/service';
 import { AppError } from './validation';
 import { loadedSlots, mappingProblems } from '$lib/shared/printing';
 import { ACTIVE_PRINTER_STATES, type Job, type SlicedInfo } from '$lib/shared/domain';
@@ -104,8 +104,8 @@ export class PrintFiles {
 	}
 
 	/**
-	 * Slices the job's model version for its printer's model with the job's settings (Bambu Studio,
-	 * headless) and attaches the result, as a background task.
+	 * Slices the job's model version for its printer's model with the job's settings (Print Lab Slicer,
+	 * else Bambu Studio's command line: slicer/service.ts) and attaches the result, as a background task.
 	 */
 	sliceJob(jobId: string) {
 		const job = this.job(jobId);
@@ -126,10 +126,10 @@ export class PrintFiles {
 				title: `Slice ${model.name} v${version.number}`,
 				projectId: job.projectId,
 				modelId: model.id,
-				stage: 'Choosing Bambu Studio profiles…'
+				stage: 'Choosing profiles…'
 			},
 			async (ctx) => {
-				const r = await slice({
+				const r = await sliceModel({
 					stl: fs.readFileSync(stlPath),
 					name: model.name,
 					thumbnail: fs.existsSync(pngPath) ? fs.readFileSync(pngPath) : null,

@@ -9,7 +9,7 @@ import { AI_TASKS, AI_TASK_LABEL, getSettings } from './settings';
 import { blenderInfo, runJob } from './cad/blender';
 import { OPENSCAD_VERSION, renderScad } from './cad/openscad';
 import { writeStl } from './cad/mesh';
-import { findSlicer, slice } from './slicer';
+import { sliceModel } from './slicer/service';
 import { AppError } from './validation';
 import {
 	AI_PROVIDERS,
@@ -64,8 +64,6 @@ export async function integrations(rt: Runtime, refresh = false): Promise<Integr
 	const enabled = printers.filter((p) => p.enabled !== false);
 	const connected = enabled.filter((p) => p.connected);
 	const simulated = printers.length > 0 && printers.every((p) => p.simulated);
-	const sliceModel = rt.printers.primary()?.model.short ?? 'X2D';
-	const slicer = findSlicer();
 	const moduleRows = (
 		await Promise.all(
 			rt
@@ -116,33 +114,6 @@ export async function integrations(rt: Runtime, refresh = false): Promise<Integr
 			version: OPENSCAD_VERSION,
 			powers: ['Parametric models', 'Live preview', 'Checking AI designs', 'Text'],
 			setup: []
-		},
-		{
-			id: 'slicer',
-			kind: 'tool',
-			name: 'Bambu Studio',
-			via: `Local install, sliced headless for your printer (${sliceModel})`,
-			available: slicer.available,
-			detail: slicer.available ? slicer.path! : 'Not found on this computer.',
-			version: slicer.version,
-			powers: [
-				'Slices model versions with the job’s settings',
-				'Real print time and filament',
-				'Bambu Lab profiles for every printer and material'
-			],
-			setup: slicer.available
-				? []
-				: [
-						{
-							text: 'Download the Linux AppImage from github.com/bambulab/BambuStudio/releases and unpack it',
-							command:
-								'cd ~/.local/opt && chmod +x BambuStudio_*.AppImage && ./BambuStudio_*.AppImage --appimage-extract && mv squashfs-root bambu-studio-<version>'
-						},
-						{
-							text: 'Or point the app at an unpacked install in app/.env',
-							command: 'BAMBU_STUDIO_PATH=/path/to/AppRun'
-						}
-					]
 		},
 		{
 			id: 'printer',
@@ -266,9 +237,10 @@ export async function testIntegration(
 				fs.rmSync(dir, { recursive: true, force: true });
 			}
 		}
+		// The slicer's row comes from the slicer-engine module; its test is a real slice of a cube.
 		if (id === 'slicer') {
 			const r = await renderScad('cube([20, 20, 10]);');
-			const out = await slice({
+			const out = await sliceModel({
 				stl: writeStl(r.soup!),
 				name: 'Test cube',
 				settings: {
@@ -285,7 +257,7 @@ export async function testIntegration(
 			return {
 				ok: true,
 				ms: ms(),
-				detail: `Sliced a test cube for the ${rt.printers.primary()?.model.short ?? 'X2D'}: ${out.minutes} min, ${out.grams} g (${out.choice.process}).`
+				detail: `Sliced a test cube for the ${rt.printers.primary()?.model.short ?? 'X2D'} with ${out.backend === 'printlab-slicer' ? 'Print Lab Slicer' : 'the Bambu Studio command line'}: ${out.minutes} min, ${out.grams} g (${out.choice.process}).`
 			};
 		}
 		if (id === 'printer') {

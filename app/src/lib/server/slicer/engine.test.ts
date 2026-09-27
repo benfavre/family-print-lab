@@ -3,7 +3,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ERROR, type Progress } from '$lib/shared/slicer/protocol';
-import { EngineError, StdioEngine, openSlicer, type StdioEngineOptions } from './engine';
+import {
+	EngineError,
+	StdioEngine,
+	closeSlicer,
+	openSlicer,
+	type StdioEngineOptions
+} from './engine';
+import { fakeInstall } from './__fixtures__/install';
 
 const FAKE = path.join(import.meta.dirname, '__fixtures__', 'fake-engine.mjs');
 const engines: StdioEngine[] = [];
@@ -134,7 +141,68 @@ describe('StdioEngine against the fake engine', () => {
 });
 
 describe('openSlicer', () => {
-	it('is null without an engine (slicing then uses the Bambu Studio command line)', async () => {
-		expect(await openSlicer({})).toBeNull();
+	const nothing = {
+		platform: 'linux' as const,
+		arch: 'x64',
+		home: '/nowhere',
+		isFile: () => false,
+		isExecutable: () => false,
+		isDir: () => false,
+		readdir: () => []
+	};
+	/** An executable that runs the fake engine, as a built printlab-slicer would sit on disk. */
+	function engineBinary(env: Record<string, string> = {}) {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fpl-engine-bin-'));
+		dirs.push(dir);
+		const bin = path.join(dir, 'printlab-slicer');
+		const vars = Object.entries(env)
+			.map(([k, v]) => `${k}=${v} `)
+			.join('');
+		fs.writeFileSync(bin, `#!/bin/sh\n${vars}exec "${process.execPath}" "${FAKE}" "$@"\n`);
+		fs.chmodSync(bin, 0o755);
+		return bin;
+	}
+
+	afterEach(() => closeSlicer());
+
+	it('is null when neither the engine nor a command line is installed', async () => {
+		expect(await openSlicer({}, { cwd: '/nowhere', host: nothing })).toBeNull();
+	});
+
+	it('falls back to the Bambu Studio command line', async () => {
+		const install = fakeInstall();
+		try {
+			const slicer = await openSlicer({ BAMBU_STUDIO_PATH: install.bin }, { cwd: '/nowhere' });
+			expect(slicer?.info).toMatchObject({ engine: 'bambu-studio-cli', version: '02.08.02.61' });
+			expect(slicer?.has('slice')).toBe(true);
+		} finally {
+			install.remove();
+		}
+	});
+
+	it('prefers Print Lab Slicer, and shares one', async () => {
+		const install = fakeInstall();
+		try {
+			const env = { PRINTLAB_SLICER_PATH: engineBinary(), BAMBU_STUDIO_PATH: install.bin };
+			const slicer = await openSlicer(env, { cwd: '/nowhere' });
+			expect(slicer?.info.engine).toBe('printlab-slicer');
+			expect(await openSlicer(env, { cwd: '/nowhere' })).toBe(slicer);
+		} finally {
+			install.remove();
+		}
+	});
+
+	it('uses the command line when the engine speaks another protocol', async () => {
+		const install = fakeInstall();
+		try {
+			const env = {
+				PRINTLAB_SLICER_PATH: engineBinary({ FAKE_MAJOR: '2' }),
+				BAMBU_STUDIO_PATH: install.bin
+			};
+			const slicer = await openSlicer(env, { cwd: '/nowhere' });
+			expect(slicer?.info.engine).toBe('bambu-studio-cli');
+		} finally {
+			install.remove();
+		}
 	});
 });

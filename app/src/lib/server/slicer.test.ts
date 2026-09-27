@@ -2,7 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { MODEL_CODES } from '$lib/shared/printers/models';
-import { chooseProfiles, findSlicer, slice } from './slicer';
+import { findSlicer } from './slicer';
+import { chooseProfiles, profileBook } from './slicer/profile-book';
+import { sliceModel } from './slicer/service';
 import { readSliced } from './printer/sliced';
 import { renderScad } from './cad/openscad';
 import { writeStl } from './cad/mesh';
@@ -13,15 +15,18 @@ const slicer = findSlicer();
 describe.runIf(slicer.available)('slicing with Bambu Studio', () => {
 	it('picks X2D profiles from the job’s settings', () => {
 		const pick = (material: string, layerHeight = '0.20', plate = 'Textured PEI') =>
-			chooseProfiles(slicer.path!, {
-				model: 'N6',
-				nozzle: '0.4',
-				layerHeight,
-				material,
-				supports: 'None',
-				infill: 15,
-				plate
-			});
+			chooseProfiles(
+				profileBook(slicer.resourcesDir ?? path.join(path.dirname(slicer.path!), 'resources')),
+				{
+					model: 'N6',
+					nozzle: '0.4',
+					layerHeight,
+					material,
+					supports: 'None',
+					infill: 15,
+					plate
+				}
+			);
 		expect(pick('PLA')).toMatchObject({
 			machine: 'Bambu Lab X2D 0.4 nozzle',
 			process: '0.20mm Standard @BBL X2D',
@@ -36,10 +41,10 @@ describe.runIf(slicer.available)('slicing with Bambu Studio', () => {
 		expect(pick('PETG').filament).toMatch(/PETG/);
 	});
 
-	it('slices a part into a file the printer accepts: X2D model code, time, weight, colour and picture', async () => {
+	it('slices a part through the command line into a file the printer accepts: X2D model code, time, weight, colour and picture', async () => {
 		const cube = await renderScad('cube([20, 20, 10]);');
 		const png = Buffer.from('89504e470d0a1a0a', 'hex');
-		const r = await slice({
+		const r = await sliceModel({
 			stl: writeStl(cube.soup!),
 			name: 'Test cube',
 			thumbnail: png,
@@ -76,19 +81,15 @@ describe.runIf(pinned)('Bambu Studio profiles at the pinned tag', () => {
 	it.each(MODEL_CODES)('has machine, process, filament and plate presets for %s', (model) => {
 		for (const material of ['PLA', 'PETG', 'TPU'])
 			expect(
-				chooseProfiles(
-					'',
-					{
-						model,
-						nozzle: '0.4',
-						layerHeight: '0.20',
-						material,
-						supports: 'None',
-						infill: 15,
-						plate: 'Textured PEI'
-					},
-					path.join(upstream, 'resources')
-				),
+				chooseProfiles(profileBook(path.join(upstream, 'resources')), {
+					model,
+					nozzle: '0.4',
+					layerHeight: '0.20',
+					material,
+					supports: 'None',
+					infill: 15,
+					plate: 'Textured PEI'
+				}),
 				`${model} ${material}`
 			).toMatchObject({
 				machine: expect.stringMatching(/ 0\.4 nozzle$/),
