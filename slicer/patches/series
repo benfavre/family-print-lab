@@ -20,3 +20,4 @@
 0018-Build-include-stringstream-for-numeric-locale-format.patch
 0019-Build-copy-FFmpeg-DLLs-only-for-the-GUI.patch
 0020-Build-declare-Windows-dependencies-without-precompil.patch
+0021-3MF-add-files-from-Unicode-filesystem-paths-without-.patch

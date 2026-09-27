@@ -9,9 +9,9 @@ new Bambu Studio release is a rebase of a handful of small patches, not a merge 
 
 <!-- pin:start -->
 
-| Upstream     | Tag            | Commit                                     | Patch queue                                                                                       |
-| ------------ | -------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 19, 20 patch(es), hash `0e319b62a41e88cd3f1615c36ae19f62ecb644216a9d1a659d8ebbf8c17565b8` |
+| Upstream | Tag | Commit | Patch queue |
+| --- | --- | --- | --- |
+| Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 20, 21 patch(es), hash `8f86c75004e090f93759f6661535147b1999baf278278d0a8ee5b296a3368116` |
 
 <!-- pin:end -->
 
@@ -249,6 +249,10 @@ upstreamable:
   Boost filesystem and `<numeric>` where the Windows build exposed missing declarations.
   `python3 slicer/tests/windows-platform.test.py` compiles with upstream's actual Windows definitions
   and checks SDK macro isolation without PCH (using the real Windows SDK when run with MSVC).
+- 0021: open BBS 3MF source files as UTF-8 paths through Nowide and pass their streams to miniz,
+  preserving sizes, timestamps, compression and ZIP entry-name encoding. Windows exports no longer
+  lose source path characters when adding project settings, thumbnails or G-code. The native facade
+  smoke test and RPC project/golden tests use French and Japanese directory names.
 
 Miniz uses its portable byte-load implementation (`MINIZ_USE_UNALIGNED_LOADS_AND_STORES=0`)
 in every engine build, so ZIP reads and writes retain alignment sanitizer checks.

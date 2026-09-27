@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
+#include <filesystem>
 
 #include <boost/filesystem.hpp>
 
@@ -20,7 +21,7 @@ std::string write_cube(const std::string &dir) {
 	int f[12][3] = {{0, 2, 1}, {0, 3, 2}, {4, 5, 6}, {4, 6, 7}, {0, 1, 5}, {0, 5, 4},
 	                {1, 2, 6}, {1, 6, 5}, {2, 3, 7}, {2, 7, 6}, {3, 0, 4}, {3, 4, 7}};
 	std::string path = dir + "/cube.stl";
-	std::ofstream out(path);
+	std::ofstream out(std::filesystem::u8path(path));
 	out << "solid cube\n";
 	for (auto &t : f) {
 		out << "facet normal 0 0 0\nouter loop\n";
@@ -39,9 +40,9 @@ TEST("slices a cube for the P1S and exports a printable file") {
 		std::fprintf(stderr, "  skipped: PRINTLAB_TEST_RESOURCES is not set\n");
 		return;
 	}
-	std::string work = (boost::filesystem::temp_directory_path() / boost::filesystem::unique_path("printlab-%%%%%%")).string();
+	auto facade = make_facade(); // Installs UTF-8 filesystem conversion before constructing paths.
+	std::string work = (boost::filesystem::temp_directory_path() / boost::filesystem::unique_path(u8"printlab-é-印刷-%%%%%%")).string();
 	boost::filesystem::create_directories(work);
-	auto facade = make_facade();
 	facade->configure(work, resources);
 	CHECK(!facade->identity().profiles_dir.empty());
 
@@ -119,7 +120,7 @@ TEST("slices a cube for the P1S and exports a printable file") {
 		}
 	}
 
-	std::ifstream generated(work + "/" + id + "/plate_1.gcode");
+	std::ifstream generated(std::filesystem::u8path(work + "/" + id + "/plate_1.gcode"));
 	const std::string gcode((std::istreambuf_iterator<char>(generated)), std::istreambuf_iterator<char>());
 	// Windows CRT file handles deny deletion while open; release the reader before project_close.
 	generated.close();

@@ -1,0 +1,60 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Benjamin Favre <ben@webdesign29.net>
+Date: Sun, 27 Sep 2026 21:00:06 +0000
+Subject: [PATCH] 3MF: add files from Unicode filesystem paths without ANSI
+ conversion
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The BBS exporter converts UTF-8 source paths to the active Windows code page before miniz opens them. Paths containing characters outside that code page cannot export project settings, thumbnails or G-code. Open the source with Nowide and use miniz’s existing stream API, retaining file size, modification time, compression and ZIP entry-name encoding. Own the stream with RAII on all paths.
+
+Touches src/libslic3r/Format/bbs_3mf.cpp. Upstreamable: yes.
+
+Co-Authored-By: Codex <noreply@openai.com>
+---
+ src/libslic3r/Format/bbs_3mf.cpp | 20 ++++++++++++++++++--
+ 1 file changed, 18 insertions(+), 2 deletions(-)
+
+diff --git a/src/libslic3r/Format/bbs_3mf.cpp b/src/libslic3r/Format/bbs_3mf.cpp
+index 99e76f6..6bad436 100644
+--- a/src/libslic3r/Format/bbs_3mf.cpp
++++ b/src/libslic3r/Format/bbs_3mf.cpp
+@@ -29,6 +29,9 @@
+ #include <boost/lexical_cast.hpp>
+ #include <boost/nowide/fstream.hpp>
+ #include <boost/nowide/cstdio.hpp>
++#include <cstdio>
++#include <ctime>
++#include <memory>
+ #include <boost/spirit/include/karma.hpp>
+ #include <boost/spirit/include/qi_int.hpp>
+ #include <boost/log/trivial.hpp>
+@@ -6913,12 +6916,25 @@ void PlateData::parse_filament_info(GCodeProcessorResult *result)
+         static std::string const nocomp_exts[] = {".png", ".jpg", ".mp4", ".jpeg", ".zip", ".3mf"};
+         auto end = nocomp_exts + sizeof(nocomp_exts) / sizeof(nocomp_exts[0]);
+         bool nocomp = std::find_if(nocomp_exts, end, [&path_in_zip](auto & ext) { return boost::algorithm::ends_with(path_in_zip, ext); }) != end;
++        // Filesystem paths are UTF-8, independently of ZIP entry-name encoding. Converting a
++        // source path to the Windows ANSI code page loses characters outside that code page.
++        // Use miniz's stream API, retaining file size and modification time without narrow stat.
++        boost::system::error_code ec;
++        const auto file_size = boost::filesystem::file_size(src_file_path, ec);
++        std::time_t modified = 0;
++        if (!ec)
++            modified = boost::filesystem::last_write_time(src_file_path, ec);
++        auto close_file = [](FILE *file) { std::fclose(file); };
++        std::unique_ptr<FILE, decltype(close_file)> file(
++            ec ? nullptr : boost::nowide::fopen(src_file_path.c_str(), "rb"), close_file);
+ #if WRITE_ZIP_LANGUAGE_ENCODING
+-        bool result = mz_zip_writer_add_file(&archive, path_in_zip.c_str(), encode_path(src_file_path.c_str()).c_str(), NULL, 0, nocomp ? MZ_NO_COMPRESSION : MZ_DEFAULT_LEVEL);
++        bool result = file && mz_zip_writer_add_cfile(&archive, path_in_zip.c_str(), file.get(), file_size, &modified,
++                NULL, 0, nocomp ? MZ_NO_COMPRESSION : MZ_DEFAULT_LEVEL, nullptr, 0, nullptr, 0);
+ #else
+         std::string native_path = encode_path(path_in_zip.c_str());
+         std::string extra = ZipUnicodePathExtraField::encode(path_in_zip, native_path);
+-        bool result = mz_zip_writer_add_file_ex(&archive, native_path.c_str(), encode_path(src_file_path.c_str()).c_str(), NULL, 0, nocomp ? MZ_ZIP_FLAG_ASCII_FILENAME : MZ_DEFAULT_COMPRESSION,
++        bool result = file && mz_zip_writer_add_cfile(&archive, native_path.c_str(), file.get(), file_size, &modified,
++                NULL, 0, nocomp ? MZ_ZIP_FLAG_ASCII_FILENAME : MZ_DEFAULT_COMPRESSION,
+                 extra.c_str(), extra.length(), extra.c_str(), extra.length());
+ #endif
+         if (!result) {
