@@ -109,6 +109,7 @@ struct Plate {
 	bool locked = false;
 	std::string bed_type;
 	std::string print_sequence;
+	std::string filament_map_mode;
 	bool spiral_vase = false;
 	std::vector<int> filament_maps;
 	std::vector<PlateRef> instances;

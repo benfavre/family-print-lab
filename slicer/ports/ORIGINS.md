@@ -77,3 +77,6 @@ listed here: it is read through `app/tools/lib/upstream.ts` and regenerated on e
 | `app/src/lib/client/slicer/layer-view.ts`                              | BambuStudio | `src/libslic3r/PrintObject.cpp`                          | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
 | `app/src/lib/client/slicer/paint.ts`                                   | BambuStudio | `src/libslic3r/TriangleSelector.cpp`                     | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
 | `app/src/lib/client/slicer/paint-geometry.ts`                          | BambuStudio | `src/libslic3r/TriangleSelector.cpp`                     | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
+| `slicer/engine/src/facade/flush.hpp`                                   | BambuStudio | `src/slic3r/GUI/Plater.cpp`                              | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
+| `slicer/engine/src/facade/slice_config.hpp`                            | BambuStudio | `src/BambuStudio.cpp`                                    | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
+| `slicer/engine/src/facade/slice_config.hpp`                            | BambuStudio | `src/slic3r/GUI/PartPlate.cpp`                           | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
