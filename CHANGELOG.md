@@ -43,6 +43,7 @@ manual installation. Printer verification uses simulators.
   profiles, previews and thumbnails in folders containing accents or non-Latin characters.
 - Bundle and relocate macOS runtime libraries, including their licence notices. Audit installed
   bundles so Homebrew on a build machine cannot conceal a missing dependency.
+  The Apple silicon package requires macOS 14 or newer, matching its bundled runtime.
 - Stage desktop releases as drafts, require all native builds and bundles, and launch installed
   packages on each platform before publication. Check that the packaged server discovers its engine.
 - Verify candidate installers before tagging, accepting native artifacts only when all platform

@@ -188,6 +188,8 @@ EXCLUDE_FROM_ALL)` (`SLIC3R_GUI=OFF`, `FLATPAK=ON` so no FFmpeg is copied) and b
    Windows runtime DLLs are copied with the bundle. On macOS, non-system dylibs are copied,
    their load paths are relocated within the bundle, and modified Mach-O files are ad-hoc signed.
    The zstd runtime retains its BSD licence notice under `licenses/`.
+   The current macOS desktop bundle requires macOS 14 or newer: its bundled zstd records
+   that minimum in its Mach-O load commands, and the desktop app declares the same minimum.
 
 CI retains a completed dependency prefix even if the later engine build or tests fail; incomplete
 or mismatched stamps are never saved. Pushes and desktop releases build all three platforms. A

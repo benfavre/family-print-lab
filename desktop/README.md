@@ -17,6 +17,10 @@ bun run dist       # installers for this platform in release/ (not published)
 loads every chunk of the build to prove all its packages are installed here (release fails otherwise).
 `scripts/after-pack.cjs` restores `three/examples/jsm`, which electron-builder always strips.
 
+The macOS 2.2.1 package requires macOS 14 or newer on Apple silicon. The bundled zstd library
+records 14.0.0 as its Mach-O minimum; `build.mac.minimumSystemVersion` matches that requirement.
+Installer smoke checks verify the resulting `LSMinimumSystemVersion` in the installed app.
+
 ## Where things live
 
 |                                     | Linux                        | macOS                                            | Windows                      |
