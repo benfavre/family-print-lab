@@ -115,6 +115,22 @@ describe('logging in', () => {
 		expect((await fails(auth.login({ secret: 'wrong' }, lan))).message).toMatch(/Wait 10 minutes/);
 	});
 
+	it('caps repeated address lockouts at a day without resetting after that wait', async () => {
+		for (const minutes of [5, 10, 20, 40, 80, 160, 320, 640, 1280, 1440, 1440]) {
+			for (let i = 0; i < 5; i++) await fails(auth.login({ secret: 'wrong' }, lan));
+			expect(auth.ipLimiter.wait(`ip:${lan.ip}`)).toBe(minutes * 60_000);
+			expect(auth.accountLimiter.wait('account')).toBeLessThanOrEqual(15 * 60_000);
+			clock.now += minutes * 60_000 + 1;
+		}
+		// The other device may still use the correct password after the short account lockout.
+		await expect(
+			auth.login({ secret: 'correct horse' }, { ...lan, ip: '192.168.1.21' })
+		).resolves.toBeDefined();
+		clock.now += 7 * 24 * 60 * 60_000;
+		for (let i = 0; i < 5; i++) await fails(auth.login({ secret: 'wrong' }, lan));
+		expect(auth.ipLimiter.wait(`ip:${lan.ip}`)).toBe(5 * 60_000);
+	});
+
 	it('also throttles the household account across addresses, more gently', async () => {
 		for (let i = 0; i < 5; i++)
 			await fails(auth.login({ secret: 'wrong' }, { ip: `192.168.1.${i + 50}`, userAgent: '' }));

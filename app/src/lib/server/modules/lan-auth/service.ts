@@ -68,7 +68,13 @@ export class LanAuth {
 	) {
 		this.sessions = new SessionStore(db, now);
 		this.parentPin = new ParentPin(db);
-		this.ipLimiter = new RateLimiter({ now });
+		// Repeated guessing from one device can wait a day. Remember strikes longer than that
+		// cap, otherwise simply waiting out the longest lockout would reset the escalation.
+		this.ipLimiter = new RateLimiter({
+			now,
+			maxLockMs: 24 * 60 * 60_000,
+			forgetMs: 7 * 24 * 60 * 60_000
+		});
 		this.accountLimiter = new RateLimiter({ now, maxLockMs: 15 * 60_000 });
 	}
 
