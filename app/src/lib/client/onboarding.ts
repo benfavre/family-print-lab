@@ -62,6 +62,7 @@ export function groupIntegrations(
 
 /** The Settings section (registry id) where an integration is set up, when it has one. */
 export const SETTINGS_SECTION: Record<string, string> = {
+	hms: 'hms',
 	printer: 'printers',
 	camera: 'cameras',
 	spoolman: 'spoolman',

@@ -4,6 +4,7 @@ import { defineUi } from '../../registry';
 import HmsAlertsPanel from '$lib/components/hms/HmsAlertsPanel.svelte';
 import PrintErrorBanner from '$lib/components/hms/PrintErrorBanner.svelte';
 import JobErrors from '$lib/components/hms/JobErrors.svelte';
+import HmsSettings from '$lib/components/hms/HmsSettings.svelte';
 import { resolve } from '$app/paths';
 
 /** Print errors that mean "cancelled" (printer/diff.ts CANCEL_ERRORS): not worth a banner. */
@@ -11,6 +12,9 @@ const CANCELLED = new Set([0x0300400c, 0x0500400e]);
 
 export default defineUi({
 	key: 'hms',
+	settingsSections: [
+		{ id: 'hms', order: 40, group: 'printing', title: 'Printer error help', component: HmsSettings }
+	],
 	printerPanels: [
 		{
 			id: 'hms-alerts',

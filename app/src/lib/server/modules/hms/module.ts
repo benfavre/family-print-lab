@@ -5,6 +5,7 @@ import { defineModule } from '$lib/server/modules';
 import { hmsKeyOf, printErrorKey, type HmsKind } from '$lib/shared/hms';
 import { loadHmsDatabase } from './database';
 import { createHmsService, type HmsModuleService } from './service';
+import { hmsSettingsSchema } from './validation';
 
 declare module '$lib/server/modules' {
 	interface ModuleServices {
@@ -18,7 +19,8 @@ export default defineModule({
 	key: 'hms',
 	order: 20,
 	start(ctx) {
-		const database = loadHmsDatabase('en');
+		const settings = ctx.settings(hmsSettingsSchema, { language: 'en' as const });
+		const database = loadHmsDatabase(settings.get().language);
 		if (!database)
 			ctx.log('No printer error database (run bun run hms:build); codes show as numbers.');
 		const service = createHmsService({
@@ -102,7 +104,7 @@ export default defineModule({
 				available: !!f,
 				version: f?.version ?? null,
 				detail: f
-					? `Works offline. ${Object.keys(f.hms).length.toLocaleString('en-GB')} alert codes and ${Object.keys(f.errors).length.toLocaleString('en-GB')} print errors in English, data version ${f.version}.`
+					? `Works offline. ${Object.keys(f.hms).length.toLocaleString('en-GB')} alert codes and ${Object.keys(f.errors).length.toLocaleString('en-GB')} print errors in English and French, data version ${f.version}.`
 					: 'The error database is missing, so alerts show as codes only.',
 				powers: f
 					? [

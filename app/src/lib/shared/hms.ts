@@ -6,6 +6,10 @@ import type { HmsCode } from './printers/status';
 export type HmsSeverity = 'fatal' | 'serious' | 'common' | 'info' | 'unknown';
 export type HmsKind = 'hms' | 'print_error';
 
+export interface HmsSettings {
+	language: 'en' | 'fr';
+}
+
 /** Where the wiki's HMS pages start; used when there is no page for a code. */
 export const WIKI_HOME = 'https://wiki.bambulab.com/en/hms/home';
 export const WIKI_BASE = 'https://wiki.bambulab.com';

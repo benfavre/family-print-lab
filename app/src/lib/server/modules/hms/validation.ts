@@ -4,6 +4,8 @@ import { MODEL_CODES } from '$lib/shared/printers/models';
 
 const SEVERITIES = ['fatal', 'serious', 'common', 'info', 'unknown'] as const;
 
+export const hmsSettingsSchema = z.strictObject({ language: z.enum(['en', 'fr']) });
+
 /** GET /api/printers/[id]/hms?severity=fatal,serious&limit=50&offset=0 */
 export const historyQuery = z.object({
 	severity: z

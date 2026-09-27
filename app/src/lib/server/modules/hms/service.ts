@@ -9,6 +9,7 @@ import type { PrinterManager } from '$lib/server/printer/manager';
 import type { CommandOutcome } from '$lib/server/printer/commands/registry';
 import { CANCEL_ERRORS } from '$lib/server/printer/diff';
 import { AppError } from '$lib/server/validation';
+import { moduleSettings } from '$lib/server/module-settings';
 import type { HmsAction, HmsService } from '$lib/server/modules/contracts';
 import { PRINTER_MODELS, type ModelCode } from '$lib/shared/printers/models';
 import type { HmsCode } from '$lib/shared/printers/status';
@@ -27,7 +28,9 @@ import {
 	type HmsKind,
 	type HmsSeverity
 } from '$lib/shared/hms';
-import { HmsDatabase } from './database';
+import type { HmsSettings } from '$lib/shared/hms';
+import { HmsDatabase, loadHmsDatabase } from './database';
+import { hmsSettingsSchema } from './validation';
 import { ACTIONS, actionIdsFor, type ActionContext } from './actions';
 
 export const UNKNOWN_TEXT = 'No description for this code yet. The Bambu Lab wiki may know it.';
@@ -48,6 +51,8 @@ export interface HmsModuleService extends HmsService {
 	forJob(jobId: string): HmsEventRow[];
 	runAction(printerId: string, code: string, actionId: number): Promise<CommandOutcome>;
 	database(): HmsDatabase | null;
+	settings(): HmsSettings;
+	saveSettings(input: unknown): HmsSettings;
 }
 
 const uuid = () => crypto.randomUUID();
@@ -64,7 +69,9 @@ export function createHmsService(deps: {
 	cleared(printerId: string, kind: HmsKind, key: string): void;
 	reconcile(printerId: string, keys: { kind: HmsKind; key: string }[]): void;
 } {
-	const { db, printers, database } = deps;
+	const { db, printers } = deps;
+	const settings = moduleSettings<HmsSettings>(db, 'hms', hmsSettingsSchema, { language: 'en' });
+	let database = deps.database;
 
 	/**
 	 * The device prefix whose texts apply: the serial's first three characters when the database has
@@ -297,6 +304,13 @@ export function createHmsService(deps: {
 			return outcome;
 		},
 		database: () => database,
+		settings: () => settings.get(),
+		saveSettings(input) {
+			const saved = settings.set(input);
+			database = loadHmsDatabase(saved.language);
+			for (const printer of printers.info()) deps.onChange?.(printer.id);
+			return saved;
+		},
 		raised,
 		cleared,
 		reconcile

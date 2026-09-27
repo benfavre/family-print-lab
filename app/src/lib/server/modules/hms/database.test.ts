@@ -62,6 +62,47 @@ describe('HmsDatabase lookups', () => {
 });
 
 describe('loadHmsDatabase', () => {
+	it('normalises regional French locales and falls back to English for each missing code', () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fpl-hms-fr-'));
+		try {
+			fs.writeFileSync(path.join(dir, 'hms-en.json.gz'), zlib.gzipSync(JSON.stringify(file)));
+			const french: HmsDatabaseFile = {
+				...file,
+				language: 'fr',
+				messages: ['', 'Texte français.'],
+				hms: { '0700200000020001': { '094': 1 } },
+				errors: { '0500C011': 0 },
+				actions: {},
+				images: {},
+				wiki: {}
+			};
+			fs.writeFileSync(path.join(dir, 'hms-fr.json.gz'), zlib.gzipSync(JSON.stringify(french)));
+			for (const language of ['fr-FR', 'FR-ca']) {
+				const db = loadHmsDatabase(language, dir)!;
+				expect(db.language).toBe('fr');
+				expect(db.text('hms', '0700200000020001', '094')).toBe('Texte français.');
+				expect(db.text('hms', '0700200000020001', '01P')).toBe('Generic text.');
+				expect(db.text('hms', '0300100000020001', '094')).toBe('Only text.');
+				expect(db.text('print_error', '07008011', '094')).toBe('Print error.');
+				expect(db.text('print_error', '0500C011', '094')).toBe('');
+				expect(db.text('hms', 'FFFFFFFFFFFFFFFF', '094')).toBeNull();
+				expect(db.actions('07008011', '094')).toEqual([4, 6]);
+				expect(db.image('07008011', '094')).toBe('a.webp');
+				expect(db.wikiUrl('hms', '0700200000020001', '094')).toBe(
+					'https://wiki.bambulab.com/en/h2/x'
+				);
+			}
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it('ships French messages from the pinned sources', () => {
+		const db = loadHmsDatabase('fr-FR');
+		expect(db?.language).toBe('fr');
+		expect(db?.text('print_error', '0300400C', '094')).toMatch(/annul/i);
+	});
+
 	it('falls back to English and to nothing', () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fpl-hms-'));
 		try {

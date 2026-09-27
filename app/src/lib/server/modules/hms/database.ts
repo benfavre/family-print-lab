@@ -24,7 +24,10 @@ export function pick<T extends string | number>(
 }
 
 export class HmsDatabase {
-	constructor(readonly file: HmsDatabaseFile) {}
+	constructor(
+		readonly file: HmsDatabaseFile,
+		private readonly fallback: HmsDatabase | null = null
+	) {}
 
 	get language() {
 		return this.file.language;
@@ -33,7 +36,8 @@ export class HmsDatabase {
 	/** The text for a code, '' for a code Bambu keeps internal, null when the code is unknown. */
 	text(kind: HmsKind, key: string, device: string | null): string | null {
 		const i = pick(kind === 'hms' ? this.file.hms[key] : this.file.errors[key], device);
-		return i === null ? null : (this.file.messages[i] ?? null);
+		const text = i === null ? null : (this.file.messages[i] ?? null);
+		return text ?? this.fallback?.text(kind, key, device) ?? null;
 	}
 
 	/**
@@ -43,40 +47,44 @@ export class HmsDatabase {
 	wikiUrl(kind: HmsKind, key: string, device: string | null): string {
 		if (kind !== 'hms') return WIKI_HOME;
 		const p = pick(this.file.wiki[key], device);
-		return p ? `${WIKI_BASE}${p}` : WIKI_HOME;
+		return p ? `${WIKI_BASE}${p}` : (this.fallback?.wikiUrl(kind, key, device) ?? WIKI_HOME);
 	}
 
 	/** Bambu's action ids for a code on this device, else the "default" entry (HMS.cpp _query_error_image_action). */
 	actions(key: string, device: string | null): number[] {
 		const e = this.file.actions[key];
-		return (e && ((device && e[device]) || e.default)) || [];
+		return (e && ((device && e[device]) || e.default)) || this.fallback?.actions(key, device) || [];
 	}
 
 	image(key: string, device: string | null): string | null {
 		const e = this.file.images[key];
-		return (e && ((device && e[device]) || e.default)) || null;
+		return (e && ((device && e[device]) || e.default)) || this.fallback?.image(key, device) || null;
 	}
 
 	/** Whether the database has texts written for this device prefix. */
 	knowsDevice(device: string): boolean {
-		return device in this.file.devices;
+		return device in this.file.devices || (this.fallback?.knowsDevice(device) ?? false);
 	}
 }
 
 const cache = new Map<string, HmsDatabase | null>();
 
 /**
- * The database for a language, falling back to English (the only one shipped today); null when no
+ * The database for a language, falling back to English per code; null when no
  * file is there (a checkout that has not run `bun run hms:build`).
  */
 export function loadHmsDatabase(language = 'en', dir = HMS_DIR): HmsDatabase | null {
+	language = language.toLowerCase();
 	const id = `${dir}\0${language}`;
 	if (cache.has(id)) return cache.get(id)!;
 	let db: HmsDatabase | null = null;
 	for (const lang of [...new Set([language.toLowerCase(), language.slice(0, 2), 'en'])]) {
 		const file = path.join(dir, `hms-${lang.replace(/[^\w-]/g, '')}.json.gz`);
 		if (!fs.existsSync(file)) continue;
-		db = new HmsDatabase(JSON.parse(zlib.gunzipSync(fs.readFileSync(file)).toString('utf8')));
+		db = new HmsDatabase(
+			JSON.parse(zlib.gunzipSync(fs.readFileSync(file)).toString('utf8')),
+			lang === 'en' ? null : loadHmsDatabase('en', dir)
+		);
 		break;
 	}
 	cache.set(id, db);

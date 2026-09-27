@@ -45,6 +45,22 @@ test('an AMS runout in plain words, resolved with Bambu’s button, kept in the 
 			/^https:\/\/wiki\.bambulab\.com\/en\//
 		);
 
+		// Switching the offline message language updates an already open printer page.
+		const settings = await page.context().newPage();
+		try {
+			await settings.goto('/integrations#settings-hms');
+			await ready(settings);
+			await settings.getByLabel('Message language').selectOption('fr');
+			await expect(error).not.toContainText('AMS filament ran out.');
+			await expect(error).toContainText('filament');
+			await settings.reload();
+			await expect(settings.getByLabel('Message language')).toHaveValue('fr');
+			await settings.getByLabel('Message language').selectOption('en');
+			await expect(error).toContainText('AMS filament ran out.');
+		} finally {
+			await settings.close();
+		}
+
 		await error.getByRole('button', { name: 'Resume (problem solved)' }).click();
 		await expect(panel).toContainText('No errors reported.', { timeout: 15_000 });
 		await expect.poll(async () => (await simState(page)).gcode_state).toBe('RUNNING');
@@ -65,6 +81,7 @@ test('an AMS runout in plain words, resolved with Bambu’s button, kept in the 
 		await page.getByRole('button', { name: 'Look up' }).click();
 		await expect(page.locator('.lookup ~ .hms-alert')).toContainText('The task was canceled.');
 	} finally {
+		await page.request.put('/api/hms/settings', { data: { language: 'en' } });
 		await page.request.post(`${SIM}/api/stop`);
 	}
 });
