@@ -14,6 +14,7 @@ import { readSliced } from './printer/sliced';
 import type { ModelStore } from './models';
 import { sliceModel } from './slicer/service';
 import { AppError } from './validation';
+import { nozzleProblems } from '$lib/shared/nozzle-compatibility';
 import { loadedSlots, mappingNozzleProblems, mappingProblems } from '$lib/shared/printing';
 import { ACTIVE_PRINTER_STATES, type Job, type SlicedInfo } from '$lib/shared/domain';
 import { EXT_DEPUTY, EXT_MAIN } from '$lib/shared/printers/status';
@@ -282,7 +283,11 @@ export class PrintFiles {
 				);
 			const plate = sliced.plates.find((p) => p.index === (opts.plate ?? sliced.plate));
 			if (!plate) blocking.push('That plate is not in the file.');
-			else if (opts.useAms) {
+			if (plate && status?.connected && saved)
+				blocking.push(
+					...nozzleProblems(plate, status.state?.nozzles, PRINTER_MODELS[saved.model].nozzles)
+				);
+			if (plate && opts.useAms) {
 				if (opts.amsMapping.length !== plate.filaments.length)
 					blocking.push('Choose an AMS slot for every filament.');
 				else if (status?.connected) {

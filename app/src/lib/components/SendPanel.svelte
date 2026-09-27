@@ -46,6 +46,11 @@
 		slots.map((s) => JSON.stringify([s.index, s.type, s.color, s.remain, s.nozzle])).join()
 	);
 
+	const nozzleKey = $derived(JSON.stringify(status.state?.nozzles.map((n) => [n.id, n.diameter])));
+	const requirementKey = $derived(
+		JSON.stringify([plate?.nozzleDiameters, plate?.dynamicNozzleMapping])
+	);
+
 	let useAms = $state(true);
 	let mapping = $state<number[]>([]);
 	let bedLeveling = $state(true);
@@ -91,6 +96,8 @@
 		void connected;
 		void busy;
 		void slotsKey;
+		void nozzleKey;
+		void requirementKey;
 		check = null;
 		const abort = new AbortController();
 		const timer = setTimeout(async () => {

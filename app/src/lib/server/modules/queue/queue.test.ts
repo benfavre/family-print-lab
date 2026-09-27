@@ -260,3 +260,32 @@ describe('the print queue with simulated printers', () => {
 		expect(q.list().items).toEqual([]);
 	}, 30_000);
 });
+
+it('holds a sliced nozzle mismatch until the simulator reports the matching nozzle', async () => {
+	const t = await lab(['C12']);
+	const p = t.printer('C12');
+	const q = queueOf(t);
+	const jobId = job(t, 'C12', 'Large nozzle');
+	t.rt.printing.attach(
+		jobId,
+		fakeSliced({
+			minutes: 1,
+			grams: 1,
+			printerModelId: 'C12',
+			nozzleDiameters: [0.6],
+			filamentMaps: [1]
+		}),
+		'large.gcode.3mf'
+	);
+	const filesBefore = [...p.sim.files.keys()];
+	const held = t.nextEvent('queue.held', (e) => e.jobId === jobId);
+	q.add({ jobId, printerId: p.info.id });
+	expect((await held).reason).toContain('needs a 0.6 mm nozzle');
+	expect(status(t, jobId)).toBe('Queued');
+	expect([...p.sim.files.keys()]).toEqual(filesBefore);
+	const started = t.nextEvent('print.started', (e) => e.jobId === jobId);
+	p.sim.state.nozzle_diameter = '0.6';
+	p.sim.report();
+	await started;
+	expect(status(t, jobId)).toBe('Printing');
+}, 20_000);

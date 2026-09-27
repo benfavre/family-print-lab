@@ -62,3 +62,50 @@ describe('imported sliced estimates', () => {
 		expect(plate.grams).toBe(12.3);
 	});
 });
+
+describe('sliced nozzle requirements', () => {
+	it('retains single and dual config ordering separately from filament ordering', () => {
+		expect(readSliced(fakeSliced({ minutes: 1, grams: 1 })).plates[0].nozzleDiameters).toEqual([
+			0.4
+		]);
+		const plate = readSliced(
+			fakeSliced({
+				minutes: 1,
+				grams: 1,
+				nozzleDiameters: [0.6, 0.4],
+				filamentMaps: [2, 1],
+				filaments: [
+					{ type: 'PLA', color: '#FFFFFF', grams: 1 },
+					{ type: 'PLA', color: '#000000', grams: 1 }
+				]
+			})
+		).plates[0];
+		expect(plate.nozzleDiameters).toEqual([0.6, 0.4]);
+		expect(plate.filaments.map((f) => f.extruder)).toEqual([2, 1]);
+	});
+	it.each(['nil', '0', '-0.4', 'NaN', 'Infinity', '1e309', '0.4mm', '0.4 0.6'])(
+		'keeps unknown diameter positions (%s)',
+		(value) => {
+			const plate = importedFile((info) =>
+				info.replace(
+					'key="nozzle_diameters" value="0.4"',
+					`key="nozzle_diameters" value="${value},0.6"`
+				)
+			);
+			expect(plate.nozzleDiameters).toEqual([null, 0.6]);
+		}
+	);
+	it('preserves absent legacy metadata and identifies dynamic mapping', () => {
+		expect(
+			importedFile((info) => info.replace(/<metadata key="nozzle_diameters"[^>]*\/>/, ''))
+				.nozzleDiameters
+		).toBeUndefined();
+		for (const key of ['enable_filament_dynamic_map', 'has_filament_switcher']) {
+			expect(
+				importedFile((info) =>
+					info.replace('</plate>', `<metadata key="${key}" value="true"/></plate>`)
+				).dynamicNozzleMapping
+			).toBe(true);
+		}
+	});
+});
