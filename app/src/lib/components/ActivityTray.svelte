@@ -31,7 +31,8 @@
 		'blender-decimate': ['◉', 'Blender simplify'],
 		'print-send': ['▣', 'Send to printer'],
 		slice: ['▤', 'Slicing'],
-		'blender-session': ['◉', 'Blender window']
+		'blender-session': ['◉', 'Blender window'],
+		'gcode-preview': ['◫', 'Toolpath preview']
 	};
 	const elapsed = (t: TaskInfo) => {
 		const end = t.finishedAt ? Date.parse(t.finishedAt) : now;
