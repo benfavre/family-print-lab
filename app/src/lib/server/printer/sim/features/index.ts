@@ -3,5 +3,6 @@ import type { SimFeature } from '../core';
 import { core } from './core';
 import { camera } from './camera';
 import { ams } from './ams';
+import { controls } from './controls';
 
-export const FEATURES: SimFeature[] = [core, camera, ams];
+export const FEATURES: SimFeature[] = [core, camera, ams, controls];
