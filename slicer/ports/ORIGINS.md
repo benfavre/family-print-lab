@@ -60,3 +60,7 @@ listed here: it is read through `app/tools/lib/upstream.ts` and regenerated on e
 | `slicer/engine/src/features/calib/calib.hpp`                           | BambuStudio | `src/slic3r/GUI/Plater.cpp`                              | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
 | `slicer/engine/src/features/calib/calib.hpp`                           | BambuStudio | `src/slic3r/GUI/calib_dlg.cpp`                           | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
 | `slicer/engine/src/features/calib/calib.hpp`                           | OrcaSlicer  | `src/slic3r/GUI/Plater.cpp`                              | `8500fcdccaa10b5099ac20d252af3a7c560046f1` |
+| `app/src/lib/client/slicer/layers.ts`                                  | BambuStudio | `src/libslic3r/Slicing.cpp`                              | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
+| `app/src/lib/client/slicer/layers.ts`                                  | BambuStudio | `src/libslic3r/SlicingAdaptive.cpp`                      | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
+| `app/src/lib/client/slicer/layers.ts`                                  | BambuStudio | `src/libslic3r/PrintObject.cpp`                          | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
+| `app/src/lib/client/slicer/layer-view.ts`                              | BambuStudio | `src/libslic3r/PrintObject.cpp`                          | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |

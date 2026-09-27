@@ -4,6 +4,9 @@
 // layer_height_profile_from_ranges, layer_height_profile_adaptive, smooth_height_profile,
 // adjust_layer_height_profile, generate_object_layers), SlicingAdaptive.cpp and the profile checks of
 // PrintObject::update_layer_height_profile (https://github.com/bambulab/BambuStudio, AGPL-3.0).
+// origin: BambuStudio src/libslic3r/Slicing.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
+// origin: BambuStudio src/libslic3r/SlicingAdaptive.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
+// origin: BambuStudio src/libslic3r/PrintObject.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
 import type { ConfigMap, ConfigValue, HeightRange, SceneObject } from '$lib/shared/slicer/project';
 import type { MeshSource } from './edit';
 import { compose } from './matrix';
@@ -31,27 +34,46 @@ export interface SlicingParams {
 const lerp = (a: number, b: number, t: number) => (1 - t) * a + t * b;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-/** A number from a config value (per-extruder values: the first nozzle's), NaN when absent. */
-function num(v: ConfigValue | undefined): number {
-	const x = Array.isArray(v) ? v[0] : v;
-	return x === undefined || x === '' ? NaN : parseFloat(x);
+/** ConfigOptionVector::get_at falls back to the first value for a missing nozzle index. */
+function num(v: ConfigValue | undefined, index = 0): number {
+	const x = Array.isArray(v) ? (v[index] ?? v[0]) : v;
+	const n = x === undefined || x === '' ? NaN : parseFloat(x);
+	return Number.isFinite(n) ? n : NaN;
 }
 
 /**
  * The slicing parameters of an object from its flattened config (presets plus the object's own
- * settings) and its height on the bed. Nozzle limits are the first nozzle's, as on single-nozzle
- * printers (upstream takes the most restrictive of the object's extruders).
+ * settings) and its height on the bed. Intersect the limits of the physical nozzles used by the
+ * object (1-based); when the mapping is unknown, use every nozzle's limits conservatively.
  */
-export function slicingParams(config: ConfigMap, objectHeight: number): SlicingParams {
+export function slicingParams(
+	config: ConfigMap,
+	objectHeight: number,
+	extruders?: readonly number[]
+): SlicingParams {
 	const layerHeight = num(config.layer_height) > 0 ? num(config.layer_height) : 0.2;
 	const initial = num(config.initial_layer_print_height);
 	const raft = Math.max(0, Math.round(num(config.raft_layers)) || 0);
-	const minSetting = num(config.min_layer_height) || 0;
-	const minNozzle =
-		minSetting === 0 ? MIN_LAYER_HEIGHT_DEFAULT : Math.max(MIN_LAYER_HEIGHT, minSetting);
-	const maxSetting = num(config.max_layer_height) || 0;
-	const nozzle = num(config.nozzle_diameter) > 0 ? num(config.nozzle_diameter) : 0.4;
-	const maxNozzle = Math.max(minNozzle, maxSetting === 0 ? 0.75 * nozzle : maxSetting);
+	const count = Array.isArray(config.nozzle_diameter)
+		? Math.max(1, config.nozzle_diameter.length)
+		: 1;
+	const used = extruders?.length ? extruders : Array.from({ length: count }, (_, i) => i + 1);
+	let minNozzle = MIN_LAYER_HEIGHT;
+	let maxNozzle = Infinity;
+	for (const extruder of used) {
+		const index = Number.isInteger(extruder) && extruder > 0 ? extruder - 1 : 0;
+		const minSetting = num(config.min_layer_height, index) || 0;
+		const min =
+			minSetting === 0 ? MIN_LAYER_HEIGHT_DEFAULT : Math.max(MIN_LAYER_HEIGHT, minSetting);
+		const maxSetting = num(config.max_layer_height, index) || 0;
+		const diameter = num(config.nozzle_diameter, index);
+		const max = Math.max(
+			min,
+			maxSetting === 0 ? 0.75 * (diameter > 0 ? diameter : 0.4) : maxSetting
+		);
+		minNozzle = Math.max(minNozzle, min);
+		maxNozzle = Math.min(maxNozzle, max);
+	}
 	return {
 		layerHeight,
 		// With a raft the first object layer is an ordinary one (create_from_config).
@@ -216,8 +238,12 @@ export function facesOf(positions: Float32Array): FaceZ[] {
  * An object's model triangles as its first instance stands (SlicingAdaptive::prepare takes the raw
  * mesh under the first instance), lowest point at 0; null while a mesh is not loaded.
  */
-export function objectTriangles(obj: SceneObject, meshes: MeshSource): Float32Array | null {
-	const inst = obj.instances[0];
+export function objectTriangles(
+	obj: SceneObject,
+	meshes: MeshSource,
+	instanceId?: string
+): Float32Array | null {
+	const inst = obj.instances.find((i) => i.id === instanceId) ?? obj.instances[0];
 	const parts = obj.parts.filter((p) => p.type === 'model');
 	if (!inst || !parts.length) return null;
 	const chunks: Float32Array[] = [];

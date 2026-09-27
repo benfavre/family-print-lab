@@ -14,6 +14,8 @@ import { partFilament } from '$lib/client/slicer/edit';
 import type { Selection, Pick } from '$lib/client/slicer/selection';
 import type { PaintKind } from '$lib/client/slicer/paint';
 import { shownStates } from '$lib/client/slicer/paint';
+import type { LayerView } from '$lib/client/slicer/layer-view';
+import { applyLayerColours } from './layer-material';
 
 export type Gizmo = 'translate' | 'rotate' | 'scale' | null;
 
@@ -83,6 +85,7 @@ export class SlicerScene {
 	private project: Project | null = null;
 	private selection: Selection = { items: [], partId: null };
 	private paint: PaintView | null = null;
+	private layerView: LayerView | null = null;
 	private layFace = false;
 	private gizmoMode: Gizmo = 'translate';
 	private disposed = false;
@@ -243,6 +246,12 @@ export class SlicerScene {
 							emissive: selected && !painting ? new THREE.Color(0x2a5cff) : new THREE.Color(0),
 							emissiveIntensity: selected ? 0.35 : 0
 						});
+						if (
+							!painting &&
+							this.layerView?.objectId === obj.id &&
+							this.layerView.instanceId === inst.id
+						)
+							applyLayerColours(material as THREE.MeshStandardMaterial, this.layerView);
 					} else {
 						const look = PART_LOOK[part.type];
 						const active = selection.partId === part.id;
@@ -313,6 +322,12 @@ export class SlicerScene {
 		this.paint = paint;
 		this.controls.mouseButtons.LEFT = paint ? (null as unknown as THREE.MOUSE) : THREE.MOUSE.ROTATE;
 		this.attachGizmo();
+		if (this.project) this.setProject(this.project, this.selection);
+	}
+
+	setLayerView(view: LayerView | null) {
+		if (!view && !this.layerView) return;
+		this.layerView = view;
 		if (this.project) this.setProject(this.project, this.selection);
 	}
 

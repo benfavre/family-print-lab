@@ -13,6 +13,11 @@ test.beforeEach(async ({ context }) => {
 test('the slicer workspace: plates, objects, a modifier, plate settings, undo, and the project file', async ({
 	page
 }) => {
+	const shaderErrors: string[] = [];
+	page.on('console', (message) => {
+		if (message.type() === 'error' && /shader|WebGLProgram/i.test(message.text()))
+			shaderErrors.push(message.text());
+	});
 	await page.goto('/');
 	await ready(page);
 	const imported = await page.request.post(
@@ -72,6 +77,17 @@ test('the slicer workspace: plates, objects, a modifier, plate settings, undo, a
 	await expect(panel.getByText('Variable layer height (set)')).toHaveCount(0);
 	await panel.getByRole('button', { name: 'Adaptive', exact: true }).click();
 	await expect(panel.getByText('Variable layer height (set)')).toBeVisible();
+
+	// The 3D colour overlay actually renders and returns to the material colours when disabled.
+	const canvas = page.locator('.slicer-canvas');
+	const beforeColours = await canvas.screenshot();
+	await panel.getByRole('checkbox', { name: 'Show layer colours' }).check();
+	await expect(panel.getByRole('img', { name: /Layer height colours:/ })).toBeVisible();
+	await expect.poll(async () => (await canvas.screenshot()).equals(beforeColours)).toBe(false);
+	await panel.getByRole('checkbox', { name: 'Show layer colours' }).uncheck();
+	await expect(panel.getByRole('img', { name: /Layer height colours:/ })).toHaveCount(0);
+	await expect.poll(async () => (await canvas.screenshot()).equals(beforeColours)).toBe(true);
+	expect(shaderErrors).toEqual([]);
 
 	// The project file holds it all (read back by the server's 3MF reader) once it has saved.
 	const saved = async () =>
