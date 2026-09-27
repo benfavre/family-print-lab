@@ -11,7 +11,7 @@ import sys
 import tempfile
 
 upstream = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else pathlib.Path(__file__).resolve().parents[1] / ".upstream"
-source = (upstream / "CMakeLists.txt").read_text()
+source = (upstream / "CMakeLists.txt").read_text(encoding="utf-8")
 start = source.index("function(bambustudio_copy_dlls ")
 function = source[start:source.index("endfunction()", start) + len("endfunction()")]
 ffmpeg = {"avcodec-61.dll", "swresample-5.dll", "swscale-8.dll", "avutil-59.dll"}
@@ -53,14 +53,14 @@ set_target_properties(runtime PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${{CMAKE_CURR
 bambustudio_copy_dlls(runtime Release "" runtime_files)
 file(WRITE "${{CMAKE_CURRENT_BINARY_DIR}}/runtime-files.txt" "${{runtime_files}}")
 '''
-        (fixture / "CMakeLists.txt").write_text(cmake)
+        (fixture / "CMakeLists.txt").write_text(cmake, encoding="utf-8")
         result = subprocess.run(["cmake", "-S", str(fixture), "-B", str(fixture / "build")], capture_output=True, text=True)
         if name == "gui-missing":
             assert result.returncode != 0 and "avcodec-61.dll" in result.stderr, result.stdout + result.stderr
         else:
             assert result.returncode == 0, result.stdout + result.stderr
             assert (output / "libgmp-10.dll").exists(), "Headless core DLLs must still be copied"
-            exported = (fixture / "build/runtime-files.txt").read_text()
+            exported = (fixture / "build/runtime-files.txt").read_text(encoding="utf-8")
             for dll in ffmpeg:
                 assert (output / dll).exists() == gui, (name, dll)
                 assert (dll in exported) == gui, (name, dll, exported)
