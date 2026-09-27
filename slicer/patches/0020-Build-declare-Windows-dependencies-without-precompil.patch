@@ -1,0 +1,55 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Benjamin Favre <ben@webdesign29.net>
+Date: Sun, 27 Sep 2026 18:39:05 +0000
+Subject: [PATCH] Build: declare Windows dependencies without precompiled
+ headers
+
+Why: with SLIC3R_PCH=OFF, Windows SDK min/max macros break Semver, Emboss and TBB because NOMINMAX lived only in pchheader.hpp. BlacklistedLibraryCheck and Hollowing also rely on headers supplied indirectly by the PCH. Define NOMINMAX independently of PCH and include the used standard/Boost declarations explicitly.
+
+Files: CMakeLists.txt, src/libslic3r/BlacklistedLibraryCheck.cpp, src/libslic3r/SLA/Hollowing.cpp
+
+Upstreamable: yes
+
+Co-Authored-By: Codex <noreply@openai.com>
+---
+ CMakeLists.txt                            | 2 +-
+ src/libslic3r/BlacklistedLibraryCheck.cpp | 2 ++
+ src/libslic3r/SLA/Hollowing.cpp           | 1 +
+ 3 files changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index b7613db..5e239cc 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -361,7 +361,7 @@ include_directories(${LIBDIR_BIN}/platform)
+ include_directories(${LIBDIR}/libigl)
+ 
+ if(WIN32)
+-    add_definitions(-D_USE_MATH_DEFINES -D_WIN32 -D_CRT_SECURE_NO_WARNINGS -D_SCL_SECURE_NO_WARNINGS)
++    add_definitions(-D_USE_MATH_DEFINES -D_WIN32 -D_CRT_SECURE_NO_WARNINGS -D_SCL_SECURE_NO_WARNINGS -DNOMINMAX)
+     if(MSVC)
+         # BOOST_ALL_NO_LIB: Avoid the automatic linking of Boost libraries on Windows. Rather rely on explicit linking.
+         add_definitions(-DBOOST_ALL_NO_LIB -DBOOST_USE_WINAPI_VERSION=0x602 -DBOOST_SYSTEM_USE_UTF8 )
+diff --git a/src/libslic3r/BlacklistedLibraryCheck.cpp b/src/libslic3r/BlacklistedLibraryCheck.cpp
+index 938f542..2e8745a 100644
+--- a/src/libslic3r/BlacklistedLibraryCheck.cpp
++++ b/src/libslic3r/BlacklistedLibraryCheck.cpp
+@@ -1,6 +1,8 @@
+ #include "BlacklistedLibraryCheck.hpp"
+ 
+ #include <cstdio>
++#include <algorithm>
++#include <boost/filesystem/path.hpp>
+ #include <boost/nowide/convert.hpp>
+ 
+ #ifdef  WIN32
+diff --git a/src/libslic3r/SLA/Hollowing.cpp b/src/libslic3r/SLA/Hollowing.cpp
+index b0d33a0..97743a2 100644
+--- a/src/libslic3r/SLA/Hollowing.cpp
++++ b/src/libslic3r/SLA/Hollowing.cpp
+@@ -1,4 +1,5 @@
+ #include <functional>
++#include <numeric>
+ #include <optional>
+ 
+ #include <libslic3r/OpenVDBUtils.hpp>
