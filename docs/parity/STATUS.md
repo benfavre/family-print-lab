@@ -247,8 +247,9 @@ browser fixtures; no real-printer verification is claimed.
 
 The candidate passes 1,491 app unit/integration tests (four expected skips), up from 1,467
 before this pass. App check reports zero errors and warnings; Prettier and ESLint pass.
-Nozzle changes pass 98 targeted tests and two dedicated browser cases. Three complete app
+Nozzle changes pass 98 targeted tests and two dedicated browser cases. Four complete app
 browser runs with fresh databases pass all 65 cases each, up from 63 before this pass.
+The latest run, after the Unicode archive fix, took 3.9 minutes.
 The command-palette test now focuses the main region before checking shortcuts.
 Cloud passes 82 unit tests and 106 browser cases; its GitHub Actions job remains blocked by
 account billing, so these results come from local verification.
