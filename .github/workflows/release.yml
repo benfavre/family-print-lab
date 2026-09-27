@@ -10,6 +10,10 @@ on:
         description: Completed Slicer build run with all three native platforms passing
         required: true
         type: string
+      stage-release:
+        description: Create the version tag and a draft release only after candidate smoke checks pass
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -41,7 +45,7 @@ jobs:
         with:
           node-version-file: app/.nvmrc
       - name: Native artifact provenance tests
-        run: node --test desktop/scripts/native-artifacts.test.mjs
+        run: node --test desktop/scripts/native-artifacts.test.mjs desktop/scripts/stage-release.test.mjs
       - name: Verify native artifacts against the candidate source
         id: verify
         run: node desktop/scripts/native-artifacts.mjs
@@ -147,5 +151,35 @@ jobs:
             desktop/release/*.exe
             desktop/release/*.dmg
             desktop/release/*.zip
+            desktop/release/*.blockmap
+            desktop/release/latest*.yml
           if-no-files-found: error
           retention-days: 7
+
+  stage:
+    if: github.event_name == 'workflow_dispatch' && inputs.stage-release
+    needs: [provenance, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: desktop-release-staging
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: app/.nvmrc
+      - name: Download this run's verified candidate installers
+        uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-candidate-*
+          path: candidate-installers
+      - name: Verify assets and stage an immutable tag and draft
+        run: node desktop/scripts/stage-release.mjs candidate-installers
+        env:
+          # A tag created with GITHUB_TOKEN does not trigger another push workflow/native rebuild.
+          # https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow#triggering-a-workflow-from-a-workflow
+          GH_TOKEN: ${{ github.token }}

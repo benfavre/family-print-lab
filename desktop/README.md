@@ -52,6 +52,20 @@ Settings the web app reads from its environment (printer, `ANTHROPIC_API_KEY`, `
 5. Publish the verified draft with `gh release edit v2.2.1 --draft=false --latest`. Verify the public
    download links and update the website's platform notes to match the actual release.
 
+Alternatively, add `-f stage-release=true` to the manual candidate dispatch. After all three installer
+smoke jobs pass, the workflow downloads their exact candidate artifacts, checks both package versions,
+all five installer formats and all three updater manifests' SHA-512 hashes and sizes, then creates
+`v<version>` at that run's commit and uploads the verified files to a **draft** release. Installer
+filenames are made to match their updater URLs; blockmaps are retained. This option defaults to false.
+It avoids rebuilding the native engine after tagging: tags created with the workflow's `GITHUB_TOKEN`
+[do not trigger another push workflow](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow#triggering-a-workflow-from-a-workflow).
+Normal manually pushed tags still require all native builds. Review/download the staged assets and
+updater checksums, finish the notes and explicitly publish as in step 5; staging never publishes.
+
+Staging refuses an existing tag or release, including a draft, and never force-updates or overwrites
+assets. If GitHub fails after the tag is created, the tag/draft remains for inspection; do not retag or
+rerun staging blindly. Complete recovery manually after checking the original run and uploaded files.
+
 To repeat the installer smoke check locally, run `node scripts/smoke-package.mjs` from `desktop/`
 after packaging (use `xvfb-run -a` on headless Linux). It uses a temporary data directory, disables
 Cloud and redirects updater checks to loopback. The test needs the app's Playwright dependency.
