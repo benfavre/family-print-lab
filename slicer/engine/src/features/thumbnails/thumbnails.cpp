@@ -67,11 +67,11 @@ void chunk(std::string &out, const char *type, const std::string &data) {
 std::string zlib_stream(const std::string &raw) {
 #ifdef PRINTLAB_HAVE_ZLIB
 	uLongf size = compressBound(static_cast<uLong>(raw.size()));
-	std::string out(size, '\0');
-	if (compress2(reinterpret_cast<Bytef *>(&out[0]), &size, reinterpret_cast<const Bytef *>(raw.data()),
+	std::string packed(size, '\0');
+	if (compress2(reinterpret_cast<Bytef *>(&packed[0]), &size, reinterpret_cast<const Bytef *>(raw.data()),
 	              static_cast<uLong>(raw.size()), 6) == Z_OK) {
-		out.resize(size);
-		return out;
+		packed.resize(size);
+		return packed;
 	}
 #endif
 	std::string out = "\x78\x01";

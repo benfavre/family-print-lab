@@ -27,13 +27,25 @@ helper refuses a local checkout that is not at the pinned commit.
 slicer/
   upstream.lock       the pin: name, url, tag, commit, queue version, queue hash
   UPSTREAM.md         this page
-  patches/series      our patch queue, in order (empty today)
+  patches/series      our patch queue, in order
   patches/NNNN-*.patch  git format-patch files, each explaining why it exists
   rr-cache/           recorded conflict resolutions (git rerere), replayed on the next update
   ports/ORIGINS.md    files we adapted from Bambu Studio or OrcaSlicer, with the commit they came from
   scripts/upstream.sh fetch | rebase | export | status | resources | ports | build | test
+  scripts/build-deps.sh  Bambu Studio's dependency superbuild, headless and cached
+  engine/             printlab-slicer, our engine (CMake project; consumes the checkout)
+    src/main.cpp        stdio setup (protocol on the real stdout, everything else to stderr)
+    src/rpc/            JSON, the JSON-RPC server (a strand per project, progress, cancel), methods
+    src/facade/         the facade interface and our plain structs
+      upstream/         the ONLY code that includes upstream headers (Model, presets, slice, export)
+      null_facade.cpp   the build without upstream (protocol layer only)
+    src/features/       our modules: thumbnails (CPU rasteriser for plate pictures)
+    tests/              ctest: JSON, rpc, thumbnails, and a facade smoke test with upstream
   tests/upstream.test.sh  tests upstream.sh against a toy upstream with three tags
+  tests/golden/       golden slices (expected.json), run by app/src/lib/server/slicer/golden.test.ts
   .upstream/          the checkout (never committed): the pinned tag plus the patch queue
+  .build/             build output (never committed): deps/, engine/, engine-protocol/
+  dist/<platform>/    the engine bundle (never committed): binary, resources, LICENSE, engine.json
 ```
 
 In `slicer/.upstream` the branch `printlab` is the pinned tag with our patches on top, and the tag
@@ -41,7 +53,7 @@ In `slicer/.upstream` the branch `printlab` is the pinned tag with our patches o
 
 ## Rules that keep updates cheap
 
-1. **Our code stays outside the upstream tree.** The engine (`slicer/engine`, when it lands) consumes
+1. **Our code stays outside the upstream tree.** The engine (`slicer/engine`) consumes
    upstream through CMake `add_subdirectory(… EXCLUDE_FROM_ALL)`.
 2. **One facade.** Only `slicer/engine/src/facade/` includes upstream headers or names upstream types.
    When Bambu Studio changes an API, the fix is in one place.
@@ -72,7 +84,7 @@ opens a pull request, or an issue listing the patches that no longer apply. By h
 3. Replay the queue onto the new tag: `slicer/scripts/upstream.sh rebase v02.08.xx.yy`
    - It applies cleanly: go to step 4.
    - It stops on a conflict: see _Resolving a patch that stopped applying_ below.
-4. Build and test (once `slicer/engine` exists): `slicer/scripts/upstream.sh build -j 6`, then
+4. Build and test: `slicer/scripts/upstream.sh build -j 6`, then
    `slicer/scripts/upstream.sh test`.
 5. Write the new pin and queue back: `slicer/scripts/upstream.sh export`. This rewrites
    `patches/`, `upstream.lock` and the table on this page.
@@ -136,13 +148,55 @@ fetch, export, re-fetch from the queue, a clean rebase, a conflicting one (with 
 `--report`), a recorded resolution replayed by rerere, and a tag that moved upstream (refused). CI runs
 it on every pull request.
 
+## Building the engine
+
+`slicer/scripts/upstream.sh build [-j N]` (or `bun run slicer:build` from `app/`) does everything:
+
+1. `build-deps.sh`: Bambu Studio's dependency superbuild (`slicer/.upstream/deps`) into
+   `${PRINTLAB_SLICER_BUILD_DIR:-slicer/.build}/deps/usr/local`, with upstream's own switches for a
+   headless build (`DEP_BUILD_WXWIDGETS=OFF`, `DEP_BUILD_FFMPEG=OFF`, `DEP_BUILD_LIBHARU=OFF`,
+   `DEP_BUILD_GLFW=OFF`) and without the GL targets (`dep_GLEW`, `dep_OpenCSG`). It builds `m4` into
+   the build directory when the host lacks it (GMP needs it). The result is stamped with a key (tag,
+   git tree of `deps/`, platform) that CI also uses for its cache; `build-deps.sh --print-key` shows it.
+   About 75 minutes with `-j 2` on an 8-core laptop, 634 MB installed.
+2. The engine: `cmake -S slicer/engine -B .build/engine -DPRINTLAB_UPSTREAM_DIR=slicer/.upstream
+   -DCMAKE_PREFIX_PATH=.build/deps/usr/local`, which adds upstream with `add_subdirectory(…
+   EXCLUDE_FROM_ALL)` (`SLIC3R_GUI=OFF`, `FLATPAK=ON` so no FFmpeg is copied) and builds only
+   libslic3r and what it needs.
+3. The bundle in `slicer/dist/<platform>/`: `printlab-slicer`, `resources/` (profiles, printers,
+   info from the same tag), `LICENSE`, `engine.json`. The app finds it there (`slicer/locate.ts`);
+   the desktop build copies it next to the server. The build fails if the binary mentions
+   `bambu_networking` or `NetworkAgent`.
+
+`upstream.sh build --no-upstream` builds only the protocol layer (a minute, no checkout needed): it
+answers `engine.hello` with the pin and no slicing capabilities, which is what the conformance tests
+and the `protocol` CI job need. `upstream.sh test` runs ctest, then the app's slicer tests with
+`PRINTLAB_SLICER_PATH` set to the build (protocol conformance and golden slices included).
+
+Patch 0001 is the only change to upstream: the top-level `CMakeLists.txt` asked for OpenGL, GLEW
+and GLFW even with the GUI off, and those are what fails on a headless host. It is marked upstreamable.
+
 ## State of the engine
 
-The update tooling above works today and is tested; the app slices through a stock Bambu Studio or
-OrcaSlicer command line (`app/src/lib/server/slicer.ts`, found by `slicer/locate.ts`). The native
-engine (`slicer/engine`: the facade, the JSON-RPC loop and the build) is not in the repository yet.
-The app side of its protocol is: `StdioEngine` in `app/src/lib/server/slicer/engine.ts` speaks the
-Slicer Engine Protocol (`app/src/lib/shared/slicer/protocol.ts`) and is tested against a fake engine.
-When `slicer/engine/CMakeLists.txt` lands, `upstream.sh build` builds the deps superbuild with the
-headless options above into `${PRINTLAB_SLICER_BUILD_DIR:-slicer/.build}/deps`, then the engine into
-`…/engine`, and the workflow builds and tests it on every update.
+- The app side is complete and tested: `StdioEngine` (`app/src/lib/server/slicer/engine.ts`) against a
+  fake engine, `CliEngine` (`cli.ts`) against a fake Bambu Studio for every model in the catalogue,
+  `service.ts` (what jobs call) through both, and the protocol conformance tests against the real
+  protocol-only binary.
+- The protocol layer, the thumbnails and their tests build and pass everywhere (`--no-upstream`).
+- The facade (`engine/src/facade/upstream/`) type-checks against the pinned headers. The full build
+  (dependencies, then libslic3r and the engine) was run on the development machine; see the package
+  report for how far it got. Golden values in `tests/golden/expected.json` are recorded on the first
+  working build (`GOLDEN_UPDATE=1 GOLDEN_REASON='first engine build' upstream.sh test`).
+- Not done yet: `project.open`/`project.save` (slicer-3mf's work), `preview.get`, `config.validate`
+  beyond upstream's own validation, multi-extruder filament grouping (the H2D/X2D auto map the CLI
+  does through its GUI plate list), and the wipe tower placeholder when arranging.
+- Windows and macOS builds are in `slicer-build.yml` but not verified; they may fail without
+  blocking a release.
+
+On a bigger machine, from the repository root:
+
+```
+slicer/scripts/upstream.sh fetch
+slicer/scripts/upstream.sh build -j 16
+GOLDEN_UPDATE=1 GOLDEN_REASON='first engine build' slicer/scripts/upstream.sh test
+```

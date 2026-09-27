@@ -12,7 +12,6 @@ import { ERROR, type Progress } from '$lib/shared/slicer/protocol';
 import { IDENTITY, emptyProject, type ConfigMap, type Project } from '$lib/shared/slicer/project';
 import type { ProfileService, ResolvedBundle } from '$lib/shared/slicer/profiles';
 import { EngineError, openSlicer, slicerWorkDir, type SlicerEngine } from './engine';
-import { combine } from './profile-book';
 import {
 	bedTypeFor,
 	chooseProfiles,
@@ -102,19 +101,23 @@ export function applyOverrides(
 		config: { ...p.config, ...extra },
 		origin: { ...p.origin, ...Object.fromEntries(Object.keys(extra).map((k) => [k, 'job'])) }
 	});
-	const printer = set(bundle.printer, o.printer);
-	const process = set(bundle.process, o.process);
-	const filaments = bundle.filaments.map((f, i) => set(f, o.filaments?.[i]));
+	// The combined config keeps what the backend resolved (upstream's full_config for the engine) and
+	// takes the overrides on top: printer and process keys as they are, filament keys at their index.
+	const full: ConfigMap = { ...bundle.full, ...o.printer, ...o.process };
+	o.filaments?.forEach((f, i) => {
+		for (const [key, value] of Object.entries(f)) {
+			const current = full[key];
+			const list = Array.isArray(current) ? [...current] : bundle.filaments.map(() => '');
+			list[i] = Array.isArray(value) ? (value[0] ?? '') : value;
+			full[key] = list;
+		}
+	});
 	return {
 		...bundle,
-		printer,
-		process,
-		filaments,
-		full: combine(
-			printer.config,
-			process.config,
-			filaments.map((f) => f.config)
-		)
+		printer: set(bundle.printer, o.printer),
+		process: set(bundle.process, o.process),
+		filaments: bundle.filaments.map((f, i) => set(f, o.filaments?.[i])),
+		full
 	};
 }
 

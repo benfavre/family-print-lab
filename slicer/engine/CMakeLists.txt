@@ -71,6 +71,14 @@ if (PRINTLAB_WITH_UPSTREAM)
     set(SLIC3R_STATIC ON CACHE BOOL "")
     set(SLIC3R_PCH OFF CACHE BOOL "")
     set(BBL_RELEASE_TO_PUBLIC 1 CACHE STRING "")
+    # "Not copy FFMPEG file": upstream's own switch; otherwise src/CMakeLists.txt copies the GUI's
+    # FFmpeg libraries at configure time on Linux, and the headless deps build has none.
+    set(FLATPAK TRUE CACHE BOOL "" FORCE)
+    # Imported targets are local to the directory that finds them; libslic3r's link interface names
+    # Boost::filesystem, so find Boost here first (same components and version as upstream's
+    # CMakeLists.txt) to make its targets visible to our targets too.
+    set(Boost_USE_STATIC_LIBS ON)
+    find_package(Boost 1.83.0 REQUIRED COMPONENTS system filesystem thread log locale regex chrono atomic date_time iostreams)
     add_subdirectory("${PRINTLAB_UPSTREAM_DIR}" upstream EXCLUDE_FROM_ALL)
     find_package(ZLIB REQUIRED)
     target_compile_definitions(printlab_features PRIVATE PRINTLAB_HAVE_ZLIB)
