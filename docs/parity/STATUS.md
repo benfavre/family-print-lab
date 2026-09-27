@@ -106,9 +106,9 @@ not apply or we have not checked.
   cloud gets v1 (the first printer's progress only) until a phone key exists; after that the app asks
   for the cloud to be updated rather than send status in the clear.
 - **Print Lab Slicer is built separately.** `slicer/scripts/upstream.sh build` builds the engine; the
-  Linux bundle builds locally and desktop preparation copies it on this host. Windows and macOS need
-  native-runner verification. Without the engine, slicing falls back to an installed Bambu Studio
-  command line, and calibration tests are off.
+  v2.2.0 Linux installer bundles the engine, verified on Ubuntu 22.04. Windows and macOS installers
+  use an installed Bambu Studio command line, with calibration tests off. Native build fixes for
+  those platforms are on `parity`; complete native-runner verification remains pending.
 - **Camera over RTSPS.** The simulator serves every model's camera the port-6000 way, so the RTSPS
   path through ffmpeg (X1, P2S, H2 and X2D series) is covered by unit tests of its arguments and
   certificate check, not by a live stream.
@@ -146,3 +146,18 @@ bindings were preserved. Public pages and phone-key assets return 200; unauthent
 redirect to sign-in and the printer API returns 401. Worker version:
 `22c48d03-8919-4a5d-b885-91bca4922f49`. Cloud check, formatting and all 66 tests pass locally; its
 private GitHub Actions job cannot start until the account billing/spending restriction is resolved.
+
+Family Print Lab [v2.2.0](https://github.com/benfavre/family-print-lab/releases/tag/v2.2.0) is published
+at commit `5dc7ffa`. All three desktop installer jobs passed. The Linux native dependency/engine build
+on Ubuntu 22.04 took 3,465 seconds (57 minutes 45 seconds) at four workers; ten native tests and 105
+integration tests passed, with one protocol-only skip. All 11 release assets and three updater
+manifests were verified, including installer SHA-512 checksums. The published Linux package and its
+engine start successfully inside Ubuntu 22.04 and serve the profile page on loopback. The live
+download page shows 2.2.0, and all four installer links redirect to its published assets.
+
+Windows and macOS installers retain the installed-Studio fallback. Native runner attempts found
+Windows CRLF target-list and Perl selection issues, plus macOS OCCT standard-selection and Bash 3.2
+issues. Fixes and regression checks are committed on `parity`; targeted native retries continue.
+CI now retains completed dependency caches after later failures and supports one-platform retries.
+These follow-up build changes do not alter the v2.2.0 tag. Installers remain unsigned, and no physical
+printer has been used.

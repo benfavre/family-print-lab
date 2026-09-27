@@ -9,8 +9,8 @@ new Bambu Studio release is a rebase of a handful of small patches, not a merge 
 
 <!-- pin:start -->
 
-| Upstream | Tag | Commit | Patch queue |
-| --- | --- | --- | --- |
+| Upstream     | Tag            | Commit                                     | Patch queue                                                                                       |
+| ------------ | -------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------- |
 | Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 15, 16 patch(es), hash `227ad89a89cef0ee9376d56482a7e1b2d9c4ecce87361b70c580ee083525fc4f` |
 
 <!-- pin:end -->
@@ -173,6 +173,16 @@ EXCLUDE_FROM_ALL)` (`SLIC3R_GUI=OFF`, `FLATPAK=ON` so no FFmpeg is copied) and b
    the desktop build copies it next to the server. The build fails if the binary mentions
    `bambu_networking` or `NetworkAgent`.
 
+CI retains a completed dependency prefix even if the later engine build or tests fail; incomplete
+or mismatched stamps are never saved. Pushes and desktop releases build all three platforms. A
+manual retry can select just one, for example:
+
+```
+gh workflow run slicer-build.yml --ref parity -f platform=darwin-arm64
+```
+
+The other choices are `linux-x64`, `win32-x64` and `all` (the default).
+
 `upstream.sh build --no-upstream` builds only the protocol layer (a minute, no checkout needed): it
 answers `engine.hello` with the pin and no slicing capabilities, which is what the conformance tests
 and the `slicer-protocol` job in ci.yml need (it runs on every pull request, so app-side client
@@ -180,7 +190,7 @@ changes are checked against the engine too). `upstream.sh test` runs ctest, then
 `PRINTLAB_SLICER_PATH` set to the build (protocol conformance and golden slices included), plus
 the TypeScript/native 3MF round trips with `PRINTLAB_PROJECT_CODEC` set to the built helper.
 
-The patch queue holds two build fixes, twelve memory-safety fixes and a scheduler fix, all marked
+The patch queue holds three build fixes, twelve memory-safety fixes and a scheduler fix, all marked
 upstreamable:
 
 - 0001: the top-level `CMakeLists.txt` asked for OpenGL, GLEW and GLFW even with the GUI off, and
@@ -209,6 +219,8 @@ upstreamable:
 - 0013: read nullable and plain placeholder vectors through common typed bases.
 - 0014: initialise machine filament candidate fields, including their usage enum.
 - 0015: retain an empty owned priming sequence when Bambu disables priming generation.
+- 0016: explicitly require C++11 for OCCT; its compiler detection misses AppleClang and otherwise
+  compiles C++11 headers as C++98 on the macOS runner.
 
 Miniz uses its portable byte-load implementation (`MINIZ_USE_UNALIGNED_LOADS_AND_STORES=0`)
 in every engine build, so ZIP reads and writes retain alignment sanitizer checks.
@@ -277,9 +289,22 @@ in every engine build, so ZIP reads and writes retain alignment sanitizer checks
   three-source correction took another 395.31 seconds (6 minutes 35 seconds). Strict native and
   integration validation completed in 52.48 seconds. The final release rebuild, reusing dependencies,
   took 330.73 seconds (5 minutes 31 seconds) at `-j 24`.
+- The v2.2.0 release's clean Ubuntu 22.04 CI dependency/engine build passed in 3,465 seconds
+  (57 minutes 45 seconds) at four workers. Ten native tests and 105 integration tests pass (one
+  protocol-only skip). The published Linux package and bundled engine also start successfully in
+  an isolated Ubuntu 22.04 smoke test, with the app serving its profile page on loopback. All three
+  desktop installer jobs pass; release assets and updater SHA-512 checksums have been verified.
 - Make, Ninja and Ninja Multi-Config dependency-target discovery and protocol builds are verified
   locally. Windows/macOS workflow/tool discovery and desktop bundle copying have been hardened,
-  but neither OS has been run on this machine; those CI jobs remain nonblocking.
+  and both OS runners have now been attempted. Windows target discovery passes after normalising
+  CRLF target lists. Its OpenSSL dependency then exposed Git Bash's incomplete Perl installation;
+  the workflow now selects native Strawberry Perl and checks its required modules before building.
+  macOS rebuilt all dependencies after the AppleClang standard-selection fix in patch 0016. Its
+  older Bash then rejected an empty configure-argument array; the nonempty replacement passes
+  Release, sanitizer and debug-mode checks under Bash 3.2. Full native
+  builds on those runners remain unverified and nonblocking. The v2.2.0 desktop installers for
+  Windows/macOS therefore use the installed-Studio fallback. Local Linux AppImage and Debian
+  packaging succeeds; the packaged app launches on loopback and preserves all 2,556 engine files.
 
 For a future rebuild, from the repository root:
 
