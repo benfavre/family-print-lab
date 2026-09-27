@@ -35,5 +35,11 @@ Json to_json(const SlicedPlate &p);
 Json to_json(const ConfigError &e);
 Json to_json(const SliceWarning &w);
 Json to_json(const Progress &p);
+Json to_json(const PresetRef &r);
+/** A project as protocol JSON (project.ts); `meshes` fills each MeshRef's size and bounds. */
+Json to_json(const Project &p, const std::map<std::string, MeshInfo> &meshes);
+/** calib.generate: params.kind and params.params (start, end, step, pass, linear, printNumbers). */
+calib::Request calib_request_from(const Json &params, const std::string &where);
+Json to_json(const CalibResult &r);
 
 } // namespace printlab

@@ -6,9 +6,11 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
+#include "libslic3r/Calib.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
@@ -61,8 +63,16 @@ struct PlateResult {
 	std::vector<std::string> object_ids;
 };
 
+/** A calibration test's upstream parameters, kept across project.sync (facade/upstream/calib.cpp). */
+struct CalibState {
+	calib::Mode mode = calib::Mode::None;
+	double start = 0, end = 0, step = 0;
+	bool print_numbers = false;
+};
+
 struct ProjectState {
 	int revision = 0;
+	std::optional<CalibState> calib;
 	Project project;
 	ResolvedBundle presets;
 	Slic3r::DynamicPrintConfig config; // full config: presets.full + project config
@@ -95,6 +105,9 @@ public:
 	ExportResult export_gcode3mf(const std::string &project_id, const std::vector<int> &plates, const std::string &path,
 	                             const std::vector<PlateImages> &images, bool engine_images) override;
 
+	CalibResult calib_generate(const calib::Request &request, const PresetSelection &selection, const ResolvedBundle &presets,
+	                           const std::string &bed_type) override;
+
 	std::vector<PresetSummary> profiles_list(PresetKind kind, const std::string &vendor_dir) override;
 	ResolvedBundle profiles_resolve(const PresetSelection &selection, const std::string &vendor_dir) override;
 
@@ -112,6 +125,14 @@ public:
 	Slic3r::Vec3d plate_origin(const ProjectState &state, int index) const;
 	Slic3r::PresetBundle &bundle(const std::string &vendor_dir);
 	std::string scratch() const { return work_dir_ + "/scratch"; }
+	/** The full config a project slices with: the presets' combined config, then the project's own settings. */
+	Slic3r::DynamicPrintConfig project_config(const ConfigMap &full, const ConfigMap &project_config);
+	/**
+	 * Before Print::apply (slice.cpp): a calibration project's upstream parameters, and for the PA
+	 * pattern its custom G-code (Calib.cpp generate_custom_gcodes). `params` must outlive the print.
+	 */
+	void apply_calib(const ProjectState &state, Slic3r::Model &model, const Slic3r::DynamicPrintConfig &config,
+	                 bool bbl_printer, Slic3r::Calib_Params &params);
 
 private:
 	std::string work_dir_, resources_dir_;

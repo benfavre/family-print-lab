@@ -18,6 +18,7 @@ import type { SlicedPlate } from '../domain';
 import type { PresetSelection, Project, Transform } from './project';
 import type { PresetKind, PresetSummary, ResolvedBundle, UserPreset } from './profiles';
 import type { PreviewHeader } from './preview';
+import type { CalibKind, CalibParams, CalibStep } from '../slicer-calibration';
 
 export const PROTOCOL = { major: 1, minor: 0 } as const;
 /** Largest inline base64 payload (bigger data goes through files in the work directory). */
@@ -188,6 +189,28 @@ export interface EngineMethods {
 	'profiles.list': {
 		params: { kind: PresetKind; vendorDir?: string };
 		result: { presets: PresetSummary[] };
+	};
+	/**
+	 * slicer-calibration: opens a project holding a calibration test for these presets (one plate,
+	 * ready for `slice` and `export.gcode3mf`). Needs capability `calib.<kind>`.
+	 */
+	'calib.generate': {
+		params: {
+			kind: CalibKind;
+			params: CalibParams;
+			selection: PresetSelection;
+			presets: ResolvedBundle;
+			bedType?: string;
+		};
+		result: {
+			projectId: string;
+			project: Project;
+			title: string;
+			/** The value printed on each band or block, in order. */
+			steps: CalibStep[];
+			/** Flow rate: the flow ratio the blocks' values start from. */
+			baseFlowRatio?: number;
+		};
 	};
 	/** Upstream's PresetBundle as the oracle for slicer-profiles tests. */
 	'profiles.resolve': {

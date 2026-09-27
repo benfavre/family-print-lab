@@ -45,10 +45,13 @@ EngineIdentity UpstreamFacade::identity() const {
 }
 
 std::vector<std::string> UpstreamFacade::capabilities() const {
-	return {"mesh.put",        "project.sync",  "arrange",         "orient",         "slice",
-	        "slice.cancel",    "export.gcode3mf", "export.thumbnails", "profiles.resolve", "profiles.list",
-	        "paint.supports",  "paint.seam",    "paint.color",     "paint.fuzzy_skin", "modifiers",
-	        "height_ranges",   "variable_layer_height"};
+	std::vector<std::string> caps = {"mesh.put",        "project.sync",  "arrange",         "orient",         "slice",
+	                                 "slice.cancel",    "export.gcode3mf", "export.thumbnails", "profiles.resolve", "profiles.list",
+	                                 "paint.supports",  "paint.seam",    "paint.color",     "paint.fuzzy_skin", "modifiers",
+	                                 "height_ranges",   "variable_layer_height"};
+	// Every calibration test (features/calib): their models ship with the engine's resources.
+	for (calib::Kind k : calib::all_kinds()) caps.push_back(calib::capability(k));
+	return caps;
 }
 
 void UpstreamFacade::configure(const std::string &work_dir, const std::string &resources_dir) {
@@ -82,13 +85,7 @@ SyncResult UpstreamFacade::project_sync(const std::string &project_id, const Pro
 	auto state = project(project_id);
 	std::lock_guard<std::mutex> lock(state->mutex);
 	SyncResult out;
-	// The combined config the presets resolve to, then the project's own settings over it.
-	ConfigMap full = presets.full;
-	for (const auto &kv : next.project_config) full[kv.first] = kv.second;
-	DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
-	config.apply(to_config(full, scratch()), true);
-	config.normalize_fdm();
-	restore_enum_maps(config);
+	DynamicPrintConfig config = project_config(presets.full, next.project_config);
 	for (const SceneObject &o : next.objects)
 		for (const Part &p : o.parts) try {
 				mesh(next, p.mesh);
@@ -101,6 +98,17 @@ SyncResult UpstreamFacade::project_sync(const std::string &project_id, const Pro
 	state->sliced.clear(); // any change invalidates what was sliced
 	out.revision = ++state->revision;
 	return out;
+}
+
+DynamicPrintConfig UpstreamFacade::project_config(const ConfigMap &presets_full, const ConfigMap &own) {
+	// The combined config the presets resolve to, then the project's own settings over it.
+	ConfigMap full = presets_full;
+	for (const auto &kv : own) full[kv.first] = kv.second;
+	DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
+	config.apply(to_config(full, scratch()), true);
+	config.normalize_fdm();
+	restore_enum_maps(config);
+	return config;
 }
 
 void UpstreamFacade::project_close(const std::string &project_id) {

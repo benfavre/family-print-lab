@@ -160,6 +160,16 @@ void register_methods(Server &server, Facade &facade, const EngineOptions &optio
 		                               for (const auto &sp : r.plates) out.push_back(to_json(sp));
 		                               return Json(Json::Object{{"path", r.path}, {"plates", out}});
 	                               }});
+	// Calibration tests (features/calib): gated per test, since each is its own capability.
+	server.add("calib.generate", {"", false, [&facade, caps](const Json &p, CallContext &) {
+		                              calib::Request request = calib_request_from(p, "params");
+		                              std::string cap = calib::capability(request.kind);
+		                              if (std::find(caps.begin(), caps.end(), cap) == caps.end())
+			                              throw EngineError(err::CAPABILITY_MISSING, "This version of the slicer cannot make that test.", cap, cap);
+		                              return to_json(facade.calib_generate(request, selection_from(need(p, "selection", "params"), "params.selection"),
+		                                                                   bundle_from(need(p, "presets", "params"), "params.presets"),
+		                                                                   opt_string(p, "bedType")));
+	                              }});
 	server.add("profiles.list", {"profiles.list", false, [&facade](const Json &p, CallContext &) {
 		                             Json presets = Json::array();
 		                             for (const auto &s : facade.profiles_list(kind_from(need_string(p, "kind", "params")), opt_string(p, "vendorDir")))

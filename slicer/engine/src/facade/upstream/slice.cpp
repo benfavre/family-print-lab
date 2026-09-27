@@ -91,6 +91,13 @@ PlateStats UpstreamFacade::slice(const std::string &project_id, int plate_index,
 		}
 		if (s.percent >= 0) progress({stage_for(s.percent), s.percent, s.text});
 	});
+	std::string printer_model;
+	if (auto *m = config.option<ConfigOptionString>("printer_model")) printer_model = m->value;
+	const bool bbl_printer = printer_model.compare(0, 9, "Bambu Lab") == 0;
+	// Calibration projects (calib.cpp): upstream's per-layer changes and the PA pattern's G-code.
+	Calib_Params calib_params;
+	apply_calib(*state, *result->model, config, bbl_printer, calib_params);
+	print.set_calib_params(calib_params);
 	print.apply(*result->model, config);
 	StringObjectException warning;
 	StringObjectException error = print.validate(&warning);
@@ -98,9 +105,7 @@ PlateStats UpstreamFacade::slice(const std::string &project_id, int plate_index,
 	if (!warning.string.empty()) warnings.push_back({"VALIDATE", warning.string, "", plate_index});
 	if (print.empty()) throw EngineError(err::NOTHING_TO_SLICE, "Nothing on this plate is inside the printable area.");
 
-	std::string printer_model;
-	if (auto *m = config.option<ConfigOptionString>("printer_model")) printer_model = m->value;
-	print.set_BBL_Printer(printer_model.compare(0, 9, "Bambu Lab") == 0);
+	print.set_BBL_Printer(bbl_printer);
 	Model::setExtruderParams(config, filament_count);
 	Model::setPrintSpeedTable(config, print.config());
 

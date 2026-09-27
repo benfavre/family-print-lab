@@ -30,6 +30,7 @@ slicer/
   patches/series      our patch queue, in order
   patches/NNNN-*.patch  git format-patch files, each explaining why it exists
   rr-cache/           recorded conflict resolutions (git rerere), replayed on the next update
+  orca.lock           the OrcaSlicer release the calibration ports were compared against
   ports/ORIGINS.md    files we adapted from Bambu Studio or OrcaSlicer, with the commit they came from
   scripts/upstream.sh fetch | rebase | export | status | resources | ports | build | test
   scripts/build-deps.sh  Bambu Studio's dependency superbuild, headless and cached
@@ -39,8 +40,10 @@ slicer/
     src/facade/         the facade interface and our plain structs
       upstream/         the ONLY code that includes upstream headers (Model, presets, slice, export)
       null_facade.cpp   the build without upstream (protocol layer only)
-    src/features/       our modules: thumbnails (CPU rasteriser for plate pictures)
-    tests/              ctest: JSON, rpc, thumbnails, and a facade smoke test with upstream
+    src/features/       our modules: thumbnails (CPU rasteriser for plate pictures), calib (calibration
+                        test recipes ported from Bambu Studio's and OrcaSlicer's GUI; see below)
+    resources/          our own runtime files (calibration models from OrcaSlicer), bundled as resources/printlab/
+    tests/              ctest: JSON, rpc, thumbnails, calib, and a facade smoke test with upstream
   tests/upstream.test.sh  tests upstream.sh against a toy upstream with three tags
   tests/golden/       golden slices (expected.json), run by app/src/lib/server/slicer/golden.test.ts
   .upstream/          the checkout (never committed): the pinned tag plus the patch queue
@@ -223,3 +226,16 @@ slicer/scripts/upstream.sh test
 # once the time estimate is repeatable:
 GOLDEN_UPDATE=1 GOLDEN_REASON='time and weight recorded' slicer/scripts/upstream.sh test
 ```
+
+## Calibration tests
+
+`calib.generate` (capability `calib.<kind>` for flow_rate, pa_line, pa_pattern, pa_tower, temp_tower,
+retraction, max_volumetric and vfa) opens a project holding one test. The per-layer changes are
+upstream's own (libslic3r `Calib.cpp` and `GCode.cpp` read `Print::set_calib_params`); what the GUI does
+before slicing (load the model, scale and cut it, change the settings) is ported into
+`engine/src/features/calib/` as plain recipes and applied in `engine/src/facade/upstream/calib.cpp`.
+The models come from the checkout's `resources/calib/` (copied into the bundle by `build`), plus
+OrcaSlicer's linear flow test models in `engine/resources/calib/`. On an update, compare
+`src/slic3r/GUI/Plater.cpp` (the `calib_*` functions) and `calib_dlg.cpp` with the recipes, and
+OrcaSlicer's `adjust_settings_for_flowrate_calib` at the tag in `orca.lock`; the golden checks in
+`app/src/lib/server/modules/slicer-calibration/golden.test.ts` read the steps back out of the G-code.

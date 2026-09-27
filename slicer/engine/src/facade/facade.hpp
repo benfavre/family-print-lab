@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "types.hpp"
+#include "features/calib/calib.hpp"
 
 namespace printlab {
 
@@ -56,6 +57,17 @@ struct ExportResult {
 	std::string path;
 	std::vector<SlicedPlate> plates;
 };
+/** A calibration test set up as an open project, ready to slice (features/calib). */
+struct CalibResult {
+	std::string project_id;
+	Project project;
+	/** Size and bounds of each generated mesh (files named in project.meshes). */
+	std::map<std::string, MeshInfo> meshes;
+	std::string title;
+	std::vector<calib::Step> steps;
+	/** The flow ratio the steps' values start from (flow rate tests), else 0. */
+	double base_flow_ratio = 0;
+};
 
 class Facade {
 public:
@@ -88,6 +100,10 @@ public:
 	virtual ExportResult export_gcode3mf(const std::string &project_id, const std::vector<int> &plates,
 	                                     const std::string &path, const std::vector<PlateImages> &images,
 	                                     bool engine_images) = 0;
+
+	/** Opens a project holding the calibration test for these presets (capability calib.<kind>). */
+	virtual CalibResult calib_generate(const calib::Request &request, const PresetSelection &selection,
+	                                   const ResolvedBundle &presets, const std::string &bed_type) = 0;
 
 	virtual std::vector<PresetSummary> profiles_list(PresetKind kind, const std::string &vendor_dir) = 0;
 	virtual ResolvedBundle profiles_resolve(const PresetSelection &selection, const std::string &vendor_dir) = 0;

@@ -436,7 +436,7 @@ platform_key() {
 }
 
 # build: dependencies (build-deps.sh), then the engine against the checkout, then slicer/dist/<plat>
-# with the binary, the resources it reads at runtime (profiles, printers, info) from the same tag,
+# with the binary, the resources it reads at runtime (profiles, printers, info, calib) from the same tag,
 # the licence and engine.json. --no-upstream builds the protocol layer only (minutes, no checkout).
 cmd_build() {
 	local deps_only=0 jobs=2 upstream=1
@@ -484,7 +484,7 @@ cmd_build() {
 	export SOURCE_DATE_EPOCH
 	cmake -S "$SLICER/engine" -B "$engine" -DPRINTLAB_UPSTREAM_DIR="$UP" \
 		-DCMAKE_PREFIX_PATH="$BUILD/deps/usr/local" -DCMAKE_BUILD_TYPE=Release
-	nice -n 10 cmake --build "$engine" -j "$jobs" --target printlab-slicer test_json test_rpc test_thumbnails test_facade
+	nice -n 10 cmake --build "$engine" -j "$jobs" --target printlab-slicer test_json test_rpc test_thumbnails test_calib test_facade
 	# Never ship Bambu's proprietary network plugin or the GUI (slicer/UPSTREAM.md rule 7).
 	if grep -a -q -E 'bambu_networking|NetworkAgent' "$engine/printlab-slicer$exe"; then
 		die "the engine references bambu_networking or NetworkAgent; it must not."
@@ -494,7 +494,9 @@ cmd_build() {
 	mkdir -p "$dist/resources/profiles"
 	cp "$engine/printlab-slicer$exe" "$dist/"
 	cp -R "$UP/resources/profiles/BBL" "$UP/resources/profiles/BBL.json" "$dist/resources/profiles/"
-	for d in printers info; do [ -d "$UP/resources/$d" ] && cp -R "$UP/resources/$d" "$dist/resources/"; done
+	# calib/: the calibration tests' models (features/calib); printlab/: our own (ported from OrcaSlicer).
+	for d in printers info calib; do [ -d "$UP/resources/$d" ] && cp -R "$UP/resources/$d" "$dist/resources/"; done
+	[ -d "$SLICER/engine/resources" ] && mkdir -p "$dist/resources/printlab" && cp -R "$SLICER/engine/resources/." "$dist/resources/printlab/"
 	cp "$UP/LICENSE" "$dist/LICENSE"
 	local version
 	version="$(sed -n -E 's/^project\(printlab-slicer VERSION ([0-9.]+).*/\1/p' "$SLICER/engine/CMakeLists.txt")"
