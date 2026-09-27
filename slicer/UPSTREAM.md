@@ -173,7 +173,8 @@ it on every pull request.
 
 `upstream.sh build --no-upstream` builds only the protocol layer (a minute, no checkout needed): it
 answers `engine.hello` with the pin and no slicing capabilities, which is what the conformance tests
-and the `protocol` CI job need. `upstream.sh test` runs ctest, then the app's slicer tests with
+and the `slicer-protocol` job in ci.yml need (it runs on every pull request, so app-side client
+changes are checked against the engine too). `upstream.sh test` runs ctest, then the app's slicer tests with
 `PRINTLAB_SLICER_PATH` set to the build (protocol conformance and golden slices included).
 
 The patch queue holds two build fixes, both marked upstreamable, both proven by the build:

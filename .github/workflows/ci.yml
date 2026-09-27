@@ -31,6 +31,25 @@ jobs:
           path: app/test-results
           retention-days: 7
 
+  # Minutes: Print Lab Slicer's protocol layer without Bambu Studio, its C++ tests and the app's
+  # protocol conformance tests against the real binary. Here rather than in slicer-build.yml, so a
+  # change on either side (slicer/ or app/src/lib/server/slicer/) is checked on every pull request.
+  slicer-protocol:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: app/.nvmrc
+      - uses: oven-sh/setup-bun@v2
+      - run: slicer/scripts/upstream.sh build --no-upstream -j 4
+      - run: ctest --test-dir slicer/.build/engine-protocol --output-on-failure
+      - name: Protocol conformance
+        working-directory: app
+        run: |
+          bun install
+          PRINTLAB_SLICER_PATH="$PWD/../slicer/.build/engine-protocol/printlab-slicer" bunx vitest --run src/lib/server/slicer/
+
   # The tooling that keeps the Bambu Studio fork current (slicer/UPSTREAM.md).
   slicer-upstream:
     runs-on: ubuntu-latest

@@ -16,24 +16,8 @@ permissions:
   contents: read
 
 jobs:
-  # Minutes, every push: the protocol layer without Bambu Studio, its C++ tests and the app's
-  # protocol conformance tests against the real binary.
-  protocol:
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: app/.nvmrc
-      - uses: oven-sh/setup-bun@v2
-      - run: slicer/scripts/upstream.sh build --no-upstream -j 4
-      - run: ctest --test-dir slicer/.build/engine-protocol --output-on-failure
-      - name: Protocol conformance
-        working-directory: app
-        run: |
-          bun install
-          PRINTLAB_SLICER_PATH="$PWD/../slicer/.build/engine-protocol/printlab-slicer" bunx vitest --run src/lib/server/slicer/
-
+  # The protocol layer and the app's conformance tests against it run in ci.yml (slicer-protocol) on
+  # every pull request, so changes to the app-side client are checked too.
   engine:
     strategy:
       fail-fast: false
