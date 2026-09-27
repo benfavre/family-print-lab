@@ -14,6 +14,7 @@
 	} from '$lib/client/slicer-3mf';
 	import PageHero from '$lib/components/PageHero.svelte';
 	import NewFromModels from '$lib/components/slicer-3mf/NewFromModels.svelte';
+	import { workspaceHref } from '$lib/client/slicer/api';
 	import type { SlicerProjectSummary } from '$lib/shared/slicer-3mf';
 
 	const { lab, ui } = useApp();
@@ -166,6 +167,7 @@
 								>
 							</a>
 							<span class="row-actions">
+								<a class="mini button-link" href={workspaceHref(s.projectId, s.id)}>Slice</a>
 								<button class="mini" onclick={() => download(slicerFileUrl(s.id))}
 									>Open in Bambu Studio</button
 								>
@@ -187,6 +189,11 @@
 <style>
 	.page {
 		position: relative;
+	}
+	.button-link {
+		display: inline-flex;
+		align-items: center;
+		text-decoration: none;
 	}
 	.slicer-bar {
 		display: grid;
