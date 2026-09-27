@@ -1,0 +1,16 @@
+{
+    "type": "machine",
+    "name": "Bambu Lab X1 Carbon 0.2 nozzle",
+    "inherits": "Bambu Lab X1 Carbon 0.4 nozzle",
+    "from": "system",
+    "setting_id": "GM002",
+    "instantiation": "true",
+    "printer_variant": "0.2",
+    "nozzle_diameter": [
+        "0.2"
+    ],
+    "retraction_length": [
+        "0.4"
+    ],
+    "default_print_profile": "0.10mm Standard @BBL X1C 0.2 nozzle"
+}

@@ -64,7 +64,9 @@ export default defineConfig({
 				BAMBU_TLS: 'off',
 				BAMBU_SERIAL: 'SIM-X2D-0001',
 				BAMBU_ACCESS_CODE: '12345678',
-				BAMBU_SIMULATED: '1'
+				BAMBU_SIMULATED: '1',
+				// slicer-profiles: the small fixture set of Bambu Studio presets, so tests never need a download.
+				PRINTLAB_PROFILES_DIR: 'src/lib/server/profiles/__fixtures__/vendor'
 			}
 		}
 	]

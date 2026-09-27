@@ -23,7 +23,8 @@
 		"start": "node --env-file-if-exists=.env tools/serve.js",
 		"dev:sim": "tsx tools/dev-sim.ts",
 		"sim": "tsx tools/printer-sim.ts",
-		"hms:build": "tsx tools/hms/build-hms.ts"
+		"hms:build": "tsx tools/hms/build-hms.ts",
+		"profiles:fetch": "tsx tools/fetch-profiles.ts"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",

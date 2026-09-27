@@ -21,6 +21,8 @@ import type {
 	ProjectStatus,
 	SlicedInfo
 } from '../../../shared/domain';
+import type { PresetRef } from '../../../shared/slicer/project';
+import type { JobSliceSettings } from '../../../shared/slicer-profiles';
 import { printers } from './printers';
 
 const now = sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`;
@@ -97,6 +99,8 @@ export const spools = sqliteTable(
 		rfidTag: text('rfid_tag'),
 		bambuInfoIdx: text('bambu_info_idx'),
 		spoolmanId: integer('spoolman_id'),
+		/** slicer-profiles: the filament preset this spool slices with (Bambu filament_id links AMS trays). */
+		filamentPreset: text('filament_preset', { mode: 'json' }).$type<PresetRef>(),
 		...timestamps
 	},
 	(t) => [
@@ -144,6 +148,8 @@ export const jobs = sqliteTable(
 		printerId: text('printer_id').references(() => printers.id, { onDelete: 'set null' }),
 		/** What was sent to the printer for this job (set when it is sent). */
 		dispatch: text('dispatch', { mode: 'json' }).$type<JobDispatch>(),
+		/** slicer-profiles: presets and key overrides for slicing this job. */
+		sliceOverrides: text('slice_overrides', { mode: 'json' }).$type<JobSliceSettings>(),
 		startedAt: text('started_at'),
 		finishedAt: text('finished_at'),
 		...timestamps

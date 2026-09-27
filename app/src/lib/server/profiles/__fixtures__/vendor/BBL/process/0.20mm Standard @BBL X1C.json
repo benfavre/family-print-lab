@@ -1,0 +1,16 @@
+{
+    "type": "process",
+    "name": "0.20mm Standard @BBL X1C",
+    "inherits": "fdm_process_common",
+    "from": "system",
+    "setting_id": "GP004",
+    "instantiation": "true",
+    "description": "General purpose.",
+    "inner_wall_speed": [
+        "300",
+        "400"
+    ],
+    "compatible_printers": [
+        "Bambu Lab X1 Carbon 0.4 nozzle"
+    ]
+}

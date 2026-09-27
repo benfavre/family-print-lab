@@ -1,0 +1,23 @@
+{
+    "type": "filament",
+    "name": "Bambu PLA Basic @BBL X1C",
+    "inherits": "Bambu PLA Basic @base",
+    "from": "system",
+    "setting_id": "GFSA00",
+    "instantiation": "true",
+    "include": [
+        "fdm_filament_template_dual"
+    ],
+    "filament_retraction_length": [
+        "nil",
+        "0.4"
+    ],
+    "nozzle_temperature": [
+        "220",
+        "225"
+    ],
+    "compatible_printers": [
+        "Bambu Lab X1 Carbon 0.4 nozzle",
+        "Bambu Lab X1 Carbon 0.2 nozzle"
+    ]
+}

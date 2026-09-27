@@ -1,0 +1,20 @@
+{
+    "type": "filament",
+    "name": "Bambu PETG HF @BBL X1C",
+    "inherits": "fdm_filament_common",
+    "from": "system",
+    "filament_id": "GFG02",
+    "instantiation": "true",
+    "filament_type": [
+        "PETG"
+    ],
+    "nozzle_temperature": [
+        "250"
+    ],
+    "filament_vendor": [
+        "Bambu Lab"
+    ],
+    "compatible_printers": [
+        "Bambu Lab X1 Carbon 0.4 nozzle"
+    ]
+}
