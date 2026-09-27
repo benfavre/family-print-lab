@@ -119,13 +119,25 @@ function createService(ctx: ModuleContext): AmsService & { stop(): void } {
 		);
 		if (fingerprints.get(printerId) === print) return;
 		fingerprints.set(printerId, print);
-		const before = new Map(store.links(printerId).map((l) => [l.tray, l.spoolId]));
+		// Every printer's links: an RFID spool that turns up here leaves the tray it had elsewhere.
+		const key = (l: { printerId: string; tray: number }) => `${l.printerId}\u0000${l.tray}`;
+		const before = new Map(store.links().map((l) => [key(l), l]));
 		if (!store.sync(printerId, trays)) return;
-		const after = new Map(store.links(printerId).map((l) => [l.tray, l.spoolId]));
-		for (const t of new Set([...before.keys(), ...after.keys()]))
-			if (before.get(t) !== after.get(t))
-				ctx.bus.emit('spool.linked', { printerId, tray: t, spoolId: after.get(t) ?? null });
-		announce(printerId);
+		const after = new Map(store.links().map((l) => [key(l), l]));
+		const touched = new Set<string>();
+		for (const k of new Set([...before.keys(), ...after.keys()])) {
+			const was = before.get(k);
+			const now = after.get(k);
+			if (was?.spoolId === now?.spoolId) continue;
+			const where = (now ?? was)!;
+			touched.add(where.printerId);
+			ctx.bus.emit('spool.linked', {
+				printerId: where.printerId,
+				tray: where.tray,
+				spoolId: now?.spoolId ?? null
+			});
+		}
+		for (const id of touched) announce(id);
 	}
 
 	function spoolmanClient(): SpoolmanClient {
