@@ -73,7 +73,10 @@ describe('server modules', () => {
 	it('a module dropped in gets bus events, settings, a service, an Integrations row and kid reads', async () => {
 		const t = await startTestLab({ fleet: ['C12'], modules: ['example'], extraModules: [example] });
 		try {
-			expect(t.rt.modules()).toEqual([{ key: 'example', state: 'started', error: undefined }]);
+			// Package modules found by the glob are listed too, as skipped.
+			expect(t.rt.modules().filter((m) => m.state !== 'skipped')).toEqual([
+				{ key: 'example', state: 'started', error: undefined }
+			]);
 			const service = t.rt.module('example')!;
 			expect(service.greeting()).toBe('Hello');
 			// A print finishes on the simulated P1S: the lab closes its job first, then the module hears it.
