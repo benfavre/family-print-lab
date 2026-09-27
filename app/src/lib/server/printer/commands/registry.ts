@@ -59,6 +59,12 @@ export interface CommandDef<N extends CommandName = CommandName> {
 	qos?: 0 | 1;
 	/** UI hint: 'safe' (one tap), 'confirm' (ConfirmDialog), 'parent' (confirm + never in kid mode). */
 	risk: 'safe' | 'confirm' | 'parent';
+	/**
+	 * Only the app itself sends it (BambuPrinter's own timing and checks); POST
+	 * /api/printers/[id]/commands refuses it. `risk` is only a UI hint, so this is what keeps the
+	 * unguarded raw forms out of HTTP.
+	 */
+	internal?: true;
 }
 
 export interface CommandOutcome {

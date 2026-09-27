@@ -32,18 +32,31 @@ async function send(id: string, body: unknown) {
 }
 
 describe('POST /api/printers/[id]/commands', () => {
+	it('refuses the commands only the app sends itself', async () => {
+		const id = t.printer('C12').info.id;
+		for (const body of [
+			{ name: 'pushing.pushall' },
+			{ name: 'info.get_version' },
+			{ name: 'print.gcode_line', params: { lines: ['G28'] } },
+			{ name: 'print.gcode_line', params: { lines: ['M112'], allowEmergency: true } }
+		])
+			expect(await send(id, body)).toEqual({
+				status: 400,
+				body: { error: 'That printer command is not available here.' }
+			});
+	});
+
 	it('runs a command and says how it went', async () => {
 		const id = t.printer('C12').info.id;
-		expect(await send(id, { name: 'pushing.pushall' })).toEqual({
-			status: 200,
-			body: { outcome: 'sent' }
-		});
+		expect(
+			await send(id, { name: 'system.ledctrl', params: { node: 'chamber_light', mode: 'on' } })
+		).toMatchObject({ status: 200 });
 	});
 
 	it('answers 400 for an unknown command, 404 for a missing printer, 409 for a guarded one', async () => {
 		const id = t.printer('C12').info.id;
 		expect((await send(id, { name: 'print.nope' })).status).toBe(400);
-		expect((await send('missing', { name: 'pushing.pushall' })).status).toBe(404);
+		expect((await send('missing', { name: 'print.pause' })).status).toBe(404);
 		expect(await send(id, { name: 'print.pause' })).toEqual({
 			status: 409,
 			body: { error: 'Only a running print can pause.' }

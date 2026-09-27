@@ -80,7 +80,10 @@ export default [
 		build: () => ({ command: 'pushall', version: 1, push_target: 1 }),
 		// The answer is a full push_status report, not a reply.
 		reply: 'none',
-		risk: 'safe'
+		risk: 'safe',
+		// BambuPrinter.requestPushall keeps Bambu Studio's 3 s floor (REQUEST_PUSH_MIN_TIME) and the
+		// 5-minute rule for delta printers (OpenBambuAPI mqtt.md "pushing.pushall").
+		internal: true
 	}),
 	defineCommand({
 		name: 'info.get_version',
@@ -90,7 +93,8 @@ export default [
 		params: none,
 		build: () => ({ command: 'get_version' }),
 		qos: 1,
-		risk: 'safe'
+		risk: 'safe',
+		internal: true
 	}),
 	defineCommand({
 		name: 'print.project_file',
@@ -213,6 +217,8 @@ export default [
 				: null,
 		build: (o) => ({ command: 'gcode_line', param: `${o.lines.join('\n')}\n` }),
 		timeoutMs: 5000,
-		risk: 'parent'
+		risk: 'parent',
+		// No printing check or blocklist: the controls page sends 'print.gcode_line:custom' instead.
+		internal: true
 	})
 ];
