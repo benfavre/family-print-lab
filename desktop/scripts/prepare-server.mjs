@@ -49,6 +49,10 @@ if (fs.existsSync(path.join(engine, 'engine.json'))) {
 	if (process.platform !== 'win32')
 		fs.chmodSync(path.join(server, 'engine', 'printlab-slicer'), 0o755);
 	console.log(`• copied Print Lab Slicer (${path.relative(desktop, engine)})`);
+} else if (process.env.PRINTLAB_REQUIRE_NATIVE_ENGINE === '1') {
+	throw new Error(
+		`A native Print Lab Slicer bundle is required for this release: missing ${engine}`
+	);
 } else console.log('• no Print Lab Slicer build for this platform; the app will use Bambu Studio');
 // The settings template the desktop app offers as printlab.env.
 fs.copyFileSync(path.join(app, '.env.example'), path.join(server, 'env.example'));

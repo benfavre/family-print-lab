@@ -45,11 +45,16 @@ fs.writeFileSync(path.join(process.env.BUILD_DIR, 'server/index.js'), 'export de
 	return {
 		engine,
 		server: path.join(desktop, 'server'),
-		run: () =>
+		run: (env = {}) =>
 			execFileSync(process.execPath, [path.join(desktop, 'scripts/prepare-server.mjs')], {
 				encoding: 'utf8',
 				stdio: 'pipe',
-				env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` }
+				env: {
+					...process.env,
+					PRINTLAB_REQUIRE_NATIVE_ENGINE: '',
+					...env,
+					PATH: `${bin}${path.delimiter}${process.env.PATH}`
+				}
 			})
 	};
 }
@@ -58,11 +63,13 @@ test('copies the complete platform bundle, including runtime libraries and execu
 	const f = fixture('bundled');
 	const executable = process.platform === 'win32' ? 'printlab-slicer.exe' : 'printlab-slicer';
 	fs.writeFileSync(path.join(f.engine, 'engine.json'), '{"engine":"printlab-slicer"}');
-	fs.writeFileSync(path.join(f.engine, executable), 'test engine', { mode: 0o644 });
+	fs.writeFileSync(path.join(f.engine, executable), 'test engine', {
+		mode: 0o644
+	});
 	fs.writeFileSync(path.join(f.engine, 'libgmp-10.dll'), 'test runtime');
 	fs.mkdirSync(path.join(f.engine, 'resources'));
 	fs.writeFileSync(path.join(f.engine, 'resources/model.json'), '{}');
-	assert.match(f.run(), /copied Print Lab Slicer/);
+	assert.match(f.run({ PRINTLAB_REQUIRE_NATIVE_ENGINE: '1' }), /copied Print Lab Slicer/);
 	assert.equal(
 		fs.readFileSync(path.join(f.server, 'engine/libgmp-10.dll'), 'utf8'),
 		'test runtime'
@@ -83,4 +90,12 @@ test('keeps the installed Bambu Studio fallback when no engine was built', () =>
 	const f = fixture('fallback');
 	assert.match(f.run(), /no Print Lab Slicer build for this platform/);
 	assert.equal(fs.existsSync(path.join(f.server, 'engine')), false);
+});
+
+test('refuses to package a required native release without its engine bundle', () => {
+	const f = fixture('required');
+	assert.throws(
+		() => f.run({ PRINTLAB_REQUIRE_NATIVE_ENGINE: '1' }),
+		/A native Print Lab Slicer bundle is required for this release/
+	);
 });
