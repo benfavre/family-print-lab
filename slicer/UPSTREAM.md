@@ -11,7 +11,7 @@ new Bambu Studio release is a rebase of a handful of small patches, not a merge 
 
 | Upstream     | Tag            | Commit                                     | Patch queue                                                                                       |
 | ------------ | -------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 15, 16 patch(es), hash `227ad89a89cef0ee9376d56482a7e1b2d9c4ecce87361b70c580ee083525fc4f` |
+| Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 16, 17 patch(es), hash `421289395362838ddad438f7bf219e6d6f4c57e3874f7e100944323e9b77d37a` |
 
 <!-- pin:end -->
 
@@ -190,7 +190,7 @@ changes are checked against the engine too). `upstream.sh test` runs ctest, then
 `PRINTLAB_SLICER_PATH` set to the build (protocol conformance and golden slices included), plus
 the TypeScript/native 3MF round trips with `PRINTLAB_PROJECT_CODEC` set to the built helper.
 
-The patch queue holds three build fixes, twelve memory-safety fixes and a scheduler fix, all marked
+The patch queue holds four build fixes, twelve memory-safety fixes and a scheduler fix, all marked
 upstreamable:
 
 - 0001: the top-level `CMakeLists.txt` asked for OpenGL, GLEW and GLFW even with the GUI off, and
@@ -221,6 +221,8 @@ upstreamable:
 - 0015: retain an empty owned priming sequence when Bambu disables priming generation.
 - 0016: explicitly require C++11 for OCCT; its compiler detection misses AppleClang and otherwise
   compiles C++11 headers as C++98 on the macOS runner.
+- 0017: include `ExPolygon.hpp` in `ClipperZUtils.hpp`, whose inline functions use its members.
+  Clang rejects the forward declaration when building without precompiled headers.
 
 Miniz uses its portable byte-load implementation (`MINIZ_USE_UNALIGNED_LOADS_AND_STORES=0`)
 in every engine build, so ZIP reads and writes retain alignment sanitizer checks.

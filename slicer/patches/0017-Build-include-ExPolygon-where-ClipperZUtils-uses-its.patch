@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Benjamin Favre <ben@webdesign29.net>
+Date: Sun, 27 Sep 2026 17:03:27 +0000
+Subject: [PATCH] Build: include ExPolygon where ClipperZUtils uses its members
+
+Why: ClipperZUtils defines inline templates that access ExPolygon members, but only includes Point.hpp. With precompiled headers disabled, Clang rejects the incomplete type when LineSegmentation includes this header before ExPolygon.hpp. Include the definition in the header that needs it.
+
+Files: src/libslic3r/ClipperZUtils.hpp
+
+Upstreamable: yes
+
+Co-Authored-By: Codex <noreply@openai.com>
+---
+ src/libslic3r/ClipperZUtils.hpp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/libslic3r/ClipperZUtils.hpp b/src/libslic3r/ClipperZUtils.hpp
+index e51af0b..6871dec 100644
+--- a/src/libslic3r/ClipperZUtils.hpp
++++ b/src/libslic3r/ClipperZUtils.hpp
+@@ -10,6 +10,7 @@
+ 
+ #include <clipper/clipper_z.hpp>
+ #include <libslic3r/Point.hpp>
++#include <libslic3r/ExPolygon.hpp>
+ 
+ namespace Slic3r {
+ 
