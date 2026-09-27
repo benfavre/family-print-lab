@@ -14,6 +14,10 @@ listed here: it is read through `app/tools/lib/upstream.ts` and regenerated on e
 
 | Our file                                                               | Repository  | Upstream path                                            | Commit                                     |
 | ---------------------------------------------------------------------- | ----------- | -------------------------------------------------------- | ------------------------------------------ |
+| `slicer/engine/src/facade/wipe_tower.hpp` | BambuStudio | `src/slic3r/GUI/Jobs/ArrangeJob.cpp` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
+| `slicer/engine/src/facade/wipe_tower.hpp` | BambuStudio | `src/slic3r/GUI/PartPlate.cpp` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
+| `slicer/engine/src/facade/upstream/arrange_orient.cpp` | BambuStudio | `src/slic3r/GUI/Jobs/ArrangeJob.cpp` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
+| `slicer/engine/src/facade/upstream/arrange_orient.cpp` | BambuStudio | `src/slic3r/GUI/PartPlate.cpp` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
 | `slicer/engine/src/features/calib/calib.cpp`                           | BambuStudio | `src/slic3r/GUI/Plater.cpp`                              | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
 | `slicer/engine/src/features/calib/calib.cpp`                           | BambuStudio | `src/slic3r/GUI/calib_dlg.cpp`                           | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
 | `slicer/engine/src/features/calib/calib.cpp`                           | OrcaSlicer  | `src/slic3r/GUI/Plater.cpp`                              | `8500fcdccaa10b5099ac20d252af3a7c560046f1` |
