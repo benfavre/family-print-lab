@@ -12,25 +12,35 @@ import { ImportService } from './service';
 import { fixture, scriptedFetch, tinyPng, TRIANGLE_STL, type Answer } from './testing';
 import { toPng, isPng, pngSize, pictureDemuxer } from './pictures';
 import { findFfmpeg } from '$lib/server/ffmpeg';
+import { TaskCenter } from '$lib/server/tasks';
+import type { TaskInfo } from '$lib/shared/tasks';
+import type { Fetcher } from './fetch';
+import type { RequestEvent } from '@sveltejs/kit';
+import { GET as projectCredits } from '../../../../routes/api/projects/[id]/sources/+server';
 
 let t: TestLab;
 let profileId: string;
 beforeAll(async () => {
 	t = await startTestLab({ fleet: [], modules: ['model-import'] });
 	profileId = t.rt.lab.createProfile({ name: 'Ana', color: 'pink' });
+	(globalThis as Record<symbol, unknown>)[Symbol.for('family-print-lab.runtime')] = t.rt;
 });
-afterAll(() => t.stop());
+afterAll(() => {
+	delete (globalThis as Record<symbol, unknown>)[Symbol.for('family-print-lab.runtime')];
+	return t.stop();
+});
 
 function service(
 	answers: Record<string, Answer>,
-	o: { token?: string; ffmpeg?: string | null } = {}
+	o: { token?: string; ffmpeg?: string | null; tasks?: TaskCenter; fetch?: Fetcher } = {}
 ) {
 	const site = scriptedFetch(answers);
 	const imports = new ImportService({
 		db: t.rt.db,
 		lab: t.rt.lab,
 		models: t.rt.models,
-		fetch: site.fetch,
+		fetch: o.fetch ?? site.fetch,
+		tasks: o.tasks,
 		thingiverseToken: () => o.token ?? '',
 		ffmpeg: () => o.ffmpeg ?? null
 	});
@@ -54,6 +64,88 @@ const printablesAnswers = (): Record<string, Answer> => ({
 });
 
 describe('model import', () => {
+	it('publishes import progress and links the finished task to its project without changing the result', async () => {
+		const tasks = new TaskCenter();
+		const seen: TaskInfo[] = [];
+		tasks.events.on('task', (task: TaskInfo) => seen.push(task));
+		const { imports } = service(printablesAnswers(), { tasks });
+		const result = await imports.confirm({
+			url: 'https://www.printables.com/model/3161',
+			profileId,
+			files: ['stl:49068']
+		});
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(result).toMatchObject({ created: true, pictures: 1, modelIds: [expect.any(String)] });
+		expect(tasks.list()[0]).toMatchObject({
+			kind: 'model-import',
+			projectId: result.projectId,
+			title: 'Import 3D BENCHY',
+			status: 'done',
+			stage: 'Imported with 1 skipped'
+		});
+		expect(seen.map((task) => task.stage)).toEqual(
+			expect.arrayContaining([
+				'Reading model details…',
+				'Downloading file 1 of 1: 3dbenchy.stl',
+				'Adding file 1 of 1: 3dbenchy.stl',
+				'Saving picture 1 of 2…',
+				'Saving credits…'
+			])
+		);
+		const request = new Request(`http://localhost/api/projects/${result.projectId}/sources`);
+		const response = await projectCredits({
+			request,
+			url: new URL(request.url),
+			params: { id: result.projectId }
+		} as unknown as RequestEvent);
+		expect(response.status).toBe(200);
+		expect((await response.json()).sources).toMatchObject([
+			{ title: '3D BENCHY', author: 'Prusa Research', licence: 'Creative Commons — Public Domain' }
+		]);
+		const missing = await projectCredits({
+			request,
+			url: new URL(request.url),
+			params: { id: 'missing' }
+		} as unknown as RequestEvent);
+		expect(missing.status).toBe(404);
+	});
+
+	it.each(['tray', 'request'])(
+		'stopping an import from the %s aborts its download and never adds the returned model',
+		async (from) => {
+			const tasks = new TaskCenter();
+			const site = scriptedFetch(printablesAnswers());
+			let downloading!: () => void;
+			const started = new Promise<void>((resolve) => {
+				downloading = resolve;
+			});
+			const fetch: Fetcher = async (url, options) => {
+				if (url === PRINTABLES_FILE) {
+					downloading();
+					await new Promise<void>((_, reject) =>
+						options.signal!.addEventListener('abort', () => reject(options.signal!.reason), {
+							once: true
+						})
+					);
+				}
+				return site.fetch(url, options);
+			};
+			const { imports } = service({}, { tasks, fetch });
+			const before = t.rt.lab.snapshot().models.length;
+			const controller = new AbortController();
+			const importing = imports.confirm(
+				{ url: 'https://www.printables.com/model/3161', profileId, files: ['stl:49068'] },
+				controller.signal
+			);
+			const stopped = expect(importing).rejects.toThrow(/abort/i);
+			await started;
+			if (from === 'tray') tasks.cancel(tasks.list()[0].id);
+			else controller.abort();
+			await stopped;
+			expect(tasks.list()[0].status).toBe('cancelled');
+			expect(t.rt.lab.snapshot().models).toHaveLength(before);
+		}
+	);
 	it('starts as a module with settings that never return the token, and an Integrations row', async () => {
 		const m = t.rt.module('model-import')!;
 		expect(m.settings()).toEqual({ hasThingiverseToken: false });

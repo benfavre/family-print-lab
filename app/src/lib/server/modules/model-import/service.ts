@@ -7,6 +7,7 @@ import type { DB } from '$lib/server/db';
 import { projects, projectSources } from '$lib/server/db/schema';
 import type { Lab } from '$lib/server/lab';
 import type { ModelStore } from '$lib/server/models';
+import type { TaskCenter, TaskContext } from '$lib/server/tasks';
 import { SketchStore } from '$lib/server/sketches';
 import { AppError, parse } from '$lib/server/validation';
 import {
@@ -42,6 +43,7 @@ export interface ImportDeps {
 	db: DB;
 	lab: Lab;
 	models: ModelStore;
+	tasks?: TaskCenter;
 	fetch: Fetcher;
 	thingiverseToken: () => string;
 	ffmpeg: () => string | null;
@@ -105,8 +107,45 @@ export class ImportService {
 
 	async confirm(input: unknown, signal?: AbortSignal): Promise<ImportResult> {
 		const body = parse(confirmInput, input);
+		signal?.throwIfAborted();
+		if (!this.d.tasks) return this.perform(body, signal);
+		return this.d.tasks.run(
+			{
+				kind: 'model-import',
+				title: 'Import a model',
+				projectId: body.projectId,
+				stage: 'Reading model details…'
+			},
+			async (ctx) => {
+				const cancelled = () => this.d.tasks!.cancel(ctx.info.id);
+				signal?.addEventListener('abort', cancelled, { once: true });
+				try {
+					return await this.perform(
+						body,
+						signal ? AbortSignal.any([signal, ctx.signal]) : ctx.signal,
+						ctx
+					);
+				} finally {
+					signal?.removeEventListener('abort', cancelled);
+				}
+			},
+			(result) => ({
+				projectId: result.projectId,
+				stage: result.skipped.length ? `Imported with ${result.skipped.length} skipped` : 'Imported'
+			})
+		);
+	}
+
+	private async perform(
+		body: ReturnType<typeof confirmInput.parse>,
+		signal?: AbortSignal,
+		progress?: TaskContext
+	): Promise<ImportResult> {
+		signal?.throwIfAborted();
 		const loaded = await this.load(this.link(body.url), signal);
+		signal?.throwIfAborted();
 		const p = loaded.preview;
+		if (progress) progress.info.title = `Import ${p.title}`.slice(0, 120);
 		const chosen = body.files.map((id) => {
 			const file = p.files.find((f) => f.id === id);
 			if (!file) throw new AppError(400, 'One of the chosen files is not part of this model.');
@@ -169,9 +208,14 @@ export class ImportService {
 		}
 
 		const modelIds: string[] = [];
-		for (const file of chosen) {
+		if (progress) progress.info.projectId = projectId;
+		for (const [i, file] of chosen.entries()) {
+			signal?.throwIfAborted();
+			progress?.stage(`Downloading file ${i + 1} of ${chosen.length}: ${file.name}`);
 			try {
 				const buf = await loaded.download(file.id, this.d.fetch, signal);
+				signal?.throwIfAborted();
+				progress?.stage(`Adding file ${i + 1} of ${chosen.length}: ${file.name}`);
 				const name = file.name.replace(/\.[^.]+$/, '').slice(0, 80) || p.title.slice(0, 80);
 				modelIds.push(this.d.models.importFile(projectId, name, buf, file.format));
 			} catch (error) {
@@ -187,6 +231,8 @@ export class ImportService {
 		if (body.pictures !== false && images.length) {
 			const ffmpeg = this.d.ffmpeg();
 			for (const [i, img] of images.entries()) {
+				signal?.throwIfAborted();
+				progress?.stage(`Saving picture ${i + 1} of ${images.length}…`);
 				try {
 					const res = await this.d.fetch(img.url, {
 						allow: loaded.imageHosts,
@@ -194,6 +240,7 @@ export class ImportService {
 						signal
 					});
 					const png = await toPng(res.body, ffmpeg);
+					signal?.throwIfAborted();
 					if (!png) {
 						skipped.push({
 							name: `Picture ${i + 1}`,
@@ -216,6 +263,8 @@ export class ImportService {
 			}
 		}
 
+		signal?.throwIfAborted();
+		progress?.stage('Saving credits…');
 		const row = {
 			site: p.site,
 			url: p.url,

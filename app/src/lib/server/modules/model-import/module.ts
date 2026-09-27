@@ -32,6 +32,7 @@ export default defineModule({
 			db: ctx.db,
 			lab: ctx.lab,
 			models: ctx.models,
+			tasks: ctx.tasks,
 			fetch: createFetcher(),
 			thingiverseToken: () => store.get().thingiverseToken,
 			ffmpeg: () => findFfmpeg(ctx.env),

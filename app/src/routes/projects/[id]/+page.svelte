@@ -11,6 +11,7 @@
 	import Avatar from '$lib/components/Avatar.svelte';
 	import ModelsPanel from '$lib/components/ModelsPanel.svelte';
 	import SketchesPanel from '$lib/components/SketchesPanel.svelte';
+	import ProjectCredits from '$lib/components/imports/ProjectCredits.svelte';
 
 	const app = useApp();
 	const { lab, ui } = app;
@@ -232,6 +233,7 @@
 										<span aria-hidden="true">▢</span><code>{f}</code>
 									</li>{/each}
 							</ul>{/if}
+						<ProjectCredits projectId={project.id} revision={lab.ws.changeId} />
 					</section>
 				</div>
 				<aside class="detail-side">

@@ -31,6 +31,7 @@
 		'blender-decimate': ['◉', 'Blender simplify'],
 		'print-send': ['▣', 'Send to printer'],
 		slice: ['▤', 'Slicing'],
+		'model-import': ['↓', 'Model import'],
 		'blender-session': ['◉', 'Blender window'],
 		'gcode-preview': ['◫', 'Toolpath preview']
 	};

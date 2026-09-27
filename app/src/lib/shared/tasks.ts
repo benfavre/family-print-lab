@@ -11,6 +11,7 @@ export type TaskKind =
 	| 'blender-session'
 	| 'print-send'
 	| 'slice'
+	| 'model-import'
 	| 'gcode-preview';
 export type TaskStatus = 'running' | 'done' | 'failed' | 'cancelled';
 
