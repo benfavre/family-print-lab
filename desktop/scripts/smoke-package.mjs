@@ -12,7 +12,8 @@ import { _electron as electron } from '../../app/node_modules/playwright/index.m
 const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const release = path.join(desktop, 'release');
 const version = JSON.parse(fs.readFileSync(path.join(desktop, 'package.json'), 'utf8')).version;
-const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'printlab-installer-'));
+// Installation and account folders can contain Unicode on every supported desktop.
+const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'printlab-installer-é-印刷-'));
 const report = path.join(release, `smoke-${process.platform}`);
 let app;
 function run(command, args, options = {}) {
