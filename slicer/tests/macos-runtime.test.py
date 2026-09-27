@@ -29,7 +29,8 @@ class MacRuntime(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='printlab-é-印刷-')
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        # macOS exposes /var through /private/var; compare canonical fixture paths.
+        self.root = Path(self.temp.name).resolve()
         self.engine = self.root / 'build tree' / 'printlab-slicer'
         self.bundle = self.root / 'installed é 印刷'
         self.bundle.mkdir()
