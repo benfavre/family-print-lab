@@ -12,6 +12,15 @@ target_include_directories(test_json_portable PRIVATE ../src)
 target_compile_definitions(test_json_portable PRIVATE PRINTLAB_JSON_FORCE_PORTABLE)
 add_test(NAME test_json_portable COMMAND test_json_portable)
 printlab_test(test_rpc printlab_rpc printlab_facade)
+# Compile the real entry point with an ordinary cross-translation-unit static logger. This catches
+# startup contamination even in protocol-only builds, before the native dependency build is needed.
+add_executable(test_startup_engine ../src/main.cpp startup_log.cpp)
+target_link_libraries(test_startup_engine PRIVATE printlab_facade printlab_rpc printlab_features)
+if(UNIX AND NOT APPLE AND PRINTLAB_WITH_UPSTREAM)
+    target_link_libraries(test_startup_engine PRIVATE ${CMAKE_DL_LIBS})
+endif()
+add_test(NAME test_startup COMMAND ${CMAKE_COMMAND}
+    "-DENGINE=$<TARGET_FILE:test_startup_engine>" -P "${CMAKE_CURRENT_SOURCE_DIR}/test_startup.cmake")
 printlab_test(test_thumbnails printlab_features)
 printlab_test(test_calib printlab_features)
 printlab_test(test_preview printlab_rpc printlab_features)
