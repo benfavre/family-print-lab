@@ -47,7 +47,7 @@ function selfSigned() {
 }
 
 const at = '2026-09-01T10:15:00.000Z';
-function seeded(o: { noMlsd?: boolean; tls?: { key: Buffer; cert: Buffer } } = {}) {
+function seeded(o: { noMlsd?: boolean | 550; tls?: { key: Buffer; cert: Buffer } } = {}) {
 	const server = createFtpServer({ accessCode: '12345678', ...o });
 	const put = (name: string, data: Buffer) => server.files.set(name, { name, data, at });
 	put('timelapse/video_2026-09-01_10-15-00.mp4', Buffer.alloc(300_000, 3));
@@ -152,19 +152,24 @@ describe('listing and downloading from the printer', () => {
 		}
 	});
 
-	it('falls back to LIST when the server does not know MLSD', async () => {
-		const server = seeded({ noMlsd: true });
-		const port = await server.listen();
-		try {
-			const list = await listFiles(opts(port), '/timelapse');
-			expect(list.find((e) => e.type === 'file')).toMatchObject({
-				name: 'video_2026-09-01_10-15-00.mp4',
-				size: 300_000
-			});
-		} finally {
-			await server.close();
+	it.each([true, 550] as const)(
+		'falls back to LIST when the server refuses MLSD (%s)',
+		async (noMlsd) => {
+			const server = seeded({ noMlsd });
+			const port = await server.listen();
+			try {
+				const list = await listFiles(opts(port), '/timelapse');
+				expect(list.find((e) => e.type === 'file')).toMatchObject({
+					name: 'video_2026-09-01_10-15-00.mp4',
+					size: 300_000
+				});
+				// A refused MLSD is not a missing folder; LIST decides that.
+				await expect(listFiles(opts(port), '/nothing')).rejects.toBeInstanceOf(FtpNotFound);
+			} finally {
+				await server.close();
+			}
 		}
-	});
+	);
 
 	it('says plainly when a folder is not there', async () => {
 		const server = seeded();

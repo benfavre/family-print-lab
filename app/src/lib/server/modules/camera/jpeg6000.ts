@@ -160,8 +160,10 @@ export function jpeg6000Source(o: Jpeg6000Options): CameraSource {
 					: error.message || 'The camera connection failed.';
 		});
 		s.on('close', () => {
+			// A socket from before a stop (and a quick restart) must not schedule a second connection.
+			if (socket !== s) return;
 			clearTimeout(stall);
-			if (socket === s) socket = null;
+			socket = null;
 			if (stopped) return;
 			sink.error(failure ?? 'The camera connection closed.');
 			schedule();

@@ -108,18 +108,31 @@ export function createMedia(o: {
 	list?: typeof listFiles;
 	download?: typeof downloadFile;
 	maxPerPrinter?: number;
+	/** How long a folder listing vouches for downloads from it (a page of thumbnails asks many times). */
+	listingTtlMs?: number;
 }) {
 	const list = o.list ?? listFiles;
 	const download = o.download ?? downloadFile;
 	const acquire = limiter(o.maxPerPrinter ?? 2);
+	const ttl = o.listingTtlMs ?? 30_000;
+	const listings = new Map<string, { at: number; entries: FtpEntry[] }>();
 
 	async function listDir(p: BambuPrinter, dir: string, signal?: AbortSignal) {
 		const release = await acquire(p.id);
 		try {
-			return await list(ftpOptionsFor(p), dir, signal);
+			const entries = await list(ftpOptionsFor(p), dir, signal);
+			listings.set(`${p.id}|${dir}`, { at: Date.now(), entries });
+			return entries;
 		} finally {
 			release();
 		}
+	}
+
+	/** A recent listing when there is one, so each thumbnail or download does not list the folder again. */
+	async function recentListing(p: BambuPrinter, dir: string, signal?: AbortSignal) {
+		const hit = listings.get(`${p.id}|${dir}`);
+		if (hit && Date.now() - hit.at < ttl) return hit.entries;
+		return listDir(p, dir, signal);
 	}
 
 	return {
@@ -173,7 +186,7 @@ export function createMedia(o: {
 			const name = path.slice(slash + 1);
 			let entries: FtpEntry[];
 			try {
-				entries = await listDir(p, dir, signal);
+				entries = await recentListing(p, dir, signal);
 			} catch (error) {
 				if (error instanceof FtpNotFound)
 					throw new AppError(404, 'That file is not on the printer.');

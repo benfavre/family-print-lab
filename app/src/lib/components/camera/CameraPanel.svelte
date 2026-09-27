@@ -3,13 +3,12 @@
 	import { resolve } from '$app/paths';
 	import { useApp } from '$lib/client/app.svelte';
 	import type { CameraState } from '$lib/shared/camera';
-	import { download } from '$lib/client/actions';
 	import type { PrinterStatus } from '$lib/shared/domain';
 
-	// The printer's live camera: the picture (fullscreen, save a snapshot), the timelapse switch, and
-	// plain reasons when there is no picture.
+	// The printer's live camera: the picture (fullscreen, save a snapshot), the timelapse and
+	// recording switches, and plain reasons when there is no picture.
 	let { printer }: { printer: PrinterStatus } = $props();
-	const { lab } = useApp();
+	const { lab, ui } = useApp();
 	const id = $derived(printer.id ?? '');
 	let camera = $state<CameraState | null>(null);
 	let watching = $state(true);
@@ -17,6 +16,7 @@
 	let attempt = $state(0);
 	let broken = $state(false);
 	let figure = $state<HTMLElement | null>(null);
+	let saving = $state(false);
 	let retry: ReturnType<typeof setTimeout> | undefined;
 	const s = $derived(printer.state ?? null);
 	const src = $derived(
@@ -72,13 +72,46 @@
 		else void figure?.requestFullscreen?.();
 	}
 
-	async function setTimelapse(on: boolean) {
-		await lab.call(
+	/** Saves the newest picture as a file, or says why there is none. */
+	async function saveSnapshot() {
+		saving = true;
+		try {
+			const r = await fetch(
+				`/api/printers/${encodeURIComponent(id)}/camera/snapshot.jpg?download=1`
+			).catch(() => null);
+			if (!r) return ui.toast('Could not reach the app server. Is it still running?', 'error');
+			if (!r.ok) {
+				const data = await r.json().catch(() => ({}));
+				return ui.toast(data.error ?? `No picture from the camera (${r.status}).`, 'error');
+			}
+			const name =
+				/filename="([^"]+)"/.exec(r.headers.get('content-disposition') ?? '')?.[1] ??
+				'snapshot.jpg';
+			const url = URL.createObjectURL(await r.blob());
+			const link = document.createElement('a');
+			link.href = url;
+			link.download = name;
+			link.click();
+			setTimeout(() => URL.revokeObjectURL(url), 10_000);
+		} finally {
+			saving = false;
+		}
+	}
+
+	/** A camera switch on the printer; the box goes back when the printer did not take it. */
+	async function setSwitch(
+		input: HTMLInputElement,
+		name: 'camera.ipcam_timelapse' | 'camera.ipcam_record_set',
+		done: string
+	) {
+		const on = input.checked;
+		const ok = await lab.call(
 			'POST',
 			`/api/printers/${encodeURIComponent(id)}/commands`,
-			{ name: 'camera.ipcam_timelapse', params: { on } },
-			on ? 'Timelapses on: the next prints are recorded.' : 'Timelapses off.'
+			{ name, params: { on } },
+			done
 		);
+		if (!ok) input.checked = !on;
 	}
 </script>
 
@@ -96,7 +129,9 @@
 					onload={() => (broken = false)}
 					onerror={onError}
 				/>
-				{#if !camera.live && !broken}<figcaption>{camera.message}</figcaption>{/if}
+				{#if !camera.live && !broken && camera.reason !== 'error'}<figcaption>
+						{camera.message}
+					</figcaption>{/if}
 			{:else}
 				<div class="paused">{hidden ? 'Paused while this tab is hidden' : 'Live view paused'}</div>
 			{/if}
@@ -107,11 +142,8 @@
 				>{watching ? '❚❚ Pause live view' : '▶ Watch live'}</button
 			>
 			<button class="mini" onclick={fullscreen} disabled={!src}>⛶ Fullscreen</button>
-			<button
-				class="mini"
-				onclick={() =>
-					download(`/api/printers/${encodeURIComponent(id)}/camera/snapshot.jpg?download=1`)}
-				>Save a snapshot</button
+			<button class="mini" onclick={saveSnapshot} disabled={saving}
+				>{saving ? 'Saving…' : 'Save a snapshot'}</button
 			>
 		</div>
 		{#if camera.simulated}
@@ -129,13 +161,35 @@
 	{:else}
 		<p class="panel-empty">Checking the camera…</p>
 	{/if}
-	{#if printer.connected && printer.caps?.timelapse && s?.camera.timelapse !== null && s?.camera.timelapse !== undefined}
-		<label class="timelapse"
+	{#if printer.connected && printer.caps?.timelapse && typeof s?.camera.timelapse === 'boolean'}
+		<label class="switch"
 			><input
 				type="checkbox"
 				checked={s.camera.timelapse}
-				onchange={(e) => setTimelapse(e.currentTarget.checked)}
+				onchange={(e) =>
+					setSwitch(
+						e.currentTarget,
+						'camera.ipcam_timelapse',
+						e.currentTarget.checked
+							? 'Timelapses on: the next prints are recorded.'
+							: 'Timelapses off.'
+					)}
 			/> Record a timelapse of every print</label
+		>
+	{/if}
+	<!-- Bambu Studio's "Auto-record Monitoring" (CameraPopup.cpp), shown when the printer reports it. -->
+	{#if printer.connected && s?.camera.present !== false && typeof s?.camera.recording === 'boolean'}
+		<label class="switch"
+			><input
+				type="checkbox"
+				checked={s.camera.recording}
+				onchange={(e) =>
+					setSwitch(
+						e.currentTarget,
+						'camera.ipcam_record_set',
+						e.currentTarget.checked ? 'Camera recording on.' : 'Camera recording off.'
+					)}
+			/> Record the camera during prints</label
 		>
 	{/if}
 </section>
@@ -209,7 +263,7 @@
 		font-size: 12px;
 		color: var(--dim);
 	}
-	.timelapse {
+	.switch {
 		display: flex;
 		align-items: center;
 		gap: 8px;

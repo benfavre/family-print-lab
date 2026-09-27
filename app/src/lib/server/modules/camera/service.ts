@@ -228,7 +228,14 @@ export function createCameraService(o: CameraServiceOptions): CameraManager {
 			return merge(plan(id).state, sessions.get(id)?.state());
 		},
 		async getSnapshot(id, opts = {}) {
-			return session(id).snapshot({ maxAgeMs: opts.maxAgeMs ?? 2000, signal: opts.signal });
+			const s = session(id);
+			try {
+				return await s.snapshot({ maxAgeMs: opts.maxAgeMs ?? 2000, signal: opts.signal });
+			} catch (error) {
+				// No picture in time, or the stream failed: the person gets the reason, not a server error.
+				if (opts.signal?.aborted) throw error;
+				throw new AppError(503, (error as Error).message);
+			}
 		},
 		subscribe(id, fn, onEnd) {
 			return session(id).subscribe(fn, onEnd);

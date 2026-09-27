@@ -2,8 +2,11 @@
 // chosen for each printer, and the media helpers.
 import { describe, expect, it, vi } from 'vitest';
 import { CameraSession } from './session';
-import { CAMERA_MESSAGES, planCamera } from './service';
-import { limiter, toMedia } from './media';
+import { CAMERA_MESSAGES, createCameraService, planCamera } from './service';
+import { createMedia, limiter, toMedia } from './media';
+import { AppError } from '$lib/server/validation';
+import type { FtpEntry } from '$lib/server/printer/ftp';
+import { PassThrough } from 'node:stream';
 import type { CameraSource, FrameSink } from './source';
 import { emptySnapshot, type PrinterSnapshot } from '$lib/shared/printers/status';
 import { PRINTER_MODELS, type CameraProtocol, type ModelCode } from '$lib/shared/printers/models';
@@ -87,6 +90,17 @@ describe('camera sessions', () => {
 		await expect(shot).rejects.toThrow(/no picture in time/);
 	});
 
+	it('refuses a snapshot whose caller already gave up, without starting the camera', async () => {
+		const src = fakeSource();
+		const session = new CameraSession(src, 'k', { lingerMs: 50 });
+		const gone = new AbortController();
+		gone.abort();
+		await expect(session.snapshot({ maxAgeMs: 2000, signal: gone.signal })).rejects.toThrow(
+			/Stopped/
+		);
+		expect(src.starts).toBe(0);
+	});
+
 	it('ends viewers when stopped', () => {
 		const session = new CameraSession(fakeSource(), 'k');
 		let ended = 0;
@@ -106,6 +120,7 @@ function fakePrinter(o: {
 	camera?: CameraProtocol;
 	snapshot?: Partial<PrinterSnapshot['camera']>;
 	simPort?: number;
+	host?: string;
 }) {
 	const model = PRINTER_MODELS[o.model ?? 'N6'];
 	return {
@@ -115,7 +130,7 @@ function fakePrinter(o: {
 		config: {
 			id: 'p1',
 			model: model.code,
-			host: '192.168.1.20',
+			host: o.host ?? '192.168.1.20',
 			serial: 'SERIAL',
 			accessCode: '12345678',
 			simulated: o.simulated ?? false,
@@ -195,6 +210,35 @@ describe('choosing the camera path', () => {
 	});
 });
 
+describe('the camera service', () => {
+	it('turns a snapshot that never came into a plain 503 with the reason', async () => {
+		vi.useFakeTimers();
+		try {
+			// Nothing listens on port 1 here: the connection is refused at once.
+			const p = fakePrinter({ simulated: true, simPort: 1, host: '127.0.0.1' });
+			const service = createCameraService({
+				printers: {
+					get: () => p,
+					statusOf: () => ({ configured: true, simulated: true }) as never,
+					list: () => [p]
+				},
+				ffmpeg: () => null,
+				lingerMs: 10
+			});
+			const shot = service.getSnapshot('p1').catch((e: unknown) => e);
+			await vi.waitFor(() => expect(service.state('p1').reason).toBe('error'));
+			await vi.advanceTimersByTimeAsync(16_000);
+			const error = await shot;
+			expect(error).toBeInstanceOf(AppError);
+			expect((error as AppError).status).toBe(503);
+			expect((error as AppError).message).toMatch(/refused the camera connection/);
+			service.stop();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+
 describe('media helpers', () => {
 	it('sorts folders first then newest, and pairs thumbnails with videos', () => {
 		const media = toMedia(
@@ -233,5 +277,41 @@ describe('media helpers', () => {
 		r1(); // releasing twice is harmless
 		(await pending)();
 		expect(third).toBe(true);
+	});
+
+	it('downloads only files a recent listing shows, without listing the folder for every file', async () => {
+		const at = '2026-09-01T10:15:00.000Z';
+		const files: FtpEntry[] = [
+			{ name: 'a.mp4', type: 'file', size: 3, modified: at },
+			{ name: 'b.mp4', type: 'file', size: 3, modified: at }
+		];
+		const listed: string[] = [];
+		const fetched: string[] = [];
+		const media = createMedia({
+			list: async (_, dir) => {
+				listed.push(dir);
+				return files;
+			},
+			download: async (_, path) => {
+				fetched.push(path);
+				const out = new PassThrough();
+				out.end(Buffer.from('mp4'));
+				return out;
+			}
+		});
+		const p = fakePrinter({ model: 'BL-P001' });
+		const listing = await media.list(p, '/timelapse');
+		expect(listing.entries.map((e) => e.name)).toEqual(['a.mp4', 'b.mp4']);
+		for (const name of ['a.mp4', 'b.mp4']) {
+			const { stream, size } = await media.open(p, `/timelapse/${name}`);
+			expect(size).toBe(3);
+			stream.resume();
+		}
+		expect(listed).toEqual(['/timelapse']);
+		expect(fetched).toEqual(['/timelapse/a.mp4', '/timelapse/b.mp4']);
+		await expect(media.open(p, '/timelapse/c.mp4')).rejects.toMatchObject({ status: 404 });
+		await expect(media.open(p, '/timelapse/../etc/passwd')).rejects.toMatchObject({
+			status: 400
+		});
 	});
 });

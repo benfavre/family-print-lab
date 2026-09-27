@@ -2,6 +2,7 @@
 // browser, ffmpeg's mpjpeg output, the ffmpeg command line, and the port-6000 client against the
 // simulator's frame server.
 import { EventEmitter } from 'node:events';
+import net from 'node:net';
 import { PassThrough } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 import {
@@ -88,6 +89,32 @@ describe('port-6000 frames', () => {
 		source.stop();
 		expect(frames.every(isJpeg)).toBe(true);
 		expect(errors).toEqual([]);
+	});
+
+	it('keeps one connection when stopped and started again at once', async () => {
+		const port = await frameServer();
+		let connections = 0;
+		// A proxy in front of the frame server counts the connections the client opens.
+		const proxy = net.createServer((client) => {
+			connections++;
+			const upstream = net.connect(port, '127.0.0.1');
+			client.pipe(upstream).pipe(client);
+			client.on('error', () => upstream.destroy());
+			upstream.on('error', () => client.destroy());
+		});
+		await new Promise<void>((r) => proxy.listen(0, '127.0.0.1', r));
+		const proxyPort = (proxy.address() as net.AddressInfo).port;
+		const source = jpeg6000Source({ host: '127.0.0.1', port: proxyPort, accessCode: '12345678' });
+		const sink = { frame: () => {}, error: () => {} };
+		source.start(sink);
+		await new Promise((r) => setTimeout(r, 100));
+		source.stop();
+		source.start(sink);
+		// Long enough for the first reconnect (1 s) a stale close would have scheduled.
+		await new Promise((r) => setTimeout(r, 1300));
+		source.stop();
+		proxy.close();
+		expect(connections).toBe(2);
 	});
 
 	it('is refused by the simulated camera without a proper auth packet', async () => {
@@ -244,5 +271,31 @@ describe('the ffmpeg command', () => {
 		source.stop();
 		expect(message).toMatch(/certificate changed/);
 		expect(spawned).toBe(0);
+	});
+
+	it('runs one ffmpeg when stopped and started again during the certificate check', async () => {
+		let spawned = 0;
+		const checks: ((v: string | null) => void)[] = [];
+		const source = ffmpegSource({
+			ffmpeg: '/usr/bin/ffmpeg',
+			url: 'rtsps://x',
+			accessCode: 'code',
+			precheck: () => new Promise((resolve) => checks.push(resolve)),
+			spawn: (() => {
+				spawned++;
+				const child = new EventEmitter() as EventEmitter & { kill: () => void };
+				child.kill = () => child.emit('close', null);
+				return child;
+			}) as never
+		});
+		const sink = { frame: () => {}, error: () => {} };
+		source.start(sink);
+		source.stop();
+		source.start(sink);
+		for (const check of checks) check(null);
+		await new Promise((r) => setTimeout(r, 10));
+		source.stop();
+		expect(checks).toHaveLength(2);
+		expect(spawned).toBe(1);
 	});
 });

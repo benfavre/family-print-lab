@@ -143,10 +143,15 @@ export function ffmpegSource(o: FfmpegSourceOptions): CameraSource {
 		stall.unref?.();
 	};
 
+	// Bumped on every stop, so a start still waiting for its certificate check after a stop (and a
+	// quick restart) gives up instead of running a second ffmpeg.
+	let generation = 0;
+
 	async function start() {
 		if (stopped) return;
+		const mine = generation;
 		const refused = await o.precheck?.();
-		if (stopped) return;
+		if (stopped || mine !== generation) return;
 		if (refused) {
 			sink.error(refused);
 			return schedule();
@@ -172,8 +177,9 @@ export function ffmpegSource(o: FfmpegSourceOptions): CameraSource {
 		p.stderr?.on('data', (chunk: Buffer) => (stderr = (stderr + chunk.toString()).slice(-2000)));
 		p.on('error', (error) => (failure ??= `Could not start ffmpeg (${error.message}).`));
 		p.on('close', () => {
+			if (child !== p) return;
 			clearTimeout(stall);
-			if (child === p) child = null;
+			child = null;
 			if (stopped) return;
 			sink.error(failure ?? ffmpegProblem(stderr, o.accessCode));
 			schedule();
@@ -190,6 +196,7 @@ export function ffmpegSource(o: FfmpegSourceOptions): CameraSource {
 		},
 		stop() {
 			stopped = true;
+			generation++;
 			clearTimeout(timer);
 			clearTimeout(stall);
 			child?.kill('SIGKILL');

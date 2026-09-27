@@ -46,12 +46,16 @@ export default defineModule({
 			ffmpeg,
 			onState: (state) => ctx.live.send('camera:state', state)
 		});
-		// Streams follow the printer: settings changed, removed, or gone offline.
-		const connected = new Map<string, boolean>();
+		// Streams follow the printer: settings changed, removed, gone offline, or the report changed how
+		// the camera is reached (LAN Only Liveview switched off, RTSP became RTSPS after an update).
+		const reach = new Map<string, string>();
 		const onUpdate = (id: string) => {
-			const now = !!ctx.printers.get(id)?.connected;
-			if (connected.get(id) === now) return;
-			connected.set(id, now);
+			const p = ctx.printers.get(id);
+			const now = p
+				? `${p.connected}|${p.camera()}|${p.snapshot?.camera.lanLiveview ?? ''}|${p.snapshot?.camera.present ?? ''}`
+				: '';
+			if (reach.get(id) === now) return;
+			reach.set(id, now);
 			service.refresh();
 		};
 		const onChanged = () => service.refresh();
@@ -76,7 +80,7 @@ export default defineModule({
 		current = null;
 	},
 	integrations() {
-		const path = current?.ffmpeg() ?? findFfmpeg();
+		const path = current ? current.ffmpeg() : findFfmpeg();
 		return [
 			{
 				id: 'camera',

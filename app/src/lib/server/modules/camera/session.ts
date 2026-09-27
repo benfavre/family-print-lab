@@ -115,6 +115,7 @@ export class CameraSession {
 			}
 			return this.latest.jpeg;
 		}
+		if (o.signal?.aborted) throw new Error('Stopped');
 		this.waiters++;
 		this.ensureRunning();
 		try {

@@ -1,5 +1,4 @@
 import { api } from '$lib/server/http';
-import { AppError } from '$lib/server/validation';
 import { cameraOf } from '$lib/server/modules/camera/http';
 import { MJPEG_CONTENT_TYPE, mjpegPart } from '$lib/server/modules/camera/mjpeg';
 
@@ -9,32 +8,40 @@ import { MJPEG_CONTENT_TYPE, mjpegPart } from '$lib/server/modules/camera/mjpeg'
  */
 export const GET = api(({ params, request }, rt) => {
 	const camera = cameraOf(rt);
-	const id = params.id!;
-	const state = camera.state(id);
-	if (!state.available) throw new AppError(409, state.message);
+	let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
+	let first: Buffer | null = null;
+	let ended = false;
 	let off = () => {};
+	const close = () => {
+		ended = true;
+		off();
+		try {
+			controller?.close();
+		} catch {
+			/* already closed */
+		}
+	};
+	// Subscribing first means "no camera" is a plain 409 with the reason, not a broken stream.
+	off = camera.subscribe(
+		params.id!,
+		(jpeg) => {
+			if (!controller) return void (first = jpeg);
+			if ((controller.desiredSize ?? 1) <= 0) return;
+			controller.enqueue(mjpegPart(jpeg));
+		},
+		close
+	);
+	request.signal.addEventListener('abort', close, { once: true });
 	const stream = new ReadableStream<Uint8Array>(
 		{
-			start(controller) {
-				const close = () => {
-					off();
-					try {
-						controller.close();
-					} catch {
-						/* already closed */
-					}
-				};
-				off = camera.subscribe(
-					id,
-					(jpeg) => {
-						if ((controller.desiredSize ?? 1) <= 0) return;
-						controller.enqueue(mjpegPart(jpeg));
-					},
-					close
-				);
-				request.signal.addEventListener('abort', close, { once: true });
+			start(c) {
+				controller = c;
+				if (ended) return void c.close();
+				if (first) c.enqueue(mjpegPart(first));
+				first = null;
 			},
 			cancel() {
+				ended = true;
 				off();
 			}
 		},

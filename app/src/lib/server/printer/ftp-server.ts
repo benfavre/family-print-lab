@@ -19,8 +19,8 @@ export function createFtpServer(opts: {
 	tls?: { key: string | Buffer; cert: string | Buffer };
 	log?: (message: string) => void;
 	onStored?: (file: StoredFile) => void;
-	/** Answer MLSD with 502, like servers that only know LIST (tests the fallback). */
-	noMlsd?: boolean;
+	/** Refuse MLSD, like servers that only know LIST (tests the fallback): true answers 502. */
+	noMlsd?: boolean | 500 | 502 | 550;
 }) {
 	const files = new Map<string, StoredFile>();
 	const log = opts.log ?? (() => {});
@@ -145,7 +145,11 @@ export function createFtpServer(opts: {
 						if (verb.toUpperCase() === 'MLSD' && opts.noMlsd) {
 							dataSocket?.then((s) => s.destroy());
 							dataSocket = null;
-							return void reply(502, 'Command not implemented');
+							const code = opts.noMlsd === true ? 502 : opts.noMlsd;
+							return void reply(
+								code,
+								code === 550 ? 'Permission denied' : 'Command not implemented'
+							);
 						}
 						const dir = resolvePath(cwd, arg.replace(/^-\w+\s*/, ''));
 						if (!isDir(files, dir)) {

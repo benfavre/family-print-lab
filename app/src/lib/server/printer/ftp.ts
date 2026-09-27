@@ -392,8 +392,10 @@ export async function listFiles(
 	try {
 		let { reply, text } = await run('MLSD');
 		let parse: (line: string) => FtpEntry | null = parseMlsdLine;
-		// 500/502/504: not implemented; 501: syntax (some servers want no argument).
-		if ([500, 501, 502, 504].includes(reply.code)) {
+		// Any refusal (500/502/504 not implemented, 501 syntax, and servers that answer an unknown
+		// command with 550) gets one more try with LIST, the command ha-bambulab uses on real printers;
+		// only LIST's answer decides whether the folder is missing.
+		if (reply.code !== 150 && reply.code !== 125 && reply.code !== 0) {
 			({ reply, text } = await run('LIST'));
 			parse = (line) => parseListLine(line);
 		}

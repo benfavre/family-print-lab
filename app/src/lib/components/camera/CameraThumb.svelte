@@ -4,17 +4,19 @@
 	import type { PrinterStatus } from '$lib/shared/domain';
 
 	// A small camera picture on a printer card, refreshed every 10 s, only when "Show camera on
-	// printer cards" is on. Hidden when the printer has no picture to give.
+	// printer cards" is on. Hidden while the printer has no picture to give, trying again every minute
+	// (the camera may still be starting, or LAN Only Liveview may be switched on meanwhile).
 	let { printer }: { printer: PrinterStatus } = $props();
+	const RETRY_TICKS = 6;
 	let tick = $state(0);
-	let failed = $state(false);
+	let failedAt = $state<number | null>(null);
 	let hidden = $state(false);
 	const show = $derived(
 		cameraPrefs.value.showOnCards &&
 			!!printer.id &&
 			!!printer.connected &&
 			printer.camera !== 'none' &&
-			!failed
+			(failedAt === null || tick - failedAt >= RETRY_TICKS)
 	);
 
 	onMount(() => {
@@ -30,9 +32,9 @@
 		};
 	});
 
-	// A printer that comes back online gets another try.
+	// A printer that comes back online gets another try at once.
 	$effect(() => {
-		if (!printer.connected) failed = false;
+		if (!printer.connected) failedAt = null;
 	});
 </script>
 
@@ -42,7 +44,8 @@
 		src="/api/printers/{encodeURIComponent(printer.id ?? '')}/camera/snapshot.jpg?t={tick}"
 		alt="Camera of {printer.name ?? 'the printer'}"
 		loading="lazy"
-		onerror={() => (failed = true)}
+		onload={() => (failedAt = null)}
+		onerror={() => (failedAt = tick)}
 	/>
 {/if}
 

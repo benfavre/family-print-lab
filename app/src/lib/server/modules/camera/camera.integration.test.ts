@@ -94,19 +94,32 @@ describe('camera on the simulated fleet', () => {
 		expect(t.rt.module('camera')!.state(id).live).toBe(true);
 	});
 
-	it('explains when LAN liveview is off, and refuses the stream', async () => {
+	it('explains when LAN liveview is off, ends running streams and refuses new ones', async () => {
 		const { info, sim } = t.printer('N1');
+		const camera = t.rt.module('camera')!;
+		let ended = false;
+		const off = camera.subscribe(
+			info.id,
+			() => {},
+			() => (ended = true)
+		);
 		const cam = sim.state.ipcam;
 		cam.liveview = { local: 'disabled' };
 		sim.report();
 		const deadline = Date.now() + 3000;
-		while (Date.now() < deadline && t.rt.module('camera')!.has(info.id))
+		while (Date.now() < deadline && (camera.has(info.id) || !ended))
 			await new Promise((r) => setTimeout(r, 20));
-		const state = t.rt.module('camera')!.state(info.id);
+		off();
+		expect(ended).toBe(true);
+		const state = camera.state(info.id);
 		expect(state).toMatchObject({ available: false, reason: 'liveview-off' });
 		const res = await streamRoute(event(info.id, `/api/printers/${info.id}/camera/stream`));
 		expect(res.status).toBe(409);
 		expect((await res.json()).error).toMatch(/LAN Only Liveview/);
+		const shot = await snapshotRoute(
+			event(info.id, `/api/printers/${info.id}/camera/snapshot.jpg`)
+		);
+		expect(shot.status).toBe(409);
 		cam.liveview = { local: 'local' };
 		sim.report();
 	});
