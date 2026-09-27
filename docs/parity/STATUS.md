@@ -243,44 +243,34 @@ assignments still need a dedicated compatibility check: their metadata is recogn
 fixed-nozzle comparison does not guess their physical assignment. Validation uses simulator and
 browser fixtures; no real-printer verification is claimed.
 
-The 2.2.1 release candidate passes 1,489 app unit/integration tests (four optional/protocol-only
-skips), up from 1,467 before this pass. App check reports zero errors and warnings; formatting and
-ESLint pass. Nozzle changes pass 98 targeted tests and two dedicated browser cases. Native Linux
-validation passes 13 native, ten protocol and 105 integration tests (one protocol-only skip).
-The RPC concurrency regression passes 50 consecutive runs using explicit gates instead of a
-machine-speed assertion. The Linux AppImage was extracted and launched with isolated data; its
-server discovers the bundled native engine and reports configuration validation capability.
-Release automation now requires all native platforms, stages a draft, and checks the installed
-AppImage/NSIS/dmg packages before publication. Packaged-engine checks also load the bundled printer
-profiles and verify that the app uses its isolated test data directory. Three complete browser runs
-with fresh databases pass all 65 cases each; the command-palette test now focuses the main region
-explicitly before testing shortcuts. Cloud passes 82 unit tests and 106 browser cases.
+### 2.2.1 release validation (in progress)
 
-macOS native compilation, 13 native tests and 105 integration tests pass (one protocol-only skip);
-its startup-regression build took 14 minutes 25 seconds with cached dependencies. The Linux
-queue-19 rebuild took 4 minutes 21 seconds at 24 workers, followed by all 13 native, ten protocol
-and 105 integration tests. Its refreshed AppImage passes the installed-app and bundled-profile checks. Windows native and Windows/macOS packaged release verification are
-still pending. MSVC startup output now has an early redirect and a separate static-initialiser
-regression, so third-party startup messages cannot corrupt the NDJSON protocol.
+The candidate passes 1,491 app unit/integration tests (four expected skips), up from 1,467
+before this pass. App check reports zero errors and warnings; Prettier and ESLint pass.
+Nozzle changes pass 98 targeted tests and two dedicated browser cases. Three complete app
+browser runs with fresh databases pass all 65 cases each, up from 63 before this pass.
+The command-palette test now focuses the main region before checking shortcuts.
+Cloud passes 82 unit tests and 106 browser cases; its GitHub Actions job remains blocked by
+account billing, so these results come from local verification.
 
-The Unicode-path follow-up passes all 1,489 app tests (four expected skips), with check and lint
-clean. Native project files, profiles, scratch files, toolpath previews and PNG thumbnails now
-exercise accented and non-Latin paths, including the Linux installed-app test. macOS passes the
-same native regressions. Windows source compilation succeeds; its static-OpenSSL linker dependency
-is corrected and passes a real SDK link preflight, with the full native retry still running.
-Candidate packaging rejects stale native artifacts before building installers. An intentional CI
-negative check confirmed that old source artifacts are rejected and packaging is skipped.
+Queue 20 contains 21 upstream patches. The latest local rebuild took 304.23 seconds at 24 workers
+and passes 13 native, ten protocol and 107 integration tests (one protocol-only integration skip).
+The RPC concurrency regression passes 50 consecutive runs using explicit gates. Project files,
+profiles, scratch files, toolpath previews, thumbnails and the native slice/export fixture exercise
+accented and non-Latin paths. The earlier Linux AppImage check verified server discovery of its
+bundled engine and all 56 printer profiles from an isolated Unicode installation/data directory.
 
-The latest Linux and macOS native jobs both pass 13 native tests and 105 integration tests
-(one protocol-only skip). Their cached-dependency builds took 21 minutes 9 seconds and
-14 minutes 25 seconds respectively. A separate macOS artifact audit found a Homebrew zstd
-dynamic-library reference; runtime bundling and clean-install verification are being corrected
-before release. A successful native test job alone does not establish installer portability.
+Native macOS builds and integration tests passed before the latest archive patch. Its runtime
+bundle now includes and relocates zstd, retains the BSD notice, and passes a downloaded-artifact
+Mach-O audit. Windows compilation and linkage passed in 37 minutes 47 seconds, followed by all
+13 native and ten protocol tests. Its broader integration suite exposed Unix-only launcher fixtures
+and an upstream ANSI conversion when adding Unicode source files to a 3MF archive. The launcher
+fixes now pass the actual Windows preflight; patch 0021 removes the archive conversion, with full
+native retries running on all platforms. No Windows integration or packaged-release pass is claimed yet.
 
-The macOS runtime correction now passes on the native runner: dylib relocation and signing,
-13 native tests and 105 integration tests (one skip), followed by an independent audit of the
-downloaded artifact. The engine includes zstd and its BSD notice without Homebrew references.
-That cached-dependency build took 12 minutes 17 seconds. Windows now compiles and links in
-37 minutes 57 seconds; 12 of 13 native tests passed before a test kept its G-code reader open
-during cleanup. The reader is now closed and cleanup is asserted explicitly; the corrected
-facade test passes locally, with Windows integration and installer validation still pending.
+Release automation verifies source/artifact provenance, requires every native platform, and checks
+installed AppImage/NSIS/dmg packages before staging an immutable tag and draft release. Installer
+checks cover bundled profiles, the isolated data directory, local server discovery, capabilities and
+macOS runtime dependencies. An intentional negative CI check rejected stale native artifacts and
+skipped both packaging and release staging. Publication remains gated on all three installed-package
+checks and verified installer/updater checksums.

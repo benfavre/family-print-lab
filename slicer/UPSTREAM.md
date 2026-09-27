@@ -9,8 +9,8 @@ new Bambu Studio release is a rebase of a handful of small patches, not a merge 
 
 <!-- pin:start -->
 
-| Upstream | Tag | Commit | Patch queue |
-| --- | --- | --- | --- |
+| Upstream     | Tag            | Commit                                     | Patch queue                                                                                       |
+| ------------ | -------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------- |
 | Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 20, 21 patch(es), hash `8f86c75004e090f93759f6661535147b1999baf278278d0a8ee5b296a3368116` |
 
 <!-- pin:end -->
@@ -397,6 +397,13 @@ in every engine build, so ZIP reads and writes retain alignment sanitizer checks
   tests (one skip). Windows completes compilation and linkage in 2,277 seconds; its native
   tests exposed an open reader in a cleanup fixture. That fixture now closes the reader and
   asserts project removal. Full Windows integration and installed-package checks remain pending.
+
+- Queue 20 adds the Unicode archive-source fix in patch 0021. The current local rebuild took
+  304.23 seconds at 24 workers and passes 13 native, ten protocol and 107 integration tests
+  (one protocol-only skip). All 1,491 app tests pass with four expected skips; check and lint are clean.
+  Windows now passes 13 native and ten protocol tests. Its first complete integration run exposed
+  narrow source-file I/O in the upstream 3MF writer and platform-specific test launchers. The
+  launchers now pass the actual Windows preflight; the full queue-20 matrix is still running.
 
 For a future rebuild, from the repository root:
 
