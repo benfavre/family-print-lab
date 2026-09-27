@@ -585,11 +585,12 @@ export class CloudLink extends EventEmitter {
 			if (this.ping) clearInterval(this.ping);
 			if (e.code === 4401) return this.forget('This computer was unlinked in Print Lab Cloud.');
 			// A cloud that does not know v2 yet refuses the hello: speak v1 to it (one printer, no
-			// remote control) and try v2 again on the next start.
+			// remote control), and try v2 again on the next connection, in case it was updated.
 			if (e.code === 4400 && !this.welcomed && this.protocol === 2) {
 				this.protocol = 1;
 				return void this.connect();
 			}
+			this.protocol = PROTOCOL;
 			this.reconnectLater(e.code === 4400 ? e.reason || 'Update Family Print Lab.' : null);
 		};
 		ws.onerror = () => {};
@@ -638,8 +639,15 @@ export class CloudLink extends EventEmitter {
 				: { ok: false, error: 'Printers cannot be controlled here.' };
 			if (ws.readyState === WebSocket.OPEN)
 				ws.send(JSON.stringify({ type: 'result', commandId: m.commandId, ...result }));
-		} else if (m.type === 'snapshot.request' && this.protocol === 2 && this.remote) {
-			const answer = await this.remote.snapshot(m);
+		} else if (m.type === 'snapshot.request' && this.protocol === 2) {
+			const answer = this.remote
+				? await this.remote.snapshot(m)
+				: {
+						type: 'snapshot',
+						requestId: String(m.requestId ?? '').slice(0, 80),
+						printerId: String(m.printerId ?? '').slice(0, 80),
+						error: 'Camera pictures are off.'
+					};
 			if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(answer));
 		} else if (m.type === 'library') {
 			// Something was bought (here or on the website): kid packs install themselves.
@@ -721,7 +729,7 @@ export class CloudLink extends EventEmitter {
 	/** What makes a report go at once: each printer's state, event and alerts. */
 	private printerSignature() {
 		if (this.protocol === 1) return this.printerSummary()?.state ?? '';
-		const printers = this.remote?.summaries() ?? null;
+		const printers = this.remote?.summaries(false) ?? null;
 		return JSON.stringify(
 			printers?.map((p) => [p.id, p.state, p.event?.at, p.hms?.map((h) => h.key)]) ?? null
 		);

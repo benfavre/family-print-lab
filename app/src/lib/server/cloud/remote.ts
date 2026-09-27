@@ -7,7 +7,7 @@ import type { EventBus } from '../events';
 import type { Lab } from '../lab';
 import type { ModuleServices } from '../modules';
 import { AppError } from '../validation';
-import { hmsKeyOf } from '$lib/shared/hms';
+import { hmsKeyOf, hmsSeverity } from '$lib/shared/hms';
 import type { PrinterStatus } from '$lib/shared/printers/status';
 import { findFfmpeg } from '../modules/camera/ffmpeg';
 import { fitForPhone } from './picture';
@@ -50,6 +50,11 @@ export interface PrinterSummaryV2 {
 	/** Whether a snapshot can be asked for (camera present and snapshots on). */
 	camera: boolean;
 	event: PushEvent | null;
+	/**
+	 * Only with "Share queue": the queued item Start next would send to this printer now (null: none,
+	 * or the plate is not confirmed clear). The phone signs this id when it asks to start it.
+	 */
+	next?: string | null;
 }
 
 /** A queued print as the phone sees it (only with "Share queue" on). */
@@ -108,6 +113,8 @@ const ACTIVE = new Set<PrinterState>(['preparing', 'printing', 'paused']);
 const COMMANDS = { pause: 'print.pause', resume: 'print.resume', stop: 'print.stop' } as const;
 const DONE = { pause: 'Paused', resume: 'Resumed', stop: 'Stopped' } as const;
 const SERIOUS = new Set(['fatal', 'serious']);
+/** Printer and queue ids are UUIDs; anything else (a `|` above all) could blur the signed message. */
+const ID = /^[\w-]{1,80}$/;
 /** Snapshots the app takes per minute for the phone, whatever the cloud asks. */
 const SNAPSHOTS_PER_MINUTE = 150;
 
@@ -162,12 +169,19 @@ export class Remote {
 
 	// ---------- What the phone sees ----------
 
-	/** Every printer, or null while status sharing is off (then the cloud forgets them). */
-	summaries(): PrinterSummaryV2[] | null {
+	/**
+	 * Every printer, or null while status sharing is off (then the cloud forgets them). `withNext`:
+	 * also ask the queue what Start next would send (skipped for the quick change check).
+	 */
+	summaries(withNext = true): PrinterSummaryV2[] | null {
 		const s = this.settings();
 		if (!s.shareProgress) return null;
 		const camera = this.host.module?.('camera');
 		const hms = this.host.module?.('hms');
+		const queue = withNext && s.shareQueue ? this.host.module?.('queue') : undefined;
+		const plates = queue
+			? new Map(queue.list().printers.map((p) => [p.printerId, p.plateClearNeeded]))
+			: null;
 		return this.host
 			.statuses()
 			.filter((p) => p.configured && p.id && p.enabled !== false)
@@ -197,7 +211,9 @@ export class Remote {
 								.map((a) => ({ key: a.key, severity: a.severity, text: a.text.slice(0, 300) }))
 						: (snap?.hms ?? [])
 								.slice(0, 20)
-								.map((h) => ({ key: hmsKeyOf(h), severity: 'unknown', text: '' }));
+								.map((h) => ({ key: hmsKeyOf(h), severity: hmsSeverity(h.code), text: '' }));
+				if (queue && plates)
+					summary.next = plates.get(id) === false ? queue.startNextItem(id) : null;
 				return summary;
 			});
 	}
@@ -270,10 +286,10 @@ export class Remote {
 			typeof m.commandId !== 'string' ||
 			!/^[\w-]{8,80}$/.test(m.commandId) ||
 			typeof m.printerId !== 'string' ||
-			m.printerId.length > 80 ||
+			!ID.test(m.printerId) ||
 			!REMOTE_ACTIONS.includes(action) ||
 			!Number.isSafeInteger(m.at) ||
-			(action === 'dispatch' && (typeof m.queueItemId !== 'string' || m.queueItemId.length > 80))
+			(action === 'dispatch' && (typeof m.queueItemId !== 'string' || !ID.test(m.queueItemId)))
 		)
 			return { ok: false, error: 'Malformed command.' };
 		const by = typeof m.by === 'string' && m.by ? m.by.slice(0, 120) : 'Print Lab Cloud';
@@ -319,24 +335,21 @@ export class Remote {
 		}
 	}
 
-	/** "Start next queued job": only the item the phone saw as next, and only on a confirmed clear plate. */
+	/**
+	 * "Start next queued job": only the item the phone was shown as next (the queue's own choice for
+	 * Start next on that printer), and only on a plate confirmed clear.
+	 */
 	private async dispatch(printerId: string, queueItemId: string) {
 		const queue = this.host.module?.('queue');
 		if (!queue || !this.settings().shareQueue)
 			throw new AppError(409, 'The queue is not shared with the phone.');
-		const view = queue.list();
-		const printer = view.printers.find((p) => p.printerId === printerId);
+		const printer = queue.list().printers.find((p) => p.printerId === printerId);
 		if (!printer) throw new AppError(404, 'That printer is not here any more.');
 		if (printer.plateClearNeeded)
 			throw new AppError(409, 'Someone needs to clear the plate and confirm it on the computer.');
-		const next = view.items.find(
-			(i) =>
-				i.status === 'waiting' &&
-				(i.printerId === printerId || i.printerId === null) &&
-				i.waitingFor === null
-		);
-		if (next?.id !== queueItemId)
+		if (queue.startNextItem(printerId) !== queueItemId)
 			throw new AppError(409, 'The queue changed. Have another look before starting.');
+		// Nothing awaits between the check and the start, so the same item goes.
 		queue.printer(printerId, { startNext: true });
 	}
 

@@ -93,7 +93,8 @@ describe('the phone’s view of the printers', () => {
 
 	it('adds alerts only when shared, from the hms package when present', () => {
 		expect(setup({ shareAlerts: true }).remote.summaries()![0].hms).toEqual([
-			{ key: '0700200000020001', severity: 'unknown', text: '' }
+			// Without the hms package the severity still comes from the code (0x0002…: serious).
+			{ key: '0700200000020001', severity: 'serious', text: '' }
 		]);
 		const hms = {
 			active: () => [{ key: 'k', severity: 'serious', text: 'Nozzle clog', kind: 'hms' }],
@@ -158,6 +159,8 @@ describe('the queue on the phone', () => {
 		const calls: unknown[] = [];
 		return {
 			list: () => view(plate),
+			// What Start next would send: the queue's own choice (q2 is held).
+			startNextItem: () => (plate ? null : 'q1'),
 			printer: (id: string, o: unknown) => calls.push([id, o]),
 			calls
 		};

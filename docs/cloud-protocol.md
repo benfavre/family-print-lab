@@ -198,7 +198,8 @@ goes from under way to `finished` or `failed`, the cloud may notify the parent's
   "totalLayers": 90,
   "hms": [{ "key": "…", "severity": "serious", "text": "…" }],
   "camera": true,
-  "event": { "kind": "finished", "at": 1790000000000 }
+  "event": { "kind": "finished", "at": 1790000000000 },
+  "next": "9b1e…"
 }
 ```
 
@@ -206,6 +207,9 @@ goes from under way to `finished` or `failed`, the cloud may notify the parent's
 (camera present, pictures on, phone key made). `event` is the printer's latest push-worthy event:
 `kind` is `finished`, `failed`, `cancelled`, `paused` or `alert` (an alert the error database calls
 serious or fatal), `at` in milliseconds; the cloud sends a content-free push once per new `at`.
+`next` is present only with "Share queue": the id of the queued item that Start next would send to
+this printer now (the queue's own choice, which weighs model, filament and quiet hours), or `null`
+when nothing would start or the plate is not confirmed clear.
 
 With a phone key (**status minimisation**) each entry is `SealedPrinter`
 `{"id", "state", "event", "sealed"}`: the whole `PrinterSummaryV2` sealed with additional data
@@ -234,7 +238,8 @@ Then it sends `print.pause`, `print.resume` or `print.stop` through the printer'
 (which still checks the printer's state and Developer Mode) and logs "Paused Bambu Lab P1S from the
 phone, a@b.c". Refusals of forged, stale or replayed commands are logged too. `dispatch` (optional,
 needs "Share queue" and the queue package) starts the next queued print on that printer only if
-`queueItemId` is the item that would go next and the plate was confirmed clear on the computer.
+`queueItemId` is the printer's current `next` and the plate was confirmed clear on the computer.
+`printerId` and `queueItemId` are 1–80 of `A-Za-z0-9_-`, so the signed message cannot be read two ways.
 Nothing else can be sent: no G-code, temperatures or other commands.
 
 ## Camera pictures (v2)

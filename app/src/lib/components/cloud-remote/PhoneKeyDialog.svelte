@@ -13,7 +13,15 @@
 	let pin = $state('');
 	let busy = $state(false);
 	let shown = $state<{ id: string; url: string } | null>(null);
-	const qr = $derived(shown ? qrPath(qrMatrix(shown.url)) : null);
+	// A very long cloud address does not fit the QR sizes drawn here: then only the link is offered.
+	const qr = $derived.by(() => {
+		if (!shown) return null;
+		try {
+			return qrPath(qrMatrix(shown.url));
+		} catch {
+			return null;
+		}
+	});
 
 	const title = $derived(
 		{
@@ -64,16 +72,20 @@
 			<h2 id="phone-key-title">{title}</h2>
 		</div>
 	</div>
-	{#if shown && qr}
+	{#if shown}
 		<div class="shown">
-			<svg
-				class="qr"
-				viewBox="0 0 {qr.size} {qr.size}"
-				role="img"
-				aria-label="QR code with the phone key"
-				shape-rendering="crispEdges"
-				><rect width={qr.size} height={qr.size} fill="#fff" /><path d={qr.d} fill="#000" /></svg
-			>
+			{#if qr}
+				<svg
+					class="qr"
+					viewBox="0 0 {qr.size} {qr.size}"
+					role="img"
+					aria-label="QR code with the phone key"
+					shape-rendering="crispEdges"
+					><rect width={qr.size} height={qr.size} fill="#fff" /><path d={qr.d} fill="#000" /></svg
+				>
+			{:else}
+				<p class="hint">This cloud address is too long for a QR code. Copy the link instead.</p>
+			{/if}
 			<div class="how">
 				<p>
 					Scan this with the camera of each grown-up’s phone and open the link. Print Lab keeps the
