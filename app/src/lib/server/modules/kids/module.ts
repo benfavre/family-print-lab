@@ -61,25 +61,18 @@ export default defineModule({
 			),
 			ctx.bus.on('request.decided', () => ctx.live.send('kids:changed', { profileId: null }))
 		];
-		// Jobs marked as printed by hand (a printer the app does not know) earn badges too, shortly after.
-		let timer: ReturnType<typeof setTimeout> | undefined;
+		// The lab emits after committing. Award manual-print badges before its response, so a
+		// certificate opened immediately (or prefetched by its link) already contains the badge.
 		const onChange = (e: { kind: string }) => {
-			if (e.kind !== 'job' || timer) return;
-			timer = setTimeout(() => {
-				timer = undefined;
-				try {
-					kids.refreshBadgesIfChanged();
-				} catch (error) {
-					ctx.log(`Could not update badges: ${(error as Error).message}`);
-				}
-			}, 500);
-			timer.unref?.();
+			if (e.kind !== 'job') return;
+			try {
+				kids.refreshBadgesIfChanged();
+			} catch (error) {
+				ctx.log(`Could not update badges: ${(error as Error).message}`);
+			}
 		};
 		ctx.lab.events.on('change', onChange);
-		offs.push(
-			() => ctx.lab.events.off('change', onChange),
-			() => clearTimeout(timer)
-		);
+		offs.push(() => ctx.lab.events.off('change', onChange));
 		try {
 			kids.refreshAllBadges();
 		} catch (error) {

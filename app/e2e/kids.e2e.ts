@@ -82,6 +82,11 @@ test('a child over the daily limit hears “not today”; a finished print earns
 	const jobId = (await decided.json()).jobId as string;
 	await page.request.post(`/api/jobs/${jobId}/transition`, { data: { to: 'Printing' } });
 	await page.request.post(`/api/jobs/${jobId}/transition`, { data: { to: 'Succeeded' } });
+	// The certificate may be opened or prefetched immediately, before any gallery interactions.
+	await page.goto(`/family/certificate/${jobId}`);
+	await expect(page.getByRole('article', { name: 'Certificate for Robin' })).toContainText(
+		'First print'
+	);
 
 	// The gallery invites a photo of it; the grown-up adds one.
 	await page.goto('/family/gallery');

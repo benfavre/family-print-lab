@@ -345,6 +345,12 @@ describe('when a kid’s print finishes', () => {
 		// No printer involved: the grown-up marks it printed on the Print jobs page.
 		t.rt.lab.transitionJob(jobId, { to: 'Printing' });
 		t.rt.lab.transitionJob(jobId, { to: 'Succeeded' });
+		// No wait: SvelteKit can prefetch the certificate as soon as the transition completes.
+		expect(
+			kids()
+				.certificate(jobId)
+				?.badges.map((b) => b.id)
+		).toContain('first-print');
 		expect(await badge).toMatchObject({ badge: 'first-print', jobId });
 		expect(
 			kids()
