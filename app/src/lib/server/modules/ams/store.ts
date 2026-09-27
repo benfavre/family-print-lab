@@ -104,16 +104,16 @@ export class AmsStore {
 		const spool = this.spool(spoolId);
 		if (!spool) throw new AppError(404, 'That spool no longer exists.');
 		if (!tray.type) throw new AppError(409, 'That tray is empty.');
-		if (
-			(spool.rfidUuid || spool.rfidTag) &&
-			(tray.trayUuid || tray.tagUid) &&
-			!sameRfid(tray, spool)
-		)
+		const rfid = !!(tray.trayUuid || tray.tagUid);
+		if ((spool.rfidUuid || spool.rfidTag) && rfid && !sameRfid(tray, spool))
 			throw new AppError(409, 'That tray holds a different Bambu spool (its RFID tag differs).');
-		const teach =
-			!spool.rfidUuid &&
-			!!tray.trayUuid &&
-			!this.db.select().from(spools).where(eq(spools.rfidUuid, tray.trayUuid)).get();
+		// Another shelf spool already carries this tag: the sync would move the link straight back.
+		if (rfid && this.spools().some((s) => s.id !== spool.id && sameRfid(tray, s)))
+			throw new AppError(
+				409,
+				'That tray holds another spool from your shelf (its RFID tag says so).'
+			);
+		const teach = rfid && !spool.rfidUuid && !spool.rfidTag;
 		if (!teach) {
 			this.db.transaction((tx) => this.linkTx(tx, printerId, tray, spool));
 			return;
@@ -132,13 +132,27 @@ export class AmsStore {
 		});
 	}
 
-	unlink(printerId: string, tray: GlobalTray): boolean {
-		return (
-			this.db
-				.delete(amsLinks)
-				.where(and(eq(amsLinks.printerId, printerId), eq(amsLinks.tray, tray)))
-				.run().changes > 0
-		);
+	/**
+	 * Unlinks a tray. When the tray holds the spool by its RFID tag, the spool forgets the tag: the
+	 * person is saying it is not this spool, and otherwise the next sync would link it straight back.
+	 */
+	unlink(printerId: string, tray: PrinterTray | undefined, global: GlobalTray): boolean {
+		const link = this.linkFor(printerId, global);
+		if (!link) return false;
+		const spool = this.spool(link.spoolId);
+		const where = and(eq(amsLinks.printerId, printerId), eq(amsLinks.tray, global));
+		if (!tray || !spool || !sameRfid(tray, spool)) {
+			this.db.delete(amsLinks).where(where).run();
+			return true;
+		}
+		this.write((tx) => {
+			tx.delete(amsLinks).where(where).run();
+			tx.update(spools)
+				.set({ rfidUuid: null, rfidTag: null, version: sql`${spools.version} + 1` })
+				.where(eq(spools.id, spool.id))
+				.run();
+		});
+		return true;
 	}
 
 	/** "Add to Filament": a new shelf spool from what the tray reports, linked to it. */
@@ -205,13 +219,18 @@ export class AmsStore {
 	// ---------- Usage ----------
 
 	/**
-	 * Charges a finished (fraction 1) or failed print to the spools in the trays it used, once per job.
+	 * Charges a finished (fraction 1) or failed print to the spools in the trays it used, once per job
+	 * (`atStart`: the printer's tray links when the print started).
 	 * Jobs without a dispatch (not sent from the app) or without a sliced file keep Lab's single-spool
 	 * path. When trays pay, Lab's own charge for the job's spool is given back so the print is not
 	 * counted twice (charge_grams 0 with charge_spool_id = spool_id is how Lab marks "nothing to
 	 * refund", so it does not charge again on later edits).
 	 */
-	chargeJob(jobId: string, fraction: number): ChargeResult | null {
+	chargeJob(
+		jobId: string,
+		fraction: number,
+		atStart?: Map<GlobalTray, string>
+	): ChargeResult | null {
 		const job = this.lab.getJob(jobId) as Job | undefined;
 		if (!job?.dispatch || !job.sliced || !CONSUMING_JOB.has(job.status)) return null;
 		if (this.charges(jobId).length) return null;
@@ -220,14 +239,18 @@ export class AmsStore {
 			job.sliced.plates.find((p) => p.index === job.sliced!.plate);
 		if (!plate) return null;
 		const printerId = job.dispatch.printerId;
-		const links = new Map(this.links(printerId).map((l) => [l.tray, l.spoolId]));
-		const plan = planCharges({
-			filaments: plate.filaments,
-			dispatch: job.dispatch,
-			links,
-			fraction
-		});
-		if (!plan.length) return null;
+		// The spool that was in a tray when the print started paid for it, even if it ran out and was
+		// swapped since; trays linked only later count too.
+		const links = new Map([
+			...this.links(printerId).map((l) => [l.tray, l.spoolId] as const),
+			...(atStart ?? [])
+		]);
+		const plan = (f: number) =>
+			planCharges({ filaments: plate.filaments, dispatch: job.dispatch!, links, fraction: f });
+		// The trays pay when any tray the plate used is linked, even for a print that failed before
+		// using anything (Lab's whole-job charge is then given back too).
+		if (!plan(1).length) return null;
+		const planned = plan(fraction);
 		const charged: PlannedCharge[] = [];
 		this.write((tx) => {
 			if (job.chargeSpoolId && job.chargeGrams > 0 && job.chargeSpoolId === job.spoolId) {
@@ -240,10 +263,11 @@ export class AmsStore {
 					.run();
 				tx.update(jobs).set({ chargeGrams: 0 }).where(eq(jobs.id, job.id)).run();
 			}
-			for (const c of plan) {
+			for (const c of planned) {
 				const spool = tx.select().from(spools).where(eq(spools.id, c.spoolId)).get();
 				if (!spool) continue;
 				const grams = round1(Math.min(c.grams, spool.remainingGrams));
+				if (!(grams > 0)) continue;
 				// No updated_at: that marks a weight typed in by hand (the baseline trigger).
 				tx.update(spools)
 					.set({

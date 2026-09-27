@@ -92,7 +92,11 @@
 						bind:value={f.token}
 						maxlength="500"
 						autocomplete="off"
-						placeholder={view.hasToken ? 'Saved; leave empty to keep' : 'Only behind a proxy'}
+						placeholder={!view.hasToken
+							? 'Only behind a proxy'
+							: f.url.trim().replace(/\/+$/, '') === view.url
+								? 'Saved; leave empty to keep'
+								: 'Type it again for the new address'}
 					/></label
 				>
 			</div>

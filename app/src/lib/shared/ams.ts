@@ -158,18 +158,19 @@ export function remainDisagreement(
 // ---------- Humidity and drying ----------
 
 /**
- * Humidity as Bambu Handy and Bambu Studio show it: 1 (dry) … 5 (wet). The printer's `humidity` counts
- * the other way (5 = dry; ha-bambulab definitions.py humidity_index "6 - value"); AMS 2 Pro and AMS HT
- * are placed from `humidity_raw` % the way Bambu Studio does (Widgets/AMSItem.cpp
- * get_humidity_display_idx: under 20 % driest … 80 % and over wettest).
+ * Humidity on a 1 (dry) … 5 (wet) scale, the way ha-bambulab shows it (definitions.py humidity_index
+ * "6 - value"): the printer's own `humidity` index counts the other way (5 = dry). As Bambu Studio does
+ * (Widgets/AMSItem.cpp get_humidity_display_idx), the AMS 2 Pro and AMS HT are placed from
+ * `humidity_raw` % (under 20 % driest … 80 % and over wettest) and other units from the index; either
+ * one stands in when the other is missing.
  */
 export function humidityLevel(
-	u: Pick<AmsUnit, 'humidityIndex' | 'humidityPercent'>
+	u: Pick<AmsUnit, 'humidityIndex' | 'humidityPercent'> & Partial<Pick<AmsUnit, 'model'>>
 ): number | null {
-	if (u.humidityPercent !== null) {
-		const p = u.humidityPercent;
-		return p < 20 ? 1 : p < 40 ? 2 : p < 60 ? 3 : p < 80 ? 4 : 5;
-	}
+	const fromPercent = (p: number) => (p < 20 ? 1 : p < 40 ? 2 : p < 60 ? 3 : p < 80 ? 4 : 5);
+	const byPercent = u.model === 'AMS 2 Pro' || u.model === 'AMS HT';
+	if (u.humidityPercent !== null && (byPercent || u.humidityIndex === null))
+		return fromPercent(u.humidityPercent);
 	return u.humidityIndex === null ? null : 6 - u.humidityIndex;
 }
 export const HUMIDITY_WORD: Record<number, string> = {
@@ -188,7 +189,8 @@ export const DRY_STATUS: Record<number, string> = {
 	3: 'Cooling',
 	4: 'Stopping',
 	5: 'Drying error',
-	6: 'Heater fault'
+	6: 'Heater fault',
+	7: 'Factory test'
 };
 
 /** Drying temperature range per unit (Bambu Studio AMSDryControl.cpp ~1186: AMS 2 Pro 45–65 °C, AMS HT 45–85 °C); null when it cannot dry. */
@@ -201,8 +203,10 @@ export function dryingRange(model: AmsUnit['model']): { min: number; max: number
 export const DRYING_HOURS = { min: 1, max: 24 };
 
 /**
- * What to dry a unit's filament at: the first tray's own drying_temp / drying_time (Bambu spools carry
- * them on the RFID tag) within the unit's range, else 55 °C for 8 hours.
+ * What to dry a unit's filament at: the gentlest filament loaded decides, as in Bambu Studio
+ * (AMSDryControl.cpp ~1700–1743 takes the lowest drying temperature over the unit's trays), using each
+ * tray's own drying_temp / drying_time (Bambu spools carry them on the RFID tag) within the unit's
+ * range; else 55 °C for 8 hours.
  */
 export function dryingDefaults(unit: Pick<AmsUnit, 'model' | 'trays'>): {
 	temp: number;
@@ -210,9 +214,13 @@ export function dryingDefaults(unit: Pick<AmsUnit, 'model' | 'trays'>): {
 	filament: string;
 } {
 	const range = dryingRange(unit.model) ?? { min: 45, max: 65 };
-	const tray = unit.trays.find((t) => t.type);
-	const temp = Math.min(range.max, Math.max(range.min, tray?.dryingTemp ?? 55));
-	const hours = Math.min(DRYING_HOURS.max, Math.max(DRYING_HOURS.min, tray?.dryingHours ?? 8));
+	const loaded = unit.trays.filter((t) => t.type);
+	const tray =
+		loaded
+			.filter((t) => t.dryingTemp !== null && t.dryingTemp > 0)
+			.sort((a, b) => a.dryingTemp! - b.dryingTemp!)[0] ?? loaded[0];
+	const temp = Math.min(range.max, Math.max(range.min, tray?.dryingTemp || 55));
+	const hours = Math.min(DRYING_HOURS.max, Math.max(DRYING_HOURS.min, tray?.dryingHours || 8));
 	return { temp, hours, filament: tray?.type ?? '' };
 }
 

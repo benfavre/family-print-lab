@@ -114,6 +114,36 @@ describe('tray links', () => {
 		expect(() => store.link('p1', tray(3, { type: '' }), a)).toThrow(/empty/);
 	});
 
+	it('refuses a spool when the tray’s tag belongs to another, and learns tag-only trays', () => {
+		const known = addSpool();
+		const other = addSpool();
+		store.link('p1', tray(1, { trayUuid: 'U1', tagUid: 'T1' }), known);
+		store.unlink('p1', undefined, 1);
+		expect(() => store.link('p1', tray(1, { trayUuid: 'U1', tagUid: 'T1' }), other)).toThrow(
+			/another spool from your shelf/
+		);
+		// A tray that only reports its tag_uid still teaches the spool.
+		store.link('p1', tray(2, { tagUid: 'T2' }), other);
+		expect(spool(other)).toMatchObject({ rfidUuid: null, rfidTag: 'T2' });
+		// …and keeps the link (a spool without a tag would be dropped from a tagged tray).
+		expect(store.sync('p1', [tray(2, { tagUid: 'T2' })])).toBe(false);
+		expect(store.spoolForTray('p1', 2)).toBe(other);
+	});
+
+	it('forgets the tag when an RFID link is undone, so the sync does not link it back', () => {
+		const a = addSpool();
+		const t = tray(1, { trayUuid: 'U1', tagUid: 'T1' });
+		store.link('p1', t, a);
+		expect(store.unlink('p1', t, 1)).toBe(true);
+		expect(spool(a)).toMatchObject({ rfidUuid: null, rfidTag: null });
+		expect(store.sync('p1', [t])).toBe(false);
+		expect(store.spoolForTray('p1', 1)).toBeNull();
+		// A plain link just goes.
+		store.link('p1', tray(0), a);
+		expect(store.unlink('p1', tray(0), 0)).toBe(true);
+		expect(store.unlink('p1', tray(0), 0)).toBe(false);
+	});
+
 	it('adds an RFID tray to the shelf once, linked', () => {
 		const t = tray(5, {
 			trayUuid: 'U5',
@@ -196,6 +226,33 @@ describe('charging prints per tray', () => {
 		const job = lab.getJob(id)!;
 		lab.updateJob(id, { version: job.version, status: 'Cancelled' });
 		expect(spool(white).remainingGrams).toBe(1000);
+	});
+
+	it('a print that failed before using anything still takes over from Lab’s charge', () => {
+		const white = addSpool();
+		const chosen = addSpool({ colorHex: '#00ff00' });
+		store.link('p1', tray(0), white);
+		const id = finishedJob({ spoolId: chosen, status: 'Failed' });
+		expect(spool(chosen).remainingGrams).toBe(970);
+		expect(store.chargeJob(id, 0)?.charges).toEqual([]);
+		expect([spool(chosen).remainingGrams, spool(white).remainingGrams]).toEqual([1000, 1000]);
+	});
+
+	it('charges the spool that was in the tray when the print started', () => {
+		const first = addSpool();
+		const second = addSpool({ colorHex: '#fefefe' });
+		const black = addSpool({ colorHex: '#000000' });
+		store.link('p1', tray(0), first);
+		const atStart = new Map(store.links('p1').map((l) => [l.tray, l.spoolId]));
+		// The first spool ran out and was swapped mid-print; tray 3 was linked after the start.
+		store.link('p1', tray(0), second);
+		store.link('p1', tray(3, { color: '#000000' }), black);
+		const id = finishedJob();
+		expect(store.chargeJob(id, 1, atStart)?.charges).toEqual([
+			{ spoolId: first, tray: 0, grams: 20 },
+			{ spoolId: black, tray: 3, grams: 10 }
+		]);
+		expect(spool(second).remainingGrams).toBe(1000);
 	});
 
 	it('stops refunding once the spool was weighed by hand', () => {

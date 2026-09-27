@@ -25,6 +25,8 @@
 	const dual = $derived((s?.nozzles.length ?? 1) > 1);
 	const spools = $derived(lab.ws.spools as AmsSpool[]);
 	const amsState = $derived(amsLinks.states[id]);
+	// Commands need the printer online; the trays stay readable from its last report.
+	const online = $derived(!!printer.connected);
 
 	$effect(() => amsLinks.watch(app, [id]));
 
@@ -114,7 +116,13 @@
 			aria-hidden="true"
 		></span>
 		<strong>{t.type || 'Empty'}</strong>
-		<small>{t.remain !== null ? `${t.remain}% left` : trayLabel(t.global, dual)}</small>
+		<small
+			>{t.remain !== null
+				? `${t.remain}% left`
+				: t.type
+					? 'amount unknown'
+					: trayLabel(t.global, dual)}</small
+		>
 		{#if line.text}<small class="shelf-line {line.tone}">{line.text}</small>{/if}
 	</button>
 {/snippet}
@@ -124,7 +132,12 @@
 		<h2>Filament</h2>
 		{#if s?.ams.length}
 			<div class="head-actions">
-				<button class="mini" onclick={() => (options = true)}>AMS options</button>
+				<button
+					class="mini"
+					disabled={!online}
+					title={online ? undefined : 'The printer is offline.'}
+					onclick={() => (options = true)}>AMS options</button
+				>
 			</div>
 		{/if}
 	</div>
@@ -137,11 +150,16 @@
 				<div class="dry-row">
 					<span>{dryText(unit) || 'Not drying'}</span>
 					{#if unit.drying}
-						<button class="mini" disabled={busy} onclick={() => stopDrying(unit)}
+						<button class="mini" disabled={busy || !online} onclick={() => stopDrying(unit)}
 							>Stop drying</button
 						>
 					{:else if canDry(unit)}
-						<button class="mini" onclick={() => (drying = unit)}>Dry…</button>
+						<button
+							class="mini"
+							disabled={!online}
+							title={online ? undefined : 'The printer is offline.'}
+							onclick={() => (drying = unit)}>Dry…</button
+						>
 					{/if}
 				</div>
 			{/if}

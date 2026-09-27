@@ -96,6 +96,8 @@ function createService(ctx: ModuleContext): AmsService & { stop(): void } {
 	let lastError: string | null = null;
 	const fingerprints = new Map<string, string>();
 	const progress = new Map<string, { layer: number; totalLayers: number | null }>();
+	/** Each printer's tray links when its current print started. */
+	const startLinks = new Map<string, Map<GlobalTray, string>>();
 
 	const snapshot = (printerId: string) => ctx.printers.get(printerId)?.snapshot ?? null;
 	const announce = (printerId: string) => ctx.live.send('ams:links', { printerId });
@@ -148,11 +150,11 @@ function createService(ctx: ModuleContext): AmsService & { stop(): void } {
 	}
 
 	/** Mirrors a charge to Spoolman (fire and forget; the error is shown in its settings). */
-	function pushUsage(result: ChargeResult) {
+	function pushUsage(charges: { spoolId: string; grams: number }[]) {
 		const s = settings.get();
 		if (!s.enabled || !s.url || !s.pushUsage) return;
 		const client = new SpoolmanClient(s.url, s.token);
-		for (const c of result.charges) {
+		for (const c of charges) {
 			const spoolmanId = store.spool(c.spoolId)?.spoolmanId;
 			if (!spoolmanId || !(c.grams > 0)) continue;
 			client.use(spoolmanId, c.grams).then(
@@ -165,10 +167,16 @@ function createService(ctx: ModuleContext): AmsService & { stop(): void } {
 		}
 	}
 
-	function charge(jobId: string, fraction: number) {
-		const result = store.chargeJob(jobId, fraction);
-		if (!result) return null;
-		ctx.bus.emit('spool.charged', result);
+	function charge(jobId: string, fraction: number, atStart?: Map<GlobalTray, string>) {
+		const result = store.chargeJob(jobId, fraction, atStart);
+		if (!result) {
+			// Lab's single-spool path paid for it (a job not sent from the app, or no tray linked).
+			const job = ctx.lab.getJob(jobId);
+			if (job?.chargeSpoolId && job.chargeGrams > 0)
+				pushUsage([{ spoolId: job.chargeSpoolId, grams: job.chargeGrams }]);
+			return null;
+		}
+		if (result.charges.length) ctx.bus.emit('spool.charged', result);
 		for (const c of result.charges) {
 			const spool = store.spool(c.spoolId);
 			if (!spool) continue;
@@ -181,7 +189,7 @@ function createService(ctx: ModuleContext): AmsService & { stop(): void } {
 					totalGrams: spool.totalGrams
 				});
 		}
-		pushUsage(result);
+		pushUsage(result.charges);
 		return result;
 	}
 
@@ -194,17 +202,27 @@ function createService(ctx: ModuleContext): AmsService & { stop(): void } {
 	};
 	ctx.printers.on('update', onUpdate);
 	const offs = [
-		ctx.bus.on('print.started', (d) => progress.delete(d.printerId)),
+		ctx.bus.on('print.started', (d) => {
+			progress.delete(d.printerId);
+			startLinks.set(
+				d.printerId,
+				new Map(store.links(d.printerId).map((l) => [l.tray, l.spoolId]))
+			);
+		}),
 		ctx.bus.on('print.layer', (d) =>
 			progress.set(d.printerId, { layer: d.layer, totalLayers: d.totalLayers })
 		),
 		ctx.bus.on('print.finished', (d) => {
+			const atStart = startLinks.get(d.printerId);
 			progress.delete(d.printerId);
-			if (d.jobId) charge(d.jobId, 1);
+			startLinks.delete(d.printerId);
+			if (d.jobId) charge(d.jobId, 1, atStart);
 		}),
 		ctx.bus.on('print.failed', (d) => {
 			const seen = progress.get(d.printerId);
+			const atStart = startLinks.get(d.printerId);
 			progress.delete(d.printerId);
+			startLinks.delete(d.printerId);
 			if (!d.jobId) return;
 			const s = snapshot(d.printerId);
 			charge(
@@ -213,7 +231,8 @@ function createService(ctx: ModuleContext): AmsService & { stop(): void } {
 					layer: s?.layer || seen?.layer,
 					totalLayers: s?.totalLayers || seen?.totalLayers,
 					percent: s?.percent
-				})
+				}),
+				atStart
 			);
 		})
 	];
@@ -255,7 +274,9 @@ function createService(ctx: ModuleContext): AmsService & { stop(): void } {
 		},
 		unlink(printerId, t) {
 			ctx.printers.statusOf(printerId);
-			if (store.unlink(printerId, t)) {
+			const s = snapshot(printerId);
+			const now = s ? allTrays(s).find((x) => x.global === t) : undefined;
+			if (store.unlink(printerId, now, t)) {
 				ctx.bus.emit('spool.linked', { printerId, tray: t, spoolId: null });
 				announce(printerId);
 			}
@@ -285,10 +306,13 @@ function createService(ctx: ModuleContext): AmsService & { stop(): void } {
 				const now = settings.get();
 				const url = o.url ? spoolmanBase(o.url) : '';
 				if (o.enabled && !url) throw new AppError(400, 'Give Spoolman’s address to turn it on.');
+				// The saved token only ever goes to the address it was given for: a new address needs
+				// it typed again, so changing the address cannot send the old token somewhere else.
+				const keep = !o.clearToken && (!url || url === now.url);
 				settings.set({
 					enabled: o.enabled,
 					url,
-					token: o.clearToken ? '' : (o.token ?? now.token),
+					token: o.token || (keep ? now.token : ''),
 					pushUsage: o.pushUsage
 				});
 				lastError = null;

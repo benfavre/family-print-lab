@@ -65,6 +65,8 @@
 	);
 	const locked = $derived(!!tray?.tagUid);
 	const canReadTag = $derived(!external && printer.caps?.amsReadRfid !== false);
+	const online = $derived(!!printer.connected);
+	const offline = $derived(online ? undefined : 'The printer is offline.');
 
 	let busy = $state(false);
 	let picking = $state(false);
@@ -183,7 +185,14 @@
 					</p>
 				{/if}
 				{#if match.kind === 'linked'}
-					<button class="mini" disabled={busy} onclick={unlink}>Unlink</button>
+					<button
+						class="mini"
+						disabled={busy}
+						title={t.trayUuid || t.tagUid
+							? 'Not this spool: the spool also forgets this RFID tag.'
+							: undefined}
+						onclick={unlink}>Unlink</button
+					>
 				{/if}
 			{:else if !t.type}
 				<p class="panel-empty">Nothing is loaded here.</p>
@@ -271,7 +280,8 @@
 				<p class="note">The printer uses these for this tray until another spool goes in.</p>
 				<div class="row">
 					<button type="button" class="secondary" onclick={() => (editing = false)}>Cancel</button>
-					<button class="primary" disabled={busy}>Send to printer</button>
+					<button class="primary" disabled={busy || !online} title={offline}>Send to printer</button
+					>
 				</div>
 			</form>
 		{/if}
@@ -282,15 +292,16 @@
 			{#if tray?.type || !external}
 				<button
 					class="mini"
-					disabled={busy || locked || editing}
-					title={locked ? 'Bambu spools: the details come from the RFID tag.' : undefined}
+					disabled={busy || locked || editing || !online}
+					title={locked ? 'Bambu spools: the details come from the RFID tag.' : offline}
 					onclick={startEditing}>Settings</button
 				>
 			{/if}
 			{#if canReadTag && tray}
 				<button
 					class="mini"
-					disabled={busy}
+					disabled={busy || !online}
+					title={offline}
 					onclick={() => post('rfid', { tray: global }, 'Reading the tag again.')}
 					>Read tag again</button
 				>

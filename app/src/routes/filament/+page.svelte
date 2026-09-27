@@ -55,7 +55,8 @@
 		lab.printerList.flatMap((printer) =>
 			(printer.state?.ams ?? []).flatMap((u) =>
 				u.trays
-					.filter((t) => t.type && t.color)
+					// A tray linked to a spool (ams package) is not a guess for any other spool.
+					.filter((t) => t.type && t.color && !amsLinks.link(printer.id ?? '', t.global))
 					.map((t) => ({ ...t, printer: printer.name ?? 'the printer' }))
 			)
 		)

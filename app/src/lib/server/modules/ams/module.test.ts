@@ -89,13 +89,12 @@ describe('AMS sync with a simulated printer', () => {
 		const t = await lab(['C12']);
 		const { info, sim } = t.printer('C12');
 		const id = ams(t).addFromTray(info.id, 1);
-		ams(t).unlink(info.id, 1);
-		// The spool is taken out and put back: the tray changes, the link comes back by RFID.
+		// The spool is taken out (the link goes) and put back: the link comes back by RFID.
 		const tray = sim.trays().find((x) => x.global === 1)!.tray;
 		const saved = structuredClone(tray);
 		for (const k of Object.keys(tray)) if (k !== 'id') delete tray[k];
 		sim.report();
-		await until(() => !trays(t, 'C12').find((x) => x.global === 1)?.type);
+		await until(() => ams(t).spoolForTray(info.id, 1) === null);
 		Object.assign(tray, saved);
 		sim.report();
 		await until(() => ams(t).spoolForTray(info.id, 1) === id);
@@ -196,12 +195,29 @@ describe('AMS sync with a simulated printer', () => {
 		await until(() => fake.used.length, 15_000);
 		expect(fake.used).toEqual([{ id: 7, grams: 4, auth: 'Bearer tok' }]);
 
+		// A print from a tray with no link: Lab charges the job's own spool, and Spoolman hears it.
+		const second = l.createJob({ projectId, spoolId: galaxy.id });
+		printing.attach(
+			second,
+			fakeSliced({ minutes: 1, grams: 3, printerModelId: 'C12' }),
+			'd.gcode.3mf'
+		);
+		printing.send(second, { printerId: info.id, useAms: true, amsMapping: [1], force: true });
+		await until(() => fake.used.length > 1, 15_000);
+		expect(fake.used[1]).toEqual({ id: 7, grams: 3, auth: 'Bearer tok' });
+
 		// Weights come back from Spoolman on demand.
 		fake.spools[0].remaining_weight = 500;
 		expect(await spoolman.pull()).toEqual({ updated: 1 });
 		expect(t.rt.lab.snapshot().spools.find((s) => s.id === galaxy.id)!.remainingGrams).toBe(500);
 		spoolman.save({ enabled: false, url: '' });
 		expect(spoolman.view()).toMatchObject({ enabled: false, hasToken: true });
+		// A new address never inherits the saved token: it has to be typed again.
+		spoolman.save({ enabled: true, url: fake.url, token: 'tok' });
+		expect(spoolman.save({ enabled: true, url: fake.url })).toMatchObject({ hasToken: true });
+		expect(spoolman.save({ enabled: true, url: 'http://elsewhere.local:7912' })).toMatchObject({
+			hasToken: false
+		});
 	});
 });
 

@@ -136,13 +136,18 @@ describe('RFID remaining estimate', () => {
 describe('humidity and drying', () => {
 	const unit = (o: Partial<AmsUnit>) =>
 		({ humidityIndex: null, humidityPercent: null, ...o }) as AmsUnit;
-	it('reads humidity as Bambu shows it, 1 dry … 5 wet', () => {
+	it('reads humidity 1 dry … 5 wet: % on the AMS 2 Pro and AMS HT, the index elsewhere', () => {
 		expect(humidityLevel(unit({ humidityIndex: 5 }))).toBe(1);
 		expect(humidityLevel(unit({ humidityIndex: 1 }))).toBe(5);
 		expect(humidityLevel(unit({ humidityIndex: 5, humidityPercent: 12 }))).toBe(1);
 		expect(humidityLevel(unit({ humidityPercent: 45 }))).toBe(3);
 		expect(humidityLevel(unit({ humidityPercent: 85 }))).toBe(5);
 		expect(humidityLevel(unit({}))).toBeNull();
+		// Bambu Studio places a plain AMS by its index even when it also sends a percentage.
+		expect(humidityLevel(unit({ model: 'AMS', humidityIndex: 4, humidityPercent: 9 }))).toBe(2);
+		expect(humidityLevel(unit({ model: 'AMS 2 Pro', humidityIndex: 1, humidityPercent: 29 }))).toBe(
+			2
+		);
 	});
 	it('knows which units dry and suggests settings from the spool', () => {
 		expect(dryingRange('AMS 2 Pro')).toEqual({ min: 45, max: 65 });
@@ -151,6 +156,17 @@ describe('humidity and drying', () => {
 		expect(
 			dryingDefaults({ model: 'AMS 2 Pro', trays: [tray({ dryingTemp: 80, dryingHours: 30 })] })
 		).toEqual({ temp: 65, hours: 24, filament: 'PLA' });
+		// The gentlest loaded filament decides (PLA at 55 °C beside PETG at 65 °C).
+		expect(
+			dryingDefaults({
+				model: 'AMS 2 Pro',
+				trays: [
+					tray({ type: 'PETG', dryingTemp: 65, dryingHours: 8 }),
+					tray({ type: '', dryingTemp: 45 }),
+					tray({ type: 'PLA', dryingTemp: 55, dryingHours: 8 })
+				]
+			})
+		).toEqual({ temp: 55, hours: 8, filament: 'PLA' });
 		expect(dryingDefaults({ model: 'AMS HT', trays: [] })).toEqual({
 			temp: 55,
 			hours: 8,
