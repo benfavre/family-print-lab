@@ -12,6 +12,10 @@ installers**.
 - Match H2D/X2D filaments to feeders connected to the correct nozzle. Reject known wrong-side
   selections before sending, including forced sends; queue dispatch checks the same restrictions.
 - Recheck filament warnings after waking a printer, before uploading a file.
+- Block known nozzle diameter mismatches before sending, including forced sends and queue dispatch.
+  Check only the nozzles used by a plate and refresh preflight and held jobs when hardware reports
+  change. Unknown legacy metadata and dynamic nozzle rack/switcher assignments retain their existing
+  behaviour until a reliable assignment is available.
 - Enable native configuration validation with the same plate overrides, filament grouping and
   calibration preparation used for slicing, without discarding existing previews or sliced files.
 - Ignore invalid time and filament estimates in imported sliced files, using valid G-code or
@@ -29,6 +33,9 @@ installers**.
 - Supply missing upstream header includes exposed by Clang/libc++ when precompiled headers are off.
 - Retain completed native dependency caches when a later build step fails, and allow retries of one
   engine platform at a time. Complete Windows and macOS native-engine verification remains pending.
+- Test RPC concurrency with explicit synchronisation instead of a machine-speed threshold.
+- Stage desktop releases as drafts, require all native builds and bundles, and launch installed
+  packages on each platform before publication. Check that the packaged server discovers its engine.
 
 ## 2.2.0 — 2026-09-27
 

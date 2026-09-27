@@ -94,7 +94,7 @@ try {
 		'slice',
 		'project.open',
 		'project.save',
-		'preview.get',
+		'preview.v1',
 		'config.validate'
 	])
 		assert.ok(hello.capabilities.includes(capability), `Missing capability: ${capability}`);
