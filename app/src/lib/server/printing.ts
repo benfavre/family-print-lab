@@ -14,7 +14,7 @@ import { readSliced } from './printer/sliced';
 import type { ModelStore } from './models';
 import { sliceModel } from './slicer/service';
 import { AppError } from './validation';
-import { loadedSlots, mappingProblems } from '$lib/shared/printing';
+import { loadedSlots, mappingNozzleProblems, mappingProblems } from '$lib/shared/printing';
 import { ACTIVE_PRINTER_STATES, type Job, type SlicedInfo } from '$lib/shared/domain';
 import { EXT_DEPUTY, EXT_MAIN } from '$lib/shared/printers/status';
 import { PRINTER_MODELS, modelShort, sameModel, type ModelCode } from '$lib/shared/printers/models';
@@ -285,10 +285,18 @@ export class PrintFiles {
 			else if (opts.useAms) {
 				if (opts.amsMapping.length !== plate.filaments.length)
 					blocking.push('Choose an AMS slot for every filament.');
-				else if (status?.connected)
-					warnings.push(
-						...mappingProblems(plate.filaments, opts.amsMapping, loadedSlots(status?.state))
+				else if (status?.connected) {
+					const slots = loadedSlots(status.state);
+					// A material override must not bypass a known physical binding, even for an empty tray.
+					blocking.push(
+						...mappingNozzleProblems(
+							plate.filaments,
+							opts.amsMapping,
+							loadedSlots(status.state, { includeEmpty: true })
+						)
 					);
+					warnings.push(...mappingProblems(plate.filaments, opts.amsMapping, slots));
+				}
 			}
 		}
 		return { blocking, warnings };
@@ -354,8 +362,9 @@ export class PrintFiles {
 				await hook({ printerId, jobId, signal: ctx.signal });
 			if (ctx.signal.aborted) throw new Error('Stopped');
 			// Awake now? Everything is checked again, as nothing was checked while it slept.
-			const { blocking } = this.check(jobId, { ...opts, printerId, wake: false }, true);
+			const { blocking, warnings } = this.check(jobId, { ...opts, printerId, wake: false }, true);
 			if (blocking.length) throw new Error(blocking[0]);
+			if (warnings.length && !opts.force) throw new Error(warnings.join(' '));
 			ctx.stage('Uploading to the printer…');
 		}
 		const printer = this.printers.require(printerId);

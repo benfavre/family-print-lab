@@ -11,6 +11,8 @@ export interface LoadedSlot {
 	name: string;
 	color: string | null;
 	remain: number | null;
+	/** Physical extruder: 0 right/main, 1 left/deputy; absent/null for legacy or unknown bindings. */
+	nozzle?: 0 | 1 | null;
 }
 
 /** A tray's label as the printer shows it: A1–D4 for AMS units, HT1… for AMS HT, Ext for external spools. */
@@ -22,21 +24,55 @@ export function trayLabel(global: GlobalTray, dual = false): string {
 	return `${String.fromCharCode(65 + (global >> 2))}${(global & 3) + 1}`;
 }
 
-/** Every loaded tray (AMS units and external spools), labelled like the printer does. */
-export function loadedSlots(state: PrinterSnapshot | null | undefined): LoadedSlot[] {
+/** Loaded trays, or also empty trays when checking fixed feeder bindings before a send. */
+export function loadedSlots(
+	state: PrinterSnapshot | null | undefined,
+	options: { includeEmpty?: boolean } = {}
+): LoadedSlot[] {
 	const out: LoadedSlot[] = [];
 	const dual = (state?.nozzles?.length ?? 1) > 1;
-	const trays = [...(state?.ams ?? []).flatMap((u) => u.trays), ...(state?.externalSpools ?? [])];
-	for (const tray of trays) {
-		if (!tray.type) continue;
+	const trays = [
+		...(state?.ams ?? []).flatMap((u) =>
+			u.trays.map((tray) => ({
+				tray,
+				nozzle: u.nozzle === 0 ? (0 as const) : u.nozzle === 1 ? (1 as const) : null
+			}))
+		),
+		...(state?.externalSpools ?? []).map((tray) => ({
+			tray,
+			nozzle: tray.global === EXT_DEPUTY ? (1 as const) : (0 as const)
+		}))
+	];
+	for (const { tray, nozzle } of trays) {
+		if (!tray.type && !options.includeEmpty) continue;
 		out.push({
 			index: tray.global,
 			label: trayLabel(tray.global, dual),
 			type: tray.type,
 			name: tray.name,
 			color: tray.color,
-			remain: tray.remain
+			remain: tray.remain,
+			// filament_maps = 1 also names the sole nozzle in single-extruder files.
+			nozzle: dual ? nozzle : null
 		});
+	}
+	if (dual && options.includeEmpty) {
+		// DevDefs.h reserves these external spool ids for a physical side even if no spool is reported.
+		for (const [index, nozzle] of [
+			[EXT_MAIN, 0],
+			[EXT_DEPUTY, 1]
+		] as const) {
+			if (!out.some((s) => s.index === index))
+				out.push({
+					index,
+					nozzle,
+					label: trayLabel(index, true),
+					type: '',
+					name: '',
+					color: null,
+					remain: null
+				});
+		}
 	}
 	return out;
 }
@@ -60,12 +96,12 @@ const family = (type: string) => type.toUpperCase().replace(/[-\s].*$/, '');
  * when possible. -1 where nothing of that material is loaded.
  */
 export function autoMapping(
-	filaments: Pick<SlicedFilament, 'type' | 'color'>[],
+	filaments: Pick<SlicedFilament, 'type' | 'color' | 'extruder'>[],
 	slots: LoadedSlot[]
 ): number[] {
 	const used = new Set<number>();
 	return filaments.map((f) => {
-		const same = slots.filter((s) => family(s.type) === family(f.type));
+		const same = slots.filter((s) => slotFitsNozzle(f, s) && family(s.type) === family(f.type));
 		const ranked = same
 			.map((s) => ({
 				s,
@@ -80,6 +116,39 @@ export function autoMapping(
 		if (!pick) return -1;
 		used.add(pick.index);
 		return pick.index;
+	});
+}
+
+/**
+ * Bambu Studio v02.08.02.61 SelectMachine.cpp do_ams_mapping splits filament_maps 1/2 into
+ * left/right; DeviceCore/DevMapping.cpp ams_filament_mapping filters AMS bindings and external
+ * spools by side. DevDefs.h: physical main/right = 0, deputy/left = 1 (opposite numbering).
+ * Older files/reports and filament switchers may lack a binding: do not invent one for them.
+ */
+export function slotFitsNozzle(
+	filament: Pick<SlicedFilament, 'extruder'>,
+	slot: LoadedSlot
+): boolean {
+	return (
+		filament.extruder === undefined ||
+		slot.nozzle == null ||
+		slot.nozzle === (filament.extruder === 1 ? 1 : 0)
+	);
+}
+
+/** A known wrong-side feeder cannot be overridden like a material warning. */
+export function mappingNozzleProblems(
+	filaments: SlicedFilament[],
+	mapping: number[],
+	slots: LoadedSlot[]
+): string[] {
+	return filaments.flatMap((f, i) => {
+		const slot = slots.find((s) => s.index === mapping[i]);
+		return slot && !slotFitsNozzle(f, slot)
+			? [
+					`Filament ${f.id} uses the ${f.extruder === 1 ? 'left' : 'right'} nozzle, but slot ${slot.label} feeds the other nozzle.`
+				]
+			: [];
 	});
 }
 

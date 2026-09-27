@@ -219,3 +219,42 @@ describe('the dispatcher', () => {
 		]);
 	});
 });
+
+describe('dual-nozzle queue mapping', () => {
+	const leftJob = () => {
+		const queued = item({}, 'N6');
+		queued.job!.sliced!.filaments[0].extruder = 1;
+		return queued;
+	};
+	const rightOnly = printer({
+		id: 'x2d-right',
+		name: 'Right feeder',
+		model: 'N6',
+		slots: [{ ...PLA, nozzle: 0 }]
+	});
+	const leftOnly = printer({
+		id: 'x2d-left',
+		name: 'Left feeder',
+		model: 'N6',
+		slots: [{ ...PLA, nozzle: 1 }]
+	});
+	it('passes an any-printer job to the printer whose feeder reaches its nozzle', () => {
+		const d = run([rightOnly, leftOnly], [leftJob()]);
+		expect(d.dispatch).toEqual([
+			{ itemId: 'i1', printerId: 'x2d-left', useAms: true, amsMapping: [0] }
+		]);
+		expect(d.hold).toEqual([]);
+	});
+	it('holds an assigned job until the feeder binding fits', () => {
+		const queued = { ...leftJob(), printerId: rightOnly.id };
+		const held = run([rightOnly], [queued]);
+		expect(held.dispatch).toEqual([]);
+		expect(held.hold).toHaveLength(1);
+		expect(held.hold[0].reason).toContain('no AMS slot');
+		const fixed = run(
+			[{ ...leftOnly, id: rightOnly.id }],
+			[{ ...queued, status: 'held', reason: held.hold[0].reason }]
+		);
+		expect(fixed.dispatch).toHaveLength(1);
+	});
+});

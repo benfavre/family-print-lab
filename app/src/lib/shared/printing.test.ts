@@ -1,7 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { autoMapping, loadedSlots, mappingProblems, trayLabel } from './printing';
+import {
+	autoMapping,
+	loadedSlots,
+	mappingNozzleProblems,
+	mappingProblems,
+	slotFitsNozzle,
+	trayLabel
+} from './printing';
 import { mergeReport, parseReport, parseVersions } from '$lib/server/printer/report';
 import { PRINTER_MODELS, type ModelCode } from './printers/models';
 
@@ -68,5 +75,94 @@ describe('loaded trays', () => {
 		expect(mapping[1]).toBeLessThan(254);
 		expect(mappingProblems([tpu, pla], mapping, slots)).toEqual([]);
 		expect(mappingProblems([tpu], [-1], slots)[0]).toMatch(/no AMS slot/);
+	});
+});
+
+describe('physical nozzle bindings', () => {
+	const left = {
+		id: 1,
+		type: 'PLA',
+		color: '#FFFFFF',
+		grams: 1,
+		meters: 0.1,
+		extruder: 1 as const
+	};
+	const right = { ...left, id: 2, extruder: 2 as const };
+	const slots = [
+		{
+			index: 0,
+			label: 'A1',
+			type: 'PLA',
+			name: 'PLA',
+			color: '#FFFFFF',
+			remain: 80,
+			nozzle: 0 as const
+		},
+		{
+			index: 4,
+			label: 'B1',
+			type: 'PLA',
+			name: 'PLA',
+			color: '#000000',
+			remain: 80,
+			nozzle: 1 as const
+		}
+	];
+	it('keeps reported AMS bindings and the fixed external spool sides', () => {
+		const state = fixture('h2d-ext-spool');
+		const loaded = loadedSlots(state);
+		for (const unit of state.ams) {
+			for (const tray of unit.trays.filter((t) => t.type)) {
+				expect(loaded.find((s) => s.index === tray.global)?.nozzle).toBe(
+					unit.nozzle === 0 || unit.nozzle === 1 ? unit.nozzle : null
+				);
+			}
+		}
+		expect(loaded.find((s) => s.index === 254)?.nozzle).toBe(1);
+		expect(loaded.find((s) => s.index === 255)?.nozzle).toBe(0);
+	});
+	it('keeps empty feeder bindings available to structural checks, but not to auto mapping', () => {
+		const state = fixture('h2d-ext-spool');
+		state.externalSpools.find((s) => s.global === 255)!.type = '';
+		expect(loadedSlots(state).some((s) => s.index === 255)).toBe(false);
+		expect(
+			mappingNozzleProblems([left], [255], loadedSlots(state, { includeEmpty: true }))
+		).toHaveLength(1);
+	});
+	it('checks the fixed external sides even when neither spool is reported', () => {
+		const state = fixture('h2d-ext-spool');
+		state.externalSpools = [];
+		const all = loadedSlots(state, { includeEmpty: true });
+		expect(mappingNozzleProblems([left, right], [255, 254], all)).toHaveLength(2);
+		expect(mappingNozzleProblems([left, right], [254, 255], all)).toEqual([]);
+	});
+	it('does not interpret the sole extruder as a left nozzle on single-nozzle printers', () => {
+		const state = fixture('h2d-ext-spool');
+		state.nozzles = [state.nozzles[0]];
+		const loaded = loadedSlots(state);
+		expect(loaded.every((s) => s.nozzle === null)).toBe(true);
+		const mapping = autoMapping([left], loaded);
+		expect(mapping[0]).toBeGreaterThanOrEqual(0);
+		expect(mappingNozzleProblems([left], mapping, loaded)).toEqual([]);
+	});
+	it('prefers a reachable nozzle over a closer colour and rejects a manual wrong-side choice', () => {
+		expect(autoMapping([left, right], slots)).toEqual([4, 0]);
+		expect(mappingNozzleProblems([left, right], [4, 0], slots)).toEqual([]);
+		expect(mappingNozzleProblems([left], [0], slots)).toEqual([
+			'Filament 1 uses the left nozzle, but slot A1 feeds the other nozzle.'
+		]);
+	});
+	it('does not substitute the right external spool for a left-nozzle filament', () => {
+		const external = { ...slots[0], index: 255, label: 'Ext R' };
+		expect(autoMapping([left], [external])).toEqual([-1]);
+		expect(mappingNozzleProblems([left], [255], [external])).toHaveLength(1);
+	});
+	it('preserves legacy files and unknown or switcher bindings without guessing a side', () => {
+		expect(slotFitsNozzle({ ...left, extruder: undefined }, slots[0])).toBe(true);
+		for (const nozzle of [null, undefined]) {
+			const unknown = { ...slots[0], nozzle };
+			expect(autoMapping([left], [unknown])).toEqual([0]);
+			expect(mappingNozzleProblems([left], [0], [unknown])).toEqual([]);
+		}
 	});
 });
