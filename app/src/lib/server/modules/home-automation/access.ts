@@ -71,10 +71,16 @@ export function isLocal(event: AccessRequest): boolean {
 	return isLoopback(clientAddress(event)) && LOCAL_HOSTS.has(event.url.hostname.toLowerCase());
 }
 
+/**
+ * A request with a Bearer token is judged by that token (or a session) alone: lan-auth's handle lets
+ * any Bearer request to these paths through (decide.ts isTokenPath), so falling back to "from this
+ * computer" would skip "Require login here too". Without one, the handle has already applied that
+ * setting, so a local request or a session is enough.
+ */
 export function allowed(event: AccessRequest, tokenHash: string | null): boolean {
-	return (
-		isLocal(event) ||
-		tokenMatches(bearer(event.request.headers.get('authorization')), tokenHash) ||
-		hasSession(event.locals)
-	);
+	const header = event.request.headers.get('authorization') ?? '';
+	// The same test as the auth handle's (hooks/auth.ts), so no Bearer form slips between them.
+	if (/^Bearer\s/i.test(header))
+		return tokenMatches(bearer(header), tokenHash) || hasSession(event.locals);
+	return isLocal(event) || hasSession(event.locals);
 }

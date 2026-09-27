@@ -174,6 +174,10 @@ describe('access', () => {
 		).toBe(false);
 		expect(allowed(req('10.0.0.2', { authorization: `Bearer ${token}` }), hash)).toBe(true);
 		expect(allowed(req(new Error('no address')), hash)).toBe(false);
+		// A made-up Bearer token from this computer is judged by the token, not by "local": the auth
+		// handle lets Bearer requests through, so "Require login here too" would be skipped otherwise.
+		expect(allowed(req('127.0.0.1', { authorization: 'Bearer x' }), hash)).toBe(false);
+		expect(allowed(req('127.0.0.1', { authorization: 'Bearer x y' }), hash)).toBe(false);
 		// A lan-auth session (locals.auth.session) counts; a kid-mode browser does not.
 		const session = { auth: { local: false, session: { id: 's' } } };
 		expect(allowed(req('10.0.0.2', {}, session), null)).toBe(true);
