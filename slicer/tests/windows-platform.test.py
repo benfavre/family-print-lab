@@ -14,6 +14,8 @@ with tempfile.TemporaryDirectory(prefix="printlab-windows-platform-") as directo
     root = pathlib.Path(directory)
     (root / "CMakeLists.txt").write_text(f'''cmake_minimum_required(VERSION 3.13)
 project(WindowsPlatform LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(WIN32 ON)
 {settings}
 add_executable(platform platform.cpp)
