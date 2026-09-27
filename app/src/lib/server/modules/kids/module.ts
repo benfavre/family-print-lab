@@ -60,6 +60,25 @@ export default defineModule({
 			),
 			ctx.bus.on('request.decided', () => ctx.live.send('kids:changed', { profileId: null }))
 		];
+		// Jobs marked as printed by hand (a printer the app does not know) earn badges too, shortly after.
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const onChange = (e: { kind: string }) => {
+			if (e.kind !== 'job' || timer) return;
+			timer = setTimeout(() => {
+				timer = undefined;
+				try {
+					kids.refreshAllBadges();
+				} catch (error) {
+					ctx.log(`Could not update badges: ${(error as Error).message}`);
+				}
+			}, 500);
+			timer.unref?.();
+		};
+		ctx.lab.events.on('change', onChange);
+		offs.push(
+			() => ctx.lab.events.off('change', onChange),
+			() => clearTimeout(timer)
+		);
 		try {
 			kids.refreshAllBadges();
 		} catch (error) {

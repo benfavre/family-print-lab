@@ -31,7 +31,7 @@
 		c.minutes === null
 			? null
 			: c.minutes < 60
-				? `${Math.round(c.minutes)} minutes`
+				? `${Math.max(1, Math.round(c.minutes))} ${Math.round(c.minutes) <= 1 ? 'minute' : 'minutes'}`
 				: `${Math.floor(c.minutes / 60)} h ${Math.round(c.minutes % 60)} min`
 	);
 </script>
@@ -195,7 +195,11 @@
 		}
 	}
 	@media print {
-		/* Only the certificate goes on paper. */
+		/* Only the certificate goes on paper, on one page. */
+		:global(body) {
+			height: 100vh;
+			overflow: hidden;
+		}
 		:global(body *) {
 			visibility: hidden;
 		}
@@ -209,9 +213,13 @@
 			margin: auto;
 			width: 100%;
 			height: fit-content;
+			padding: 28px 24px;
 			box-shadow: none;
 			print-color-adjust: exact;
 			-webkit-print-color-adjust: exact;
+		}
+		.picture {
+			width: 240px;
 		}
 		.no-print {
 			display: none;

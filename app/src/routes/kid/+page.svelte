@@ -6,6 +6,7 @@
 	import { thingStatus, thingTemplate, thumbZoom } from '$lib/client/kid';
 	import { fileUrl, makeThumbnail } from '$lib/client/models';
 	import { templatesFor } from '$lib/shared/kid';
+	import KidTrophies from '$lib/components/kids/KidTrophies.svelte';
 
 	const { lab, ui } = useApp();
 	const kid = $derived(page.data.kid!);
@@ -52,6 +53,8 @@
 	</section>
 {/if}
 
+<KidTrophies kidId={kid.id} show="party" />
+
 <h1 class="kid-title">{little ? 'What shall we make?' : 'What do you want to make today?'}</h1>
 <div class="templates">
 	{#each templates as t (t.id)}
@@ -89,6 +92,8 @@
 {:else}
 	<p class="no-things">Things you make will show up here. Pick one above to start!</p>
 {/if}
+
+<KidTrophies kidId={kid.id} show="shelf" {little} />
 
 <style>
 	.now-printing {
