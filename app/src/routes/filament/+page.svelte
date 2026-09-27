@@ -7,8 +7,11 @@
 	import StatusPill from '$lib/components/StatusPill.svelte';
 	import type { Spool } from '$lib/shared/domain';
 	import { trayLabel } from '$lib/shared/printing';
+	import { amsLinks } from '$lib/components/ams/links.svelte';
+	import { trayPlace } from '$lib/shared/ams';
 
-	const { lab, ui } = useApp();
+	const app = useApp();
+	const { lab, ui } = app;
 
 	// ---------- Finding spools ----------
 	let query = $state('');
@@ -63,6 +66,29 @@
 				t.type.toUpperCase() === s.material.toUpperCase() &&
 				near(`#${t.color!.replace('#', '').slice(0, 6)}`, s.colorHex)
 		);
+	// Spools linked to a tray (ams package) say exactly where they are; others fall back to a guess.
+	$effect(() =>
+		amsLinks.watch(
+			app,
+			lab.printerList.filter((p) => p.id).map((p) => p.id!)
+		)
+	);
+	function loadedIn(s: Spool) {
+		const link = amsLinks.whereIs(s.id);
+		if (!link) return null;
+		const printer = lab.printerList.find((p) => p.id === link.printerId);
+		const tray = [
+			...(printer?.state?.ams ?? []).flatMap((u) => u.trays),
+			...(printer?.state?.externalSpools ?? [])
+		].find((t) => t.global === link.tray);
+		return {
+			printer: printer?.name ?? 'the printer',
+			global: link.tray,
+			remain: tray?.remain ?? null,
+			active: tray?.active ?? false,
+			dual: (printer?.state?.nozzles.length ?? 1) > 1
+		};
+	}
 
 	// ---------- Quick weigh-in and usage ----------
 	let weighing = $state<string | null>(null);
@@ -180,7 +206,8 @@
 				{@const jobs = lab.ws.jobs
 					.filter((j) => j.spoolId === s.id)
 					.sort((a, b) => (b.finishedAt ?? b.createdAt).localeCompare(a.finishedAt ?? a.createdAt))}
-				{@const tray = inAms(s)}
+				{@const linked = loadedIn(s)}
+				{@const tray = linked ? null : inAms(s)}
 				<article class="project-card spool-card" class:low={isLow(s)} style:--swatch={s.colorHex}>
 					<div class="spool-visual">
 						<div class="spool" style:--swatch={s.colorHex} style:--p={p} aria-hidden="true">
@@ -193,9 +220,25 @@
 							{#if isLow(s)}<StatusPill status="Failed" label="Low stock" />{/if}
 						</div>
 						<p class="spool-sub">{[s.brand, s.material].filter(Boolean).join(' · ')}</p>
-						{#if tray}
-							<p class="in-ams" title="Matched by material and colour to what the printer reports">
-								<span class="ams-dot" aria-hidden="true"></span>In {lab.printerList.length > 1
+						{#if linked}
+							<p class="in-ams" title="Linked to this tray on the printer's AMS panel">
+								<span class="ams-dot" aria-hidden="true"></span>Loaded in {trayPlace(
+									linked.global,
+									{
+										printerName: linked.printer,
+										several: lab.printerList.length > 1,
+										dual: linked.dual
+									}
+								)}{linked.remain !== null ? ` · printer says ${linked.remain}%` : ''}{linked.active
+									? ' · in use'
+									: ''}
+							</p>
+						{:else if tray}
+							<p
+								class="in-ams maybe"
+								title="Matched by material and colour to what the printer reports"
+							>
+								<span class="ams-dot" aria-hidden="true"></span>Maybe in {lab.printerList.length > 1
 									? `${tray.printer}, `
 									: ''}tray {trayLabel(tray.global)}{tray.remain !== null
 									? ` · printer says ${tray.remain}%`
@@ -369,6 +412,13 @@
 		margin: 2px 0 6px;
 		font-size: 12px;
 		color: var(--lime);
+	}
+	.in-ams.maybe {
+		color: var(--muted);
+	}
+	.in-ams.maybe .ams-dot {
+		background: var(--muted);
+		box-shadow: none;
 	}
 	.ams-dot {
 		width: 7px;
