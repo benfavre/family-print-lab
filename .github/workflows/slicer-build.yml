@@ -2,8 +2,7 @@
 # patch queue) for each desktop platform and uploads printlab-slicer-<platform>: the binary, the
 # resources it reads (profiles from the same tag), LICENSE and engine.json. The dependency superbuild
 # takes hours the first time, so it is cached by build-deps.sh's key (tag, deps/ tree, platform).
-# release.yml calls this; a failed engine build never blocks a desktop release (the app then uses an
-# installed Bambu Studio).
+# release.yml requires every native platform to pass before building desktop installers.
 name: Slicer build
 
 on:
@@ -23,6 +22,10 @@ on:
           - darwin-arm64
           - win32-x64
   workflow_call:
+    inputs:
+      require-native:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -38,8 +41,8 @@ jobs:
         platform: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.platform && inputs.platform != 'all' && format('["{0}"]', inputs.platform) || '["linux-x64","darwin-arm64","win32-x64"]') }}
     # Ubuntu 22.04 is the oldest glibc we ship for.
     runs-on: ${{ fromJSON('{"linux-x64":"ubuntu-22.04","darwin-arm64":"macos-14","win32-x64":"windows-2022"}')[matrix.platform] }}
-    # Windows and macOS builds of the headless engine are not verified yet; they must not fail the run.
-    continue-on-error: ${{ matrix.platform != 'linux-x64' }}
+    # Development builds can report portability failures; releases require every platform.
+    continue-on-error: ${{ !inputs.require-native && matrix.platform != 'linux-x64' }}
     timeout-minutes: 350
     defaults:
       run:

@@ -1,7 +1,6 @@
 name: Desktop release
 
-# Push a tag like v2.2.0 (matching desktop/package.json) to build the installers and publish them as a
-# GitHub Release. The desktop app updates itself from these releases.
+# Tags stage installers in a draft. Publish only after all packaged installer checks pass.
 on:
   push:
     tags: ['v*']
@@ -10,15 +9,13 @@ permissions:
   contents: write
 
 jobs:
-  # Print Lab Slicer for each platform (slicer-build.yml). Its result does not gate the release: the
-  # desktop build below bundles whatever engine artifacts exist and the app falls back to an installed
-  # Bambu Studio otherwise.
   engine:
     uses: ./.github/workflows/slicer-build.yml
+    with:
+      require-native: true
 
   build:
     needs: engine
-    if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
       matrix:
@@ -34,7 +31,6 @@ jobs:
       - uses: actions/checkout@v4
       - name: Print Lab Slicer for this platform
         uses: actions/download-artifact@v4
-        continue-on-error: true
         with:
           name: printlab-slicer-${{ matrix.platform }}
           path: slicer/dist/${{ matrix.platform }}
@@ -58,5 +54,24 @@ jobs:
         working-directory: desktop
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EP_DRAFT: 'true'
+          PRINTLAB_REQUIRE_NATIVE_ENGINE: '1'
           # Unsigned for now: no Apple/Windows code-signing certificates yet.
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Linux display dependencies
+        if: runner.os == 'Linux'
+        run: bunx playwright install-deps chromium
+        working-directory: app
+      - name: Install and launch the packaged app and its engine
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            xvfb-run -a node desktop/scripts/smoke-package.mjs
+          else
+            node desktop/scripts/smoke-package.mjs
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-smoke-${{ matrix.platform }}
+          path: desktop/release/smoke-*
