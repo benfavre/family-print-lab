@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Benjamin Favre <ben@webdesign29.net>
+Date: Sun, 27 Sep 2026 18:00:09 +0000
+Subject: [PATCH] Build: copy FFmpeg DLLs only for the GUI
+
+Why: SLIC3R_GUI=OFF consumes libslic3r with DEP_BUILD_FFMPEG=OFF, but Windows configuration still copies missing FFmpeg DLLs unconditionally. Retain all core runtime copies and gate both FFmpeg copying and the returned runtime list on the existing GUI switch.
+
+Files: CMakeLists.txt
+
+Upstreamable: yes
+
+Co-Authored-By: Codex <noreply@openai.com>
+---
+ CMakeLists.txt | 17 +++++++++--------
+ 1 file changed, 9 insertions(+), 8 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index a1d4d0a..b7613db 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -739,12 +739,16 @@ function(bambustudio_copy_dlls target config postfix output_dlls)
+             ${CMAKE_PREFIX_PATH}/bin/occt/TKXDESTEP.dll
+             ${CMAKE_PREFIX_PATH}/bin/occt/TKXSBase.dll
+             ${CMAKE_PREFIX_PATH}/bin/freetype.dll
+-            ${CMAKE_PREFIX_PATH}/bin/avcodec-61.dll
+-            ${CMAKE_PREFIX_PATH}/bin/swresample-5.dll
+-            ${CMAKE_PREFIX_PATH}/bin/swscale-8.dll
+-            ${CMAKE_PREFIX_PATH}/bin/avutil-59.dll
+          DESTINATION ${_out_dir})
+ 
++    set(_ffmpeg_dlls)
++    if (SLIC3R_GUI)
++        foreach (_dll avcodec-61.dll swresample-5.dll swscale-8.dll avutil-59.dll)
++            file(COPY ${CMAKE_PREFIX_PATH}/bin/${_dll} DESTINATION ${_out_dir})
++            list(APPEND _ffmpeg_dlls ${_out_dir}/${_dll})
++        endforeach ()
++    endif ()
++
+     set(${output_dlls}
+         ${_out_dir}/${output_gmpdll}
+         ${_out_dir}/${output_mpfrdll}
+@@ -778,10 +782,7 @@ function(bambustudio_copy_dlls target config postfix output_dlls)
+         ${_out_dir}/TKXSBase.dll
+ 
+         ${_out_dir}/freetype.dll
+-        ${_out_dir}/avcodec-61.dll
+-        ${_out_dir}/swresample-5.dll
+-        ${_out_dir}/swscale-8.dll
+-        ${_out_dir}/avutil-59.dll
++        ${_ffmpeg_dlls}
+         PARENT_SCOPE
+     )
+ 

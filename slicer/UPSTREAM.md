@@ -9,9 +9,9 @@ new Bambu Studio release is a rebase of a handful of small patches, not a merge 
 
 <!-- pin:start -->
 
-| Upstream     | Tag            | Commit                                     | Patch queue                                                                                       |
-| ------------ | -------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 17, 18 patch(es), hash `b89afa85b4d89fddb1e4f34ef6cbc3ad660a870ca81e381864a554a9c5527d81` |
+| Upstream | Tag | Commit | Patch queue |
+| --- | --- | --- | --- |
+| Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 18, 19 patch(es), hash `63212c591b0baca881cab32d4765271de1b127afd56b4294275c224bf01309df` |
 
 <!-- pin:end -->
 
@@ -225,6 +225,10 @@ upstreamable:
   Clang rejects the forward declaration when building without precompiled headers.
 - 0018: include `<sstream>` in `LocalesUtils.cpp` for its non-Windows number formatter. Apple's
   standard library does not provide the full stringstream definition through the existing includes.
+- 0019: copy FFmpeg DLLs and list them for packaging only when the GUI is enabled. Windows
+  headless configuration keeps its core runtime copies and no longer requires omitted GUI DLLs.
+  `python3 slicer/tests/windows-dll-copy.test.py` checks the actual upstream CMake function after
+  `upstream.sh fetch`: headless without FFmpeg, GUI with FFmpeg, and an explicit missing-GUI-DLL error.
 
 Miniz uses its portable byte-load implementation (`MINIZ_USE_UNALIGNED_LOADS_AND_STORES=0`)
 in every engine build, so ZIP reads and writes retain alignment sanitizer checks.
