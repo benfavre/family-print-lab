@@ -112,7 +112,7 @@ export async function createFleet(o: {
 			JSON.stringify(
 				printers.map((p) => ({
 					name: p.sim.sim.name,
-					model: ssdpModel(p.sim.model.code),
+					model: p.sim.model.code,
 					host,
 					port: p.port,
 					ftpPort: p.ftpPort,

@@ -114,11 +114,23 @@ describe('the printer’s own calibration', () => {
 		const status = (pa?: boolean, flow?: boolean) => ({
 			firmwareSupport: { paCalibration: pa, flowCalibration: flow }
 		});
-		expect(paCalibrationReason({ flowCalibration: false }, status(true))).toBeNull();
-		expect(paCalibrationReason({ flowCalibration: true }, status(false))).toMatch(/does not/);
-		expect(paCalibrationReason({ flowCalibration: true }, status())).toBeNull();
-		expect(paCalibrationReason({ flowCalibration: false }, null)).toMatch(/does not/);
-		expect(flowCalibrationReason({ flowCalibration: false }, status(undefined, true))).toBeNull();
+		expect(paCalibrationReason({ flowCalibration: false }, status(true), 'X1')).toBeNull();
+		expect(paCalibrationReason({ flowCalibration: true }, status(false), 'X1')).toMatch(/does not/);
+		expect(paCalibrationReason({ flowCalibration: true }, status(), 'X1')).toBeNull();
+		expect(paCalibrationReason({ flowCalibration: false }, null, 'X1')).toMatch(/does not/);
+		expect(
+			flowCalibrationReason({ flowCalibration: false }, status(undefined, true), 'X1')
+		).toBeNull();
+	});
+
+	it('follows Bambu Studio in turning off flow rate on the H2 series and PA on the P1 series', () => {
+		const status = { firmwareSupport: { paCalibration: true, flowCalibration: true } };
+		expect(flowCalibrationReason({ flowCalibration: true }, status, 'H2')).toBe(
+			'This printer does not do flow rate calibration itself.'
+		);
+		expect(paCalibrationReason({ flowCalibration: true }, status, 'H2')).toBeNull();
+		expect(paCalibrationReason({ flowCalibration: true }, status, 'P1')).toMatch(/does not/);
+		expect(flowCalibrationReason({ flowCalibration: true }, status, 'P1')).toBeNull();
 	});
 
 	it('reads K-value profiles as Bambu Studio does', () => {

@@ -501,8 +501,8 @@ export class Calibration {
 		];
 		return {
 			printerId,
-			pa: paCalibrationReason(caps, snap),
-			flow: flowCalibrationReason(caps, snap),
+			pa: paCalibrationReason(caps, snap, p.model.series),
+			flow: flowCalibrationReason(caps, snap, p.model.series),
 			nozzleDiameter: main.diameter,
 			nozzleVolume: main.volume,
 			nozzles,

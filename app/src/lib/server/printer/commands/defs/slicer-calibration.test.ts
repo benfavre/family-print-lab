@@ -1,4 +1,8 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { mergeReport, parseReport, parseVersions } from '../../report';
+import { flowCalibrationReason } from '$lib/shared/slicer-calibration';
 import { commandDef, type CommandContext, type CommandName } from '../registry';
 import { PRINTER_MODELS, capabilitiesFor, type ModelCode } from '$lib/shared/printers/models';
 import { emptySnapshot, type PrinterSnapshot } from '$lib/shared/printers/status';
@@ -303,5 +307,44 @@ describe('printer calibration commands', () => {
 		expect(() => payload('print.extrusion_cali_get_result', { nozzleDiameter: 0.5 })).toThrow(
 			/nozzle size/
 		);
+	});
+
+	it('refuses flow rate calibration on the H2D although its report sets the bit (Bambu Studio)', () => {
+		const f = JSON.parse(
+			fs.readFileSync(path.join(import.meta.dirname, '../../__fixtures__/reports/h2d.json'), 'utf8')
+		);
+		const model = PRINTER_MODELS.O1D;
+		const snap = parseReport(mergeReport({}, structuredClone(f.pushall)), {
+			model,
+			versions: parseVersions(f.get_version),
+			accessCodeSet: true
+		});
+		expect(snap.firmwareSupport.flowCalibration).toBe(true);
+		const caps = capabilitiesFor('O1D', null);
+		expect(flowCalibrationReason(caps, snap, model.series)).toBe(
+			'This printer does not do flow rate calibration itself.'
+		);
+		const c: CommandContext = { printerId: 'p', model, caps, status: snap, firmware: null };
+		expect(
+			guard(
+				'print.flowrate_cali',
+				{
+					nozzleDiameter: 0.4,
+					filaments: [
+						{
+							tray: 0,
+							extruderId: 0,
+							bedTemp: 55,
+							nozzleTemp: 220,
+							filamentId: 'GFA00',
+							settingId: 'GFSA00',
+							flowRatio: 0.98,
+							maxVolumetricSpeed: 21
+						}
+					]
+				},
+				c
+			)
+		).toMatch(/flow rate/);
 	});
 });

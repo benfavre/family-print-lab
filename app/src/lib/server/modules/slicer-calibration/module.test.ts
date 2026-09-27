@@ -112,7 +112,7 @@ async function call(
 beforeAll(async () => {
 	t = await startTestLab({
 		modules: ['slicer-profiles', 'queue', 'slicer-calibration'],
-		fleet: ['N1', 'O1D'],
+		fleet: ['N1', 'O1D', 'BL-P001'],
 		env: { PRINTLAB_PROFILES_DIR: FIXTURE }
 	});
 	holder[key] = t.rt;
@@ -346,7 +346,7 @@ describe('the printer’s own calibration (simulated H2D)', () => {
 		}
 	});
 
-	it('runs flow dynamics and flow rate calibration and reads the results', async () => {
+	it('runs flow dynamics calibration and reads the results; flow rate is off on the H2D', async () => {
 		const tray = c.info(dualId).trays.find((x) => x.filamentId && x.extruderId === 1);
 		expect(tray).toBeDefined();
 		await c.startOnPrinter(dualId, { kind: 'pa', trays: [tray!.global] });
@@ -356,9 +356,20 @@ describe('the printer’s own calibration (simulated H2D)', () => {
 			trayId: tray!.global,
 			extruderId: 1
 		});
-		await c.startOnPrinter(dualId, { kind: 'flow', trays: [tray!.global] });
-		const flow = await c.resultsOnPrinter(dualId, { kind: 'flow' });
-		expect('flow' in flow && flow.flow[0].flowRatio).toBeGreaterThan(0.9);
 		await expect(c.startOnPrinter(dualId, { kind: 'pa', trays: [99] })).rejects.toThrow(/empty/);
+		// Bambu Studio turns flow rate calibration off for the H2 series, whatever the printer says.
+		expect(c.info(dualId).flow).toMatch(/does not do flow rate/);
+		await expect(c.startOnPrinter(dualId, { kind: 'flow', trays: [tray!.global] })).rejects.toThrow(
+			/flow rate/
+		);
+	});
+
+	it('runs flow rate calibration on an X1 and reads the result', async () => {
+		const x1 = t.printer('BL-P001').info.id;
+		const tray = c.info(x1).trays.find((x) => x.filamentId);
+		expect(tray).toBeDefined();
+		await c.startOnPrinter(x1, { kind: 'flow', trays: [tray!.global] });
+		const flow = await c.resultsOnPrinter(x1, { kind: 'flow' });
+		expect('flow' in flow && flow.flow[0].flowRatio).toBeGreaterThan(0.9);
 	});
 });

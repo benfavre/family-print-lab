@@ -106,8 +106,10 @@ const busy = (ctx: CommandContext) =>
 	ctx.status && ACTIVE_PRINTER_STATES.has(ctx.status.gcodeState)
 		? 'Wait until the print is over.'
 		: null;
-const paGuard = (ctx: CommandContext) => paCalibrationReason(ctx.caps, ctx.status);
-const flowGuard = (ctx: CommandContext) => flowCalibrationReason(ctx.caps, ctx.status);
+const paGuard = (ctx: CommandContext) =>
+	paCalibrationReason(ctx.caps, ctx.status, ctx.model.series);
+const flowGuard = (ctx: CommandContext) =>
+	flowCalibrationReason(ctx.caps, ctx.status, ctx.model.series);
 
 const source = (fn: string) =>
 	`Bambu Studio v02.08.02.61 DeviceManager.cpp ${fn}; replies DeviceCore/DevCalib.cpp`;

@@ -3,7 +3,7 @@
 // slicer/engine/src/features/calib/calib.hpp), how to read each one, the filament setting each result
 // goes into, and the printer's own flow dynamics (pressure advance) and flow rate calibration, whose
 // K-value profiles Bambu Studio lists per filament and nozzle.
-import type { Capabilities } from './printers/models';
+import type { Capabilities, Series } from './printers/models';
 import type { PrinterSnapshot } from './printers/status';
 import type { ConfigMap, PresetRef } from './slicer/project';
 
@@ -341,21 +341,33 @@ export interface CalibOverview {
  * Why this printer cannot run its own flow dynamics (pressure advance) calibration or keep K-value
  * profiles: the `fun` bit it reports (flags.ts bit 7, Bambu Studio DeviceManager.cpp ~4440), else its
  * model's support_flow_calibration (Bambu Studio uses that field when the bit is absent, ~2890).
+ * Bambu Studio v02.08.02.61 switches it off for the P1 series (printer_series series_p1p: C11, C12)
+ * whatever the printer says ("Temp modification due to incorrect machine push message for P",
+ * DeviceManager.cpp ~1100 and ~4441), so we do too.
  */
 export function paCalibrationReason(
 	caps: Pick<Capabilities, 'flowCalibration'>,
-	status: Pick<PrinterSnapshot, 'firmwareSupport'> | null
+	status: Pick<PrinterSnapshot, 'firmwareSupport'> | null,
+	series: Series
 ): string | null {
-	const support = status?.firmwareSupport.paCalibration ?? caps.flowCalibration;
+	const support =
+		series !== 'P1' && (status?.firmwareSupport.paCalibration ?? caps.flowCalibration);
 	return support ? null : 'This printer does not do flow dynamics calibration itself.';
 }
 
-/** The same for flow rate calibration (flags.ts bit 6, DeviceManager.cpp ~4438). */
+/**
+ * The same for flow rate calibration (flags.ts bit 6, DeviceManager.cpp ~4438). Bambu Studio switches
+ * it off for the H2 series (series_o: O1D, O1E, O1S, O1C, O1C2; "incorrect machine push message for
+ * H2D", DeviceManager.cpp ~1097 and ~4439), which also hides the button (CalibrationWizardStartPage.cpp
+ * ~348).
+ */
 export function flowCalibrationReason(
 	caps: Pick<Capabilities, 'flowCalibration'>,
-	status: Pick<PrinterSnapshot, 'firmwareSupport'> | null
+	status: Pick<PrinterSnapshot, 'firmwareSupport'> | null,
+	series: Series
 ): string | null {
-	const support = status?.firmwareSupport.flowCalibration ?? caps.flowCalibration;
+	const support =
+		series !== 'H2' && (status?.firmwareSupport.flowCalibration ?? caps.flowCalibration);
 	return support ? null : 'This printer does not do flow rate calibration itself.';
 }
 
