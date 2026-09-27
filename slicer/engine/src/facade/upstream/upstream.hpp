@@ -91,6 +91,8 @@ public:
 	MeshInfo mesh_put(const std::string &mesh_id, const std::string &path, const std::string &format) override;
 	void mesh_drop(const std::vector<std::string> &mesh_ids) override;
 
+	OpenProjectResult project_open(const std::string &path) override;
+	void project_save(const std::string &, const std::string &, const std::vector<PlateImages> &) override;
 	std::string project_create(const PresetSelection &presets) override;
 	SyncResult project_sync(const std::string &project_id, const Project &project, const ResolvedBundle &presets) override;
 	void project_close(const std::string &project_id) override;

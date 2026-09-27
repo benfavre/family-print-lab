@@ -60,3 +60,6 @@ listed here: it is read through `app/tools/lib/upstream.ts` and regenerated on e
 | `slicer/engine/src/features/calib/calib.hpp`                           | BambuStudio | `src/slic3r/GUI/Plater.cpp`                              | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
 | `slicer/engine/src/features/calib/calib.hpp`                           | BambuStudio | `src/slic3r/GUI/calib_dlg.cpp`                           | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
 | `slicer/engine/src/features/calib/calib.hpp`                           | OrcaSlicer  | `src/slic3r/GUI/Plater.cpp`                              | `8500fcdccaa10b5099ac20d252af3a7c560046f1` |
+| `slicer/engine/src/features/project/read.cpp`                          | BambuStudio | `src/libslic3r/Format/bbs_3mf.cpp`                       | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
+| `slicer/engine/src/features/project/write.cpp`                         | BambuStudio | `src/libslic3r/Format/bbs_3mf.cpp`                       | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
+| `slicer/engine/src/facade/upstream/project_io.cpp`                     | BambuStudio | `src/libslic3r/Format/bbs_3mf.cpp`                       | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |

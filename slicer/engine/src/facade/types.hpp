@@ -124,6 +124,8 @@ struct MeshFile {
 	std::string path; // storage.kind === 'file'
 };
 struct Project {
+	/** Complete protocol document: preserves non-slicing fields through open/sync/save. */
+	std::string source_json;
 	std::string title;
 	std::map<std::string, std::string> extras;
 	PresetSelection presets;
