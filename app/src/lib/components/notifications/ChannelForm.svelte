@@ -398,10 +398,17 @@
 		gap: 12px;
 		flex-wrap: wrap;
 	}
+	.field {
+		margin-bottom: 0;
+	}
 	.field.inline {
-		display: flex;
+		flex-direction: row;
 		align-items: center;
 		gap: 8px;
+	}
+	.field.inline select,
+	.field.inline input {
+		width: auto;
 	}
 	.link {
 		border: 0;

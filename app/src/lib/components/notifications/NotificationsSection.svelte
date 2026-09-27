@@ -279,16 +279,20 @@
 				{#if wording[e.name]}
 					<fieldset>
 						<legend>{e.label}</legend>
-						<input
-							aria-label="{e.label} title"
-							bind:value={wording[e.name].title}
-							maxlength="120"
-						/>
-						<input
-							aria-label="{e.label} message"
-							bind:value={wording[e.name].body}
-							maxlength="500"
-						/>
+						<label class="field"
+							>Title<input
+								aria-label="{e.label} title"
+								bind:value={wording[e.name].title}
+								maxlength="120"
+							/></label
+						>
+						<label class="field"
+							>Message<input
+								aria-label="{e.label} message"
+								bind:value={wording[e.name].body}
+								maxlength="500"
+							/></label
+						>
 						{#if s.templates[e.name]}<button
 								type="button"
 								class="mini"
@@ -447,7 +451,12 @@
 		border: 1px solid var(--line);
 		border-radius: var(--r-md);
 		display: grid;
-		gap: 6px;
+		grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+		align-items: end;
+		gap: 6px 12px;
+	}
+	.wording .field {
+		margin-bottom: 0;
 	}
 	.wording legend {
 		font-size: 12px;
@@ -456,12 +465,16 @@
 	}
 	.wording fieldset .mini {
 		justify-self: start;
+		grid-column: 1 / -1;
 	}
 	.hint {
 		font-size: 12px;
 		color: var(--dim);
 	}
 	@media (max-width: 700px) {
+		.wording fieldset {
+			grid-template-columns: minmax(0, 1fr);
+		}
 		.channels li {
 			grid-template-columns: minmax(0, 1fr);
 		}

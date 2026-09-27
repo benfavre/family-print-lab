@@ -123,11 +123,11 @@
 
 	{#if open}
 		<div class="tray" role="region" aria-label="Latest notifications">
-			<header>
+			<div class="tray-head">
 				<strong>Notifications</strong>
 				<span class="sub">{unread ? `${unread} unread` : 'All read'}</span>
 				{#if unread}<button type="button" class="mini" onclick={markAll}>Mark all read</button>{/if}
-			</header>
+			</div>
 			{#if failed}
 				<p class="empty">Could not load notifications.</p>
 			{:else if !items.length}
@@ -155,7 +155,7 @@
 					{/each}
 				</ol>
 			{/if}
-			<footer>
+			<div class="tray-foot">
 				<a
 					class="mini"
 					href="{resolve('/integrations')}#notifications"
@@ -163,7 +163,7 @@
 				>
 				{#if items.length}<button type="button" class="mini" onclick={clearAll}>Clear all</button
 					>{/if}
-			</footer>
+			</div>
 		</div>
 	{/if}
 </div>
@@ -203,23 +203,23 @@
 		padding: 12px;
 		scrollbar-width: thin;
 	}
-	header,
-	footer {
+	.tray-head,
+	.tray-foot {
 		display: flex;
 		align-items: center;
 		gap: 10px;
 	}
-	header {
+	.tray-head {
 		margin-bottom: 8px;
 	}
-	footer {
+	.tray-foot {
 		margin-top: 10px;
 		justify-content: space-between;
 	}
-	footer a.mini {
+	.tray-foot a.mini {
 		text-decoration: none;
 	}
-	header strong {
+	.tray-head strong {
 		font-size: 14px;
 	}
 	.sub {
@@ -315,6 +315,15 @@
 	.meta {
 		font-size: 11.5px;
 		color: var(--dim);
+	}
+	@media (max-width: 700px) {
+		.tray {
+			position: fixed;
+			left: 12px;
+			right: 12px;
+			top: 58px;
+			width: auto;
+		}
 	}
 	.dot {
 		width: 8px;
