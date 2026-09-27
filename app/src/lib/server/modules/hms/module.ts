@@ -68,13 +68,13 @@ export default defineModule({
 				const first = !lastError.has(printerId);
 				const before = lastError.get(printerId) ?? 0;
 				lastError.set(printerId, s.printError);
+				if (before === s.printError && !first) return;
 				const current = service.active(printerId);
 				if (first)
 					service.reconcile(
 						printerId,
 						current.map((a) => ({ kind: a.kind as HmsKind, key: a.key }))
 					);
-				if (before === s.printError && !first) return;
 				if (before) service.cleared(printerId, 'print_error', printErrorKey(before));
 				if (current.some((a) => a.kind === 'print_error'))
 					service.raised(printerId, 'print_error', printErrorKey(s.printError), jobFor(printerId));

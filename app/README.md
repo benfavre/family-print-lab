@@ -86,6 +86,7 @@ How the app talks to Bambu Lab printers, from the saved settings to the live pag
 - **Live updates**: `/api/events` sends each printer's status (throttled to one per 750 ms per printer) and module live channels (`event: live`) to every open tab; `LabStore` keeps printers by id.
 - **Pages**: `/printers` (overview) and `/printers/[id]` (current print, temperatures, AMS, alerts, connection, ready jobs); Settings → Printers adds, tests, reorders and removes printers. Packages add panels and tabs through the UI registry instead of editing the pages.
 - **Simulator** `sim/`: a simulated printer for every model, started from real published reports (`sim/states/`), speaking MQTT and FTP like firmware. Packages add behaviour in `sim/features/`. `npm run dev:sim` runs a fleet; `testing/harness.ts` gives tests one on free ports.
+- **Printer errors** `modules/hms/`: HMS alerts and print errors in plain words from an offline database (`resources/hms/`, built by `bun run hms:build` from Bambu Studio's texts at the pinned release and ha-bambulab's), with severity, wiki link, Bambu's picture and the buttons Bambu defines (`commands/defs/hms.ts`). Raised and cleared alerts are kept in `hms_events`; `/printers/[id]/alerts` shows them.
 - **Camera and print queue** are not in the app yet. They come as the `camera` and `queue` packages, each a server module with its own routes, commands, simulator feature and UI slots (`docs/parity/PLAN.md` 5.3 and 5.11). What works today and what is still to come: [`docs/parity/STATUS.md`](../docs/parity/STATUS.md).
 
 ## Checks
