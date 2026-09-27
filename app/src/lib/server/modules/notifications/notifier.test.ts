@@ -90,7 +90,9 @@ describe('the notification centre', () => {
 		const { notifier: n2 } = setup();
 		n2.notify({ title: 'x', body: '', level: 'info', link: 'https://evil.example' });
 		n2.notify({ title: 'y', body: '', level: 'info', link: '/jobs' });
-		expect(n2.store.list().map((i) => i.link)).toEqual(['/jobs', null]);
+		n2.notify({ title: 'z', body: '', level: 'info', link: '//evil.example/x' });
+		n2.notify({ title: 'w', body: '', level: 'info', link: '/\\evil.example' });
+		expect(n2.store.list().map((i) => i.link)).toEqual([null, null, '/jobs', null]);
 	});
 });
 
@@ -122,6 +124,52 @@ describe('settings', () => {
 			saved
 		);
 		expect(cleared.channels[0]).toMatchObject({ token: null });
+	});
+
+	it('keep a saved secret only while the channel points where it was entered for', () => {
+		const saved = applyInput(
+			{
+				inApp: [],
+				channels: [
+					{ id: 'n', kind: 'ntfy', server: 'https://ntfy.example.com', topic: 't1', token: 'tk_1' },
+					{
+						id: 'm',
+						kind: 'email',
+						host: 'smtp.example.com',
+						port: 587,
+						security: 'starttls',
+						user: 'me',
+						password: 'pw',
+						from: 'a@example.com',
+						to: 'b@example.com'
+					},
+					{ id: 'w', kind: 'webhook', url: 'https://hooks.example.com/a', secret: 's3' }
+				]
+			},
+			DEFAULT_SETTINGS
+		);
+		const view = settingsView(saved, { last: new Map(), desktopAvailable: false, modules: [] });
+		const [n, m, w] = view.channels as unknown as Record<string, unknown>[];
+		const apply = (channels: Record<string, unknown>[]) =>
+			applyInput({ inApp: [], channels }, saved);
+		// Same place (another topic, a trailing slash, another path on the same site): kept.
+		expect(
+			apply([{ ...n, server: 'https://NTFY.example.com/', topic: 't2' }, m, w]).channels[0]
+		).toMatchObject({ token: 'tk_1', topic: 't2' });
+		expect(apply([n, m, { ...w, url: 'https://hooks.example.com/b' }]).channels[2]).toMatchObject({
+			secret: 's3'
+		});
+		// Elsewhere: the secret must be typed again, or removed.
+		expect(() => apply([{ ...n, server: 'https://evil.example' }, m, w])).toThrow(/token again/);
+		expect(() => apply([{ ...n, server: undefined }, m, w])).toThrow(/token again/);
+		expect(() => apply([n, { ...m, host: 'smtp.evil.example' }, w])).toThrow(/password again/);
+		expect(() => apply([n, m, { ...w, url: 'https://evil.example/a' }])).toThrow(/secret again/);
+		expect(
+			apply([{ ...n, server: 'https://evil.example', token: 'tk_2' }, m, w]).channels[0]
+		).toMatchObject({ token: 'tk_2' });
+		expect(
+			apply([{ ...n, server: 'https://ntfy.sh', token: null }, m, w]).channels[0]
+		).toMatchObject({ token: null });
 	});
 
 	it('keep only edited templates and refuse bad channels', () => {

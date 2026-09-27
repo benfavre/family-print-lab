@@ -79,6 +79,8 @@
 			(d) => {
 				unread = d.unread;
 				if (d.item) items = [d.item, ...items.filter((n) => n.id !== d.item!.id)].slice(0, 50);
+				// Read or cleared in another tab: the open list catches up (a closed one loads on open).
+				else if (open) void load();
 			}
 		);
 		return off;

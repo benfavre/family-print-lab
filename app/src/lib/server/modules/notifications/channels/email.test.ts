@@ -28,6 +28,8 @@ async function fakeSmtp(o: {
 	starttls?: boolean;
 	auth: string;
 	password: string;
+	/** Sends one more reply in the same packet as STARTTLS's 220 (a response injection). */
+	inject?: string;
 }) {
 	const sessions: Session[] = [];
 	const serve = (socket: net.Socket) => {
@@ -74,7 +76,8 @@ async function fakeSmtp(o: {
 					if (secure || !o.starttls) reply(`250-AUTH ${o.auth}`);
 					reply('250 8BITMIME');
 				} else if (verb === 'STARTTLS') {
-					reply('220 2.0.0 Ready to start TLS');
+					if (o.inject) socket.write(`220 2.0.0 Ready to start TLS\r\n${o.inject}\r\n`);
+					else reply('220 2.0.0 Ready to start TLS');
 					socket.off('data', onData);
 					const upgraded = new tls.TLSSocket(socket, { isServer: true, ...leaf });
 					secure = true;
@@ -186,6 +189,21 @@ describe.skipIf(!openssl)('email over SMTP', () => {
 		} finally {
 			await plain.close();
 			await wrong.close();
+		}
+	});
+
+	it('refuses replies sent in plain text after STARTTLS', async () => {
+		const smtp = await fakeSmtp({
+			starttls: true,
+			auth: 'PLAIN',
+			password: 'hunter22',
+			inject: '250-fake.smtp\r\n250 AUTH PLAIN'
+		});
+		try {
+			await expect(sendMail(mail(smtp.port))).rejects.toThrow('sent more before STARTTLS');
+			expect(smtp.sessions[0].commands.some((c) => c.startsWith('AUTH'))).toBe(false);
+		} finally {
+			await smtp.close();
 		}
 	});
 

@@ -70,6 +70,11 @@ class Replies {
 		this.socket?.off('close', this.onClose);
 	}
 
+	/** Anything read but not yet used (after STARTTLS it would be plain text injected before TLS). */
+	get unread() {
+		return this.buf.length + this.lines.length + this.ready.length > 0;
+	}
+
 	private push(r: Reply) {
 		if (this.waiting) {
 			this.waiting.resolve(r);
@@ -148,6 +153,10 @@ export async function sendMail(o: MailOptions): Promise<string> {
 				throw new Error('The mail server does not offer STARTTLS, so nothing was sent.');
 			await replies.expect([220], 'STARTTLS');
 			replies.detach();
+			// Anything sent before the TLS handshake could be forged by anyone on the path, so none of it
+			// may be carried over (RFC 3207 section 4.2: discard what was not obtained over TLS).
+			if (replies.unread)
+				throw new Error('The mail server sent more before STARTTLS, so nothing was sent.');
 			const secure = tls.connect({ ...options, socket });
 			await new Promise<void>((resolve, reject) => {
 				secure.once('secureConnect', resolve);

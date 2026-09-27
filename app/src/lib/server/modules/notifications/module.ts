@@ -2,7 +2,7 @@
 // channels (ntfy, webhook, Discord, Telegram, email). Listens to every bus event and tells the ones
 // in the catalogue (shared/notifications.ts); other packages call notify() through NotifyService.
 import { defineModule, type ModuleContext } from '../../modules';
-import type { CameraService, HmsService, NotifyService } from '../contracts';
+import type { CameraService, HmsInfo, HmsService, NotifyService } from '../contracts';
 import type {
 	DeliveryResult,
 	NotificationList,
@@ -77,7 +77,7 @@ export default defineModule({
 			hms(code, printerId) {
 				try {
 					const info = optional<HmsService>(ctx, 'hms')?.describe(code, printerId);
-					if (info) return { text: info.text, severity: info.severity };
+					if (info) return { text: described(info), severity: info.severity };
 				} catch {
 					/* fall back to the code */
 				}
@@ -85,7 +85,8 @@ export default defineModule({
 			},
 			printError(code, printerId) {
 				try {
-					const text = optional<HmsService>(ctx, 'hms')?.describe(code, printerId).text;
+					const info = optional<HmsService>(ctx, 'hms')?.describe(code, printerId);
+					const text = info && described(info);
 					if (text) return text;
 				} catch {
 					/* fall back to the code */
@@ -176,6 +177,14 @@ export default defineModule({
 		];
 	}
 });
+
+/**
+ * The hms package's words for a code, or nothing when it has none (it then says "No description
+ * for this code yet" and marks it `known: false`; the code itself tells people more).
+ */
+export function described(info: HmsInfo & { known?: boolean }): string {
+	return info.known === false ? '' : info.text;
+}
 
 /** Keys of the packages present (for events that only some packages emit). */
 function moduleKeys(ctx: ModuleContext): string[] {

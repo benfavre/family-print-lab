@@ -111,7 +111,7 @@ export const NOTIFY_EVENTS: NotifyEventDef[] = [
 		name: 'queue.held',
 		label: 'Queue held a job',
 		level: 'warning',
-		template: { title: 'A queued print is waiting', body: '{{job}} on {{printer}}: {{error}}' },
+		template: { title: 'A queued print is waiting', body: '{{job}}: {{error}}' },
 		channelDefault: false,
 		module: 'queue'
 	},
@@ -239,3 +239,22 @@ export interface NotificationSettingsView {
 
 export const DEFAULT_QUIET: QuietHours = { enabled: false, from: '22:00', to: '07:00' };
 export const DEFAULT_NTFY_SERVER = 'https://ntfy.sh';
+
+/** The field that says where a kind's secret is sent (Telegram's token only goes to Telegram). */
+export const SECRET_DESTINATION: Partial<Record<ChannelKind, 'server' | 'url' | 'host'>> = {
+	ntfy: 'server',
+	webhook: 'url',
+	email: 'host'
+};
+
+/** The site a server or address points at (scheme, host and port), for comparing destinations. */
+export function destinationOf(value: unknown): string {
+	const text = String(value ?? '')
+		.trim()
+		.toLowerCase();
+	try {
+		return /^https?:\/\//.test(text) ? new URL(text).origin : text;
+	} catch {
+		return text;
+	}
+}

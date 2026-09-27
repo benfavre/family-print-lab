@@ -92,7 +92,8 @@ export class Notifier implements NotifyService {
 			body: String(m.body ?? '').slice(0, 1000),
 			printerId: m.printerId ?? null,
 			jobId: null,
-			link: m.link?.startsWith('/') ? m.link : null,
+			// In-app paths only (not //host, which browsers read as another site).
+			link: m.link && /^\/(?![/\\])/.test(m.link) ? m.link.slice(0, 500) : null,
 			at: this.now().toISOString(),
 			data: {},
 			kidJob: false,

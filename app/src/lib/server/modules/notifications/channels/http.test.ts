@@ -120,6 +120,18 @@ describe('Discord', () => {
 		});
 	});
 
+	it('leaves out empty text instead of sending empty strings', async () => {
+		const s = await server(() => ({ status: 204, body: '' }));
+		await sendHttp(
+			channel({ kind: 'discord', url: s.url }) as never,
+			delivery({ body: '' }),
+			opts()
+		);
+		const [embed] = JSON.parse(s.received[0].body.toString()).embeds;
+		expect(embed).toMatchObject({ title: 'Rocket failed' });
+		expect(embed).not.toHaveProperty('description');
+	});
+
 	it('sends a picture as multipart payload_json + files[0]', async () => {
 		const s = await server();
 		await sendHttp(

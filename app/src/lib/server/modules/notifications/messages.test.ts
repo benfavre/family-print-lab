@@ -129,12 +129,27 @@ describe('event messages', () => {
 	});
 
 	it('events from packages use their common fields; unknown events are not told', () => {
+		// Payloads as the queue and maintenance packages declare them (parity-queue, parity-maintenance).
 		expect(
-			build('queue.held', { printerId: 'p1', jobId: 'j1', reason: 'Plate not cleared' })
-		).toMatchObject({ body: 'Cable dock on Garage X2D: Plate not cleared' });
+			build('queue.held', { itemId: 'q', jobId: 'j1', printerId: null, reason: 'Load PLA' })
+		).toMatchObject({ body: 'Cable dock: Load PLA', printerId: null, link: null });
 		expect(
-			build('maintenance.due', { printerId: 'p1', label: 'Lubricate the rods' })
-		).toMatchObject({ title: 'Garage X2D: maintenance due' });
+			build('queue.dispatched', { itemId: 'q', jobId: 'j1', printerId: 'p1', taskId: 't' })
+		).toMatchObject({
+			title: 'Cable dock is on its way',
+			body: 'The queue sent Cable dock to Garage X2D.'
+		});
+		// The printer is busy with rocket_v2, but the news is the maintenance task.
+		expect(
+			build('maintenance.due', {
+				printerId: 'p1',
+				printerName: 'Garage X2D',
+				taskId: 't',
+				label: 'Lubricate the rods',
+				kind: 'lubricate',
+				by: 'hours'
+			})
+		).toMatchObject({ title: 'Garage X2D: maintenance due', body: 'Lubricate the rods' });
 		expect(build('print.layer', { ...ref, layer: 3 })).toBeNull();
 		expect(build('spool.low', { printerId: 'p1' })).toBeNull();
 	});

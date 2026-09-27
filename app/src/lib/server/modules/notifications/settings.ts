@@ -1,8 +1,12 @@
 // Notification settings: defaults, the browser's view (no secrets, only hasToken and friends), and
 // saving what the browser sends (a missing or empty secret keeps the saved one, null removes it).
 import {
+	DEFAULT_NTFY_SERVER,
+	destinationOf,
 	eventDef,
 	NOTIFY_EVENTS,
+	SECRET_DESTINATION,
+	type ChannelKind,
 	type ChannelView,
 	type DeliveryResult,
 	type NotificationSettingsView,
@@ -78,6 +82,14 @@ export function settingsView(
 	};
 }
 
+/** Why a saved secret cannot follow the channel elsewhere, per kind. */
+const MOVED: Record<string, string> = {
+	ntfy: 'The server changed, so enter the access token again (or remove it).',
+	webhook:
+		'The address points at another site now, so enter the signing secret again (or remove it).',
+	email: 'The mail server changed, so enter the password again.'
+};
+
 /** A channel from the browser, with its saved secrets filled in where the browser left them out. */
 export function mergeChannel(
 	input: Record<string, unknown>,
@@ -87,8 +99,17 @@ export function mergeChannel(
 	const out: Record<string, unknown> = { ...input };
 	for (const field of SECRET_FIELDS[kind] ?? []) {
 		const value = input[field];
-		if (value === undefined || value === '')
-			out[field] = saved?.kind === kind ? (saved as Record<string, unknown>)[field] : undefined;
+		if (value !== undefined && value !== '') continue;
+		const kept = saved?.kind === kind ? (saved as Record<string, unknown>)[field] : undefined;
+		// A saved secret only ever goes where it was entered for: pointing the channel at another
+		// server needs it typed again, or the API could send it anywhere without knowing it.
+		const where = kept ? SECRET_DESTINATION[kind as ChannelKind] : undefined;
+		if (where) {
+			const to = input[where] ?? (kind === 'ntfy' ? DEFAULT_NTFY_SERVER : '');
+			if (destinationOf(to) !== destinationOf((saved as Record<string, unknown>)[where]))
+				throw new AppError(400, MOVED[kind]);
+		}
+		out[field] = kept;
 	}
 	// Leave hasToken & co. out: they are the view's, not settings.
 	for (const k of ['hasToken', 'hasSecret', 'hasUrl', 'hasPassword', 'last']) delete out[k];

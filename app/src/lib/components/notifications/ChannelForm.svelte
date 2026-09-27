@@ -3,8 +3,10 @@
 	import {
 		channelKind,
 		DEFAULT_NTFY_SERVER,
+		destinationOf,
 		HMS_SEVERITIES,
 		NOTIFY_EVENTS,
+		SECRET_DESTINATION,
 		type ChannelKind,
 		type ChannelView,
 		type DeliveryResult
@@ -77,6 +79,13 @@
 		email: { field: 'password', flag: 'hasPassword', label: 'Password' }
 	};
 	const secret = $derived(SECRET[kind]);
+	/** A saved secret stays with the server it was entered for (the server refuses to move it). */
+	const moved = $derived.by(() => {
+		const where = SECRET_DESTINATION[kind];
+		if (!where || !secret || !saved(secret.flag) || f.removeSecret) return false;
+		const before = (channel as Record<string, unknown> | null)?.[where];
+		return destinationOf(f[where]) !== destinationOf(before);
+	});
 	const optionalSecret = $derived(kind === 'ntfy' || kind === 'webhook' || kind === 'email');
 	const SERVICE: Record<ChannelKind, string> = {
 		desktop: '',
@@ -234,7 +243,14 @@
 				>
 			</div>
 			<label class="field"
-				>Encryption<select bind:value={f.security}>
+				>Encryption<select
+					bind:value={f.security}
+					onchange={() => {
+						// Follow the usual port unless another one was typed.
+						if (f.security === 'tls' && Number(f.port) === 587) f.port = 465;
+						if (f.security === 'starttls' && Number(f.port) === 465) f.port = 587;
+					}}
+				>
 					<option value="starttls">STARTTLS (usually port 587)</option>
 					<option value="tls">TLS (usually port 465)</option>
 				</select></label
@@ -257,11 +273,15 @@
 				>{secret.label}<input
 					type="password"
 					bind:value={f.secret}
-					required={!optionalSecret && !saved(secret.flag)}
+					required={moved || (!optionalSecret && !saved(secret.flag))}
 					maxlength="500"
 					autocomplete="off"
-					placeholder={saved(secret.flag) ? 'Leave empty to keep' : ''}
-				/><small>It stays on this computer and is never shown again.</small></label
+					placeholder={saved(secret.flag) && !moved ? 'Leave empty to keep' : ''}
+				/><small
+					>{moved
+						? 'The saved one only goes to the server it was entered for, so enter it again.'
+						: 'It stays on this computer and is never shown again.'}</small
+				></label
 			>
 			{#if optionalSecret && saved(secret.flag)}
 				<label class="toggle"

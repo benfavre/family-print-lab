@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { RequestEvent } from '@sveltejs/kit';
 import { startTestLab, type TestLab } from '../../testing/harness';
 import { fakeServer } from './testing';
+import { described } from './module';
 import { runOut } from '../../printer/sim/features/notifications';
 import { GET as list, DELETE as clear } from '../../../../routes/api/notifications/+server';
 import { POST as read } from '../../../../routes/api/notifications/read/+server';
@@ -150,5 +151,23 @@ describe('notifications in a lab', () => {
 			available: true,
 			detail: '1 channel on, plus the bell.'
 		});
+	});
+
+	it('uses the hms package’s words only when it knows the code', () => {
+		const info = {
+			key: '0300800A',
+			kind: 'print_error' as const,
+			severity: 'serious' as const,
+			module: 'toolhead',
+			wikiUrl: null,
+			actions: []
+		};
+		expect(described({ ...info, text: 'Spaghetti detected.', known: true })).toBe(
+			'Spaghetti detected.'
+		);
+		expect(described({ ...info, text: 'No description for this code yet.', known: false })).toBe(
+			''
+		);
+		expect(described({ ...info, text: 'Spaghetti detected.' })).toBe('Spaghetti detected.');
 	});
 });

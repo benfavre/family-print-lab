@@ -93,7 +93,10 @@ export function buildMessage(
 	const jobId = str(d.jobId) || null;
 	const state = printerId ? lookups.printerState(printerId) : null;
 	const job = jobId ? lookups.job(jobId) : null;
-	const task = str(d.task) || state?.task || '';
+	// Package events (queue, maintenance, AI checks) name their subject themselves; the printer's
+	// current print is only a fallback for print events.
+	const own = def.module ? str(d.label) || str(d.title) : '';
+	const task = str(d.task) || own || state?.task || '';
 	const vars: Partial<Record<TemplateVar, string>> = {
 		printer: str(d.printerName) || (printerId && lookups.printerName(printerId)) || 'The printer',
 		task: task || job?.title || 'The print',
@@ -162,7 +165,6 @@ export function buildMessage(
 		default:
 			// Events from packages (queue, maintenance, AI checks): their common fields.
 			vars.error = str(d.reason) || str(d.error) || str(d.message);
-			if (!task) vars.task = str(d.label) || str(d.title) || vars.task;
 	}
 
 	const template = templates[event.name] ?? def.template;

@@ -138,12 +138,10 @@ const DISCORD_COLOUR: Record<NotifyLevel, number> = {
  * attachment://. Mentions are switched off so a print name can never ping anyone.
  */
 export function discordRequest(c: Of<'discord'>, d: Delivery): { url: string; init: RequestInit } {
-	const embed: Record<string, unknown> = {
-		title: d.title.slice(0, 256),
-		description: d.body.slice(0, 4096),
-		color: DISCORD_COLOUR[d.level],
-		timestamp: d.at
-	};
+	// Empty text is left out rather than sent as empty strings.
+	const embed: Record<string, unknown> = { color: DISCORD_COLOUR[d.level], timestamp: d.at };
+	if (d.title) embed.title = d.title.slice(0, 256);
+	if (d.body) embed.description = d.body.slice(0, 4096);
 	if (d.url) embed.url = d.url;
 	if (d.picture) embed.image = { url: 'attachment://snapshot.jpg' };
 	const payload = { embeds: [embed], allowed_mentions: { parse: [] } };

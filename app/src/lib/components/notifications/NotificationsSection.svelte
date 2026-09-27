@@ -35,12 +35,15 @@
 	);
 	const pictures = $derived(!!s?.channels.some((c) => c.snapshots));
 
-	async function load() {
+	async function load(keepWording = false) {
 		try {
 			const r = await fetch('/api/notifications/settings');
 			const data = await r.json();
 			if (!r.ok) throw new Error(data.error);
-			adopt(data);
+			if (keepWording) {
+				s = data;
+				problem = '';
+			} else adopt(data);
 		} catch (error) {
 			problem = (error as Error).message || 'Could not load the notification settings.';
 		}
@@ -73,6 +76,8 @@
 			success
 		);
 		if (res) adopt(res.settings);
+		// Refused (lab.call shows why): the switches go back to what is saved, drafts stay.
+		else await load(true);
 		return !!res;
 	}
 
