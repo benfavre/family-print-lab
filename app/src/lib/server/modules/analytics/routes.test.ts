@@ -2,6 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { RequestEvent } from '@sveltejs/kit';
 import { startTestLab, type TestLab } from '../../testing/harness';
+import { kidAccess } from '../../kid/session';
 import { GET as stats } from '../../../../routes/api/analytics/+server';
 import { GET as csv } from '../../../../routes/api/analytics/export.csv/+server';
 
@@ -78,5 +79,15 @@ describe('GET /api/analytics/export.csv', () => {
 		expect(text).toContain(
 			'2026-09-20 12:00,"Hook, ""big""",Alex,No printer set,Succeeded,PETG,20,0.6,42,,'
 		);
+	});
+});
+
+describe('kid mode', () => {
+	it('keeps the statistics for grown-ups', () => {
+		expect(kidAccess('GET', '/api/analytics', '/api/analytics')).toBe('refuse');
+		expect(kidAccess('GET', '/api/analytics/export.csv', '/api/analytics/export.csv')).toBe(
+			'refuse'
+		);
+		expect(kidAccess('GET', '/analytics', '/analytics')).toBe('redirect');
 	});
 });
