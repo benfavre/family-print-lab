@@ -71,6 +71,13 @@
       "when": 1790400540000,
       "tag": "0018_slicer_projects",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1790400600000,
+      "tag": "0015_model_import",
+      "breakpoints": true
     }
   ]
 }
