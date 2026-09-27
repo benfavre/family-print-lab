@@ -152,6 +152,19 @@ fetch, export, re-fetch from the queue, a clean rebase, a conflicting one (with 
 `--report`), a recorded resolution replayed by rerere, and a tag that moved upstream (refused). CI runs
 it on every pull request.
 
+`bash slicer/tests/test-results.test.sh` checks that native, protocol and integration failures are
+collected in one run while retaining a failing exit status. `--native-only` still skips integrations.
+`python3 slicer/tests/macos-runtime.test.py` tests dylib relocation, transitive dependencies,
+signing order and licence notices using portable Mach-O fixtures. To audit a downloaded macOS
+bundle on any platform, run:
+
+```
+python3 slicer/scripts/bundle-macos-runtime.py --audit slicer/dist/darwin-arm64
+```
+
+The audit rejects dependencies outside the bundle except Apple's system libraries and frameworks.
+The macOS installer smoke test repeats it against the actual installed bundle before launching it.
+
 ## Building the engine
 
 `slicer/scripts/upstream.sh build [-j N]` (or `bun run slicer:build` from `app/`) does everything:
@@ -172,6 +185,9 @@ EXCLUDE_FROM_ALL)` (`SLIC3R_GUI=OFF`, `FLATPAK=ON` so no FFmpeg is copied) and b
    info from the same tag), `LICENSE`, `engine.json`. The app finds it there (`slicer/locate.ts`);
    the desktop build copies it next to the server. The build fails if the binary mentions
    `bambu_networking` or `NetworkAgent`.
+   Windows runtime DLLs are copied with the bundle. On macOS, non-system dylibs are copied,
+   their load paths are relocated within the bundle, and modified Mach-O files are ad-hoc signed.
+   The zstd runtime retains its BSD licence notice under `licenses/`.
 
 CI retains a completed dependency prefix even if the later engine build or tests fail; incomplete
 or mismatched stamps are never saved. Pushes and desktop releases build all three platforms. A
