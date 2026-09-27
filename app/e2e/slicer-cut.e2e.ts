@@ -56,3 +56,45 @@ test('cuts a painted object into independent halves, saves them and undoes the w
 	await page.getByRole('button', { name: 'Redo', exact: true }).click();
 	await expect(objects.getByRole('option', { name: /Cut cube \(above\)/ })).toBeVisible();
 });
+
+test('leaving the workspace cancels a late cut without starting another save', async ({
+	page,
+	context
+}) => {
+	await context.addInitScript(() => sessionStorage.setItem('print-lab-profile', 'all'));
+	const imported = await page.request.post(
+		'/api/slicer-projects/import?projectId=idea-03&name=Late%20cut.stl&format=stl',
+		{
+			data: Buffer.from(binaryStl(primitiveSoup('box', [20, 20, 20]))),
+			headers: { 'content-type': 'application/octet-stream' }
+		}
+	);
+	const id = (await imported.json()).slicerProject.id;
+	const before = await (await page.request.get(`/api/slicer-projects/${id}`)).json();
+	await page.goto(`/projects/idea-03/slicer/${id}`);
+	await page.locator('html[data-ready]').waitFor({ state: 'attached' });
+	await page.getByRole('option', { name: /Late cut/ }).click();
+	const panel = page.getByRole('region', { name: 'Object', exact: true });
+	await panel.getByText('Cut', { exact: true }).click();
+	let release!: () => void, started!: () => void;
+	const held = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	const pending = new Promise<void>((resolve) => {
+		started = resolve;
+	});
+	await page.route('**/api/slicer-ui/meshes/cut', async (route) => {
+		const response = await route.fetch();
+		started();
+		await held;
+		await route.fulfill({ response }).catch(() => {}); // A cancelled request may already be closed.
+	});
+	await panel.getByRole('button', { name: 'Cut object', exact: true }).click();
+	await pending;
+	await page.locator('.sw-top .crumbs a').click(); // Svelte navigation disposes the workspace.
+	await expect(page).toHaveURL('/projects/idea-03');
+	release();
+	// A stale callback used to restart the 1200 ms autosave after the workspace was disposed.
+	await page.waitForTimeout(1600);
+	expect(await (await page.request.get(`/api/slicer-projects/${id}`)).json()).toEqual(before);
+});

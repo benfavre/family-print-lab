@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { untrack, onDestroy } from 'svelte';
 	import type { WorkspaceState } from '$lib/client/slicer/workspace.svelte';
 	import { applyCut, cutDetails, cutProblem } from '$lib/client/slicer/cut';
 	import { instanceBox } from '$lib/client/slicer/edit';
@@ -15,6 +15,12 @@
 	let clearDetails = $state(false);
 	let working = $state(false);
 	let error = $state('');
+	let active: AbortController | null = null;
+	onDestroy(() => active?.abort());
+	$effect(() => {
+		void ws.selection;
+		return () => active?.abort();
+	});
 	const problem = $derived(cutProblem(object));
 	const details = $derived(cutDetails(object));
 	$effect(() => {
@@ -30,6 +36,10 @@
 	async function cut() {
 		if (working || problem || (details && !clearDetails)) return;
 		const before = ws.project;
+		const consent = clearDetails;
+		const selection = JSON.stringify(ws.selection);
+		const operation = new AbortController();
+		active = operation;
 		const id = object.id,
 			meshId = object.parts[0].mesh;
 		working = true;
@@ -38,6 +48,7 @@
 		try {
 			const response = await fetch('/api/slicer-ui/meshes/cut', {
 				method: 'POST',
+				signal: operation.signal,
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({
 					meshId,
@@ -49,15 +60,19 @@
 			});
 			const result = await response.json();
 			if (!response.ok) throw new Error(result.error ?? 'The object could not be cut.');
+			if (operation.signal.aborted || JSON.stringify(ws.selection) !== selection) return;
 			if (ws.project !== before) throw new Error('The project changed while cutting. Try again.');
 			ws.change('Cut object', (draft) => {
-				applyCut(draft, id, meshId, result as CutAnswer, clearDetails);
+				applyCut(draft, id, meshId, result as CutAnswer, consent);
 			});
 		} catch (e) {
-			error = (e as Error).message;
+			if (!operation.signal.aborted) error = (e as Error).message;
 		} finally {
-			working = false;
-			ws.busy = '';
+			if (active === operation) {
+				active = null;
+				working = false;
+				if (ws.busy === 'Cutting the object…') ws.busy = '';
+			}
 		}
 	}
 </script>
