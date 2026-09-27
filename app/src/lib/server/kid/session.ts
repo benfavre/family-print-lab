@@ -49,6 +49,8 @@ export function kidAccess(
 	routeId: string | null,
 	moduleReads: RegExp[] = []
 ): 'allow' | 'redirect' | 'refuse' {
+	// Logging in (lan-auth): a kid tablet whose session ran out must reach the login page.
+	if (pathname === '/login' || pathname === '/api/auth/login') return 'allow';
 	if (pathname === '/api/kid' || pathname.startsWith('/api/kid/')) return 'allow';
 	if (pathname.startsWith('/api/')) {
 		const read = method === 'GET' || method === 'HEAD';
