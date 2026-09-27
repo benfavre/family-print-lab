@@ -8,6 +8,9 @@ import type { CloudLink } from './link';
 import { controlMac, open, openSnapshot, phoneKeys, type PhoneKeys } from './phone';
 import type { PrinterSummaryV2 } from './remote';
 import { isJpeg } from '../modules/camera/jpeg6000';
+import type { RequestEvent } from '@sveltejs/kit';
+import { PATCH as settingsRoute } from '../../../routes/api/cloud/+server';
+import { POST as phoneKeyRoute } from '../../../routes/api/cloud/phone-key/+server';
 
 let sim: CloudSim;
 let t: TestLab;
@@ -208,5 +211,44 @@ describe('Print Lab Cloud protocol v2', () => {
 		cloud.setRemote({ shareProgress: false, remoteControl: false, snapshots: false });
 		await until(() => printers() === null, 'cleared');
 		expect(sim.state().printers).toMatchObject({ control: false, snapshots: false });
+	});
+
+	it('asks for the parent PIN to show the phone key or turn remote control on', async () => {
+		const holder = globalThis as Record<symbol, unknown>;
+		const key = Symbol.for('family-print-lab.runtime');
+		holder[key] = t.rt;
+		const call = (route: (e: RequestEvent) => Promise<Response> | Response, body: unknown) =>
+			route({
+				request: new Request('http://localhost/api/cloud', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify(body)
+				})
+			} as unknown as RequestEvent);
+		try {
+			expect((await call(phoneKeyRoute, { action: 'show', pin: '1234' })).status).toBe(409);
+			t.rt.pin.set({ pin: '2468' });
+			expect((await call(phoneKeyRoute, { action: 'show', pin: '1111' })).status).toBe(403);
+			const shown = (await (await call(phoneKeyRoute, { action: 'show', pin: '2468' })).json()) as {
+				id: string;
+				url: string;
+			};
+			expect(shown.url).toMatch(new RegExp(`^${sim.url}/phone-key#k=[\\w-]{43}$`));
+			expect(shown.id).toBe(cloud.status().phoneKey?.id);
+
+			cloud.setRemote({ shareProgress: true });
+			expect((await call(settingsRoute, { remoteControl: true })).status).toBe(403);
+			expect(cloud.status().remoteControl).toBe(false);
+			const on = await call(settingsRoute, { remoteControl: true, pin: '2468' });
+			expect(await on.json()).toMatchObject({ remoteControl: true });
+			// Turning it off needs no PIN.
+			expect(await (await call(settingsRoute, { remoteControl: false })).json()).toMatchObject({
+				remoteControl: false
+			});
+			// The key itself never appears in the status.
+			expect(JSON.stringify(cloud.status())).not.toContain(shown.url.split('#k=')[1]);
+		} finally {
+			delete holder[key];
+		}
 	});
 });
