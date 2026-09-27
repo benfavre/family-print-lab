@@ -23,6 +23,19 @@ const httpUrl = z.union([
 
 export const version = z.number().int().positive();
 
+/** Patches keep every field optional without defaults: zod 4 applies a field's default even inside `.partial()`, which would reset every field a patch leaves out. */
+function patchOf<T extends z.ZodRawShape>(shape: T) {
+	const fields = Object.fromEntries(
+		Object.entries(shape).map(([key, field]) => [
+			key,
+			((field instanceof z.ZodDefault ? field.unwrap() : field) as z.ZodType).optional()
+		])
+	);
+	return z.strictObject(fields) as unknown as z.ZodObject<{
+		[K in keyof T]: z.ZodOptional<T[K] extends z.ZodDefault<infer U> ? U : T[K]>;
+	}>;
+}
+
 export const profileInput = z.strictObject({
 	name: required(80),
 	age: z.number().int().min(0).max(120).nullable().default(null),
@@ -30,7 +43,7 @@ export const profileInput = z.strictObject({
 	interests: text(500).default(''),
 	kid: z.enum(KID_LEVELS).nullable().default(null)
 });
-export const profilePatch = profileInput.partial().extend({ version });
+export const profilePatch = patchOf(profileInput.shape).extend({ version });
 
 export const checklistStep = z.strictObject({
 	text: required(200),
@@ -50,7 +63,9 @@ export const projectInput = z.strictObject({
 	pinned: z.boolean().default(false),
 	checklist: z.array(checklistStep).max(60).optional()
 });
-export const projectPatch = projectInput.omit({ checklist: true }).partial().extend({ version });
+export const projectPatch = patchOf(projectInput.omit({ checklist: true }).shape).extend({
+	version
+});
 
 export const spoolInput = z
 	.strictObject({
