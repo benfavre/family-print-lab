@@ -21,6 +21,7 @@
 	import SettingsEditor from './SettingsEditor.svelte';
 	import LayerHeightEditor from './LayerHeightEditor.svelte';
 	import CutPanel from './CutPanel.svelte';
+	import BooleanPanel from './BooleanPanel.svelte';
 
 	// The selected object (or part): name, position, rotation and scale, filament, its own settings,
 	// height ranges, variable layer height, parts and modifiers, and painting.
@@ -184,6 +185,7 @@
 			<button class="mini" onclick={() => ws.dropSelection()}>Drop to bed</button>
 			{#if ws.can('orient')}<button class="mini" onclick={() => ws.orient()}>Orient</button>{/if}
 		</div>
+		<BooleanPanel {ws} />
 	</section>
 {:else if obj && inst && parts}
 	<section class="panel op" aria-label={part ? 'Part' : 'Object'}>
