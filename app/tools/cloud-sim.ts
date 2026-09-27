@@ -9,6 +9,9 @@
 //   POST /sim/decide {requestId, decision, reply?, version?}   answer as the phone would
 //   POST /sim/plan {active}                 Family plan on or off (sent on next connect)
 //   POST /sim/unlink                        remove the device (tells a connected app)
+//   POST /sim/control {printerId, action, commandId, at, mac, queueItemId?}   relay a phone command (v2)
+//   POST /sim/snapshot {printerId}          ask for a sealed camera picture (v2)
+// Like Print Lab Cloud, it relays commands and sealed pictures as they are: it has no phone key.
 import { createHash, randomBytes } from 'node:crypto';
 import http from 'node:http';
 import type { Duplex } from 'node:stream';
@@ -51,6 +54,18 @@ export interface CloudSim {
 	/** The shop: items (with what to install), the account's credits, and files for models. */
 	setShop(shop: { items: SimShopItem[]; credits: number; files?: Record<string, Buffer> }): void;
 	unlink(): void;
+	/** Relays a phone's signed command (protocol v2) and waits for the app's answer. */
+	control(command: {
+		printerId: string;
+		action: string;
+		commandId: string;
+		at: number;
+		mac: string;
+		queueItemId?: string;
+		by?: string;
+	}): Promise<{ ok: boolean; error?: string }>;
+	/** Asks for a camera picture (protocol v2); resolves with the app's `snapshot` message. */
+	snapshot(printerId: string, requestId?: string): Promise<Record<string, unknown>>;
 	state(): {
 		devices: { id: string; name: string; account: string }[];
 		connected: boolean;
@@ -59,6 +74,10 @@ export interface CloudSim {
 		/** The last `printer` message: undefined if none came, null if sharing is off. */
 		printer: unknown;
 		printerMessages: number;
+		/** The last v2 `printers` message (undefined if none came). */
+		printers: Record<string, unknown> | undefined;
+		/** The last v2 `queue` message. */
+		queue: Record<string, unknown> | undefined;
 		backups: { id: string; size: number; keyId: string }[];
 	};
 	close(): Promise<void>;
@@ -80,7 +99,12 @@ const userCode = () => {
 	return `${c.slice(0, 4)}-${c.slice(4)}`;
 };
 
-export function startCloudSim(port = 0, host = '127.0.0.1'): Promise<CloudSim> {
+export function startCloudSim(
+	port = 0,
+	host = '127.0.0.1',
+	/** Protocol versions this cloud accepts (an older cloud: [1]). */
+	protocols: number[] = [1, 2]
+): Promise<CloudSim> {
 	const pairings: Pairing[] = [];
 	const devices: Device[] = [];
 	const tickets = new Map<string, string>();
@@ -97,6 +121,9 @@ export function startCloudSim(port = 0, host = '127.0.0.1'): Promise<CloudSim> {
 		createdAt: string;
 	}[] = [];
 	let printerMessages = 0;
+	let printers2: Record<string, unknown> | undefined = undefined;
+	let queue: Record<string, unknown> | undefined = undefined;
+	const snapshots = new Map<string, (m: Record<string, unknown>) => void>();
 	let packs: unknown[] = [];
 	let shop: { items: SimShopItem[]; credits: number; files?: Record<string, Buffer> } = {
 		items: [],
@@ -171,6 +198,28 @@ export function startCloudSim(port = 0, host = '127.0.0.1'): Promise<CloudSim> {
 			socket?.send(JSON.stringify({ type: 'unlinked' }));
 			socket?.close(4401, 'Unlinked.');
 		},
+		control(command) {
+			if (!socket) return Promise.resolve({ ok: false, error: 'offline' });
+			const result = new Promise<{ ok: boolean; error?: string }>((resolve) =>
+				waiting.set(command.commandId, resolve)
+			);
+			socket.send(
+				JSON.stringify({
+					type: 'control',
+					by: devices[0]?.account ?? 'parent@example.com',
+					...command
+				})
+			);
+			return result;
+		},
+		snapshot(printerId, requestId = token()) {
+			if (!socket) return Promise.resolve({ error: 'offline' });
+			const result = new Promise<Record<string, unknown>>((resolve) =>
+				snapshots.set(requestId, resolve)
+			);
+			socket.send(JSON.stringify({ type: 'snapshot.request', requestId, printerId }));
+			return result;
+		},
 		state: () => ({
 			devices: devices.map(({ id, name, account }) => ({ id, name, account })),
 			connected: !!socket,
@@ -178,6 +227,8 @@ export function startCloudSim(port = 0, host = '127.0.0.1'): Promise<CloudSim> {
 			requests,
 			printer,
 			printerMessages,
+			printers: printers2,
+			queue,
 			backups: backups.map((b) => ({ id: b.id, size: b.data.length, keyId: b.keyId }))
 		}),
 		close: () =>
@@ -333,6 +384,20 @@ export function startCloudSim(port = 0, host = '127.0.0.1'): Promise<CloudSim> {
 			api.unlink();
 			return json(res, 200, {});
 		}
+		if (path === '/sim/control')
+			return json(
+				res,
+				200,
+				await api.control({
+					printerId: String(body.printerId),
+					action: String(body.action),
+					commandId: String(body.commandId),
+					at: Number(body.at),
+					mac: String(body.mac),
+					...(typeof body.queueItemId === 'string' ? { queueItemId: body.queueItemId } : {})
+				})
+			);
+		if (path === '/sim/snapshot') return json(res, 200, await api.snapshot(String(body.printerId)));
 		if (path === '/sim/decide')
 			return json(
 				res,
@@ -379,12 +444,18 @@ export function startCloudSim(port = 0, host = '127.0.0.1'): Promise<CloudSim> {
 				return ws.close(1007, 'Invalid JSON.');
 			}
 			if (m.type === 'hello') {
-				if (m.protocol !== 1)
+				if (!protocols.includes(m.protocol as number))
 					return ws.close(4400, 'Update Family Print Lab to use Print Lab Cloud.');
 				hello = { app: m.app as string, protocol: m.protocol as number };
 				return ws.send(JSON.stringify({ type: 'welcome', account: device!.account, plan }));
 			}
 			if (m.type === 'requests') requests = (m.requests as Summary[]) ?? [];
+			if (m.type === 'printers') printers2 = m;
+			if (m.type === 'queue') queue = m;
+			if (m.type === 'snapshot') {
+				snapshots.get(m.requestId as string)?.(m);
+				snapshots.delete(m.requestId as string);
+			}
 			if (m.type === 'printer') {
 				printer = m.printer;
 				printerMessages++;

@@ -592,4 +592,16 @@ export class Queue implements QueueService {
 		this.d.bus.emit('queue.changed', { printerId, reason });
 		this.d.live.send('queue:changed', { reason });
 	}
+
+	// ---------- cloud-remote ----------
+
+	/**
+	 * The item Start next would send to this printer right now, or null; changes nothing. The phone
+	 * shows it and signs its id, so Start next from the phone cannot start something else.
+	 */
+	startNextItem(printerId: string): string | null {
+		const { items, printers } = this.facts();
+		const d = decide(printers, items, { ...this.options(), manual: printerId });
+		return d.dispatch.find((x) => x.printerId === printerId)?.itemId ?? null;
+	}
 }

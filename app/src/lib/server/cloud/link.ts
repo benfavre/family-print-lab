@@ -1,8 +1,10 @@
-// Print Lab Cloud link (optional): lets a grown-up answer kids' print requests from a phone.
-// Everything this sends and accepts is described in docs/cloud-protocol.md. In short: it opens one
-// outbound WebSocket, reports print requests (and, only if switched on, the printer's progress),
-// and accepts exactly one command, approving or declining a waiting request, which goes through the
-// same checks as the Family page.
+// Print Lab Cloud link (optional): lets a grown-up answer kids' print requests from a phone, and,
+// only when switched on, follow and pause the printers from it. Everything this sends and accepts is
+// described in docs/cloud-protocol.md. In short: it opens one outbound WebSocket, reports print
+// requests (and, only if switched on, the printers' status, alerts and queue), and accepts approving
+// or declining a waiting request (the same checks as the Family page) plus, with protocol v2 and
+// only when a parent allowed it, pause/resume/stop signed by a phone and sealed camera pictures
+// (remote.ts, phone.ts).
 import { eq } from 'drizzle-orm';
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
@@ -16,9 +18,14 @@ import type { CloudBackup, CloudStatus } from '$lib/shared/cloud';
 import { keyFrom, MAX_BACKUP, newRecoveryKey, pack, seal } from './vault';
 import { installedPacks, parsePacks, savePacks } from '../kid/packs';
 import type { PrinterStatus } from '$lib/shared/domain';
+import { encodePhoneKey, newPhoneKey, phoneKeys, type PhoneKeys } from './phone';
+import { printerState, Remote, type CloudHost, type RemoteSettings } from './remote';
+
+export type { CloudHost } from './remote';
 
 const KEY = 'cloud';
-const PROTOCOL = 1;
+/** The newest protocol this app speaks; a cloud that only knows v1 gets v1 (see connect()). */
+const PROTOCOL = 2;
 const RECENT_DAYS = 7;
 const MAX_THUMBNAIL = 40_000;
 /** Progress is sent at most this often while printing; a change of state is sent at once. */
@@ -26,7 +33,16 @@ const PROGRESS_EVERY = 30_000;
 
 interface Stored {
 	shareNames: boolean;
+	/** Share the printers' status (v1: the first printer's progress). */
 	shareProgress?: boolean;
+	shareAlerts?: boolean;
+	shareQueue?: boolean;
+	/** Camera snapshots and live view on the phone (sealed with the phone key). */
+	snapshots?: boolean;
+	/** Pause, resume and stop from the phone (turned on with the parent PIN). */
+	remoteControl?: boolean;
+	/** The household phone key (32 bytes, base64url) and when it was made; never sent to the cloud. */
+	phoneKey?: { key: string; createdAt: string } | null;
 	backup?: {
 		recoveryKey: string;
 		enabled: boolean;
@@ -89,27 +105,11 @@ export interface PrinterSummary {
 	totalLayers: number | null;
 }
 
-/** The part of the printer link this needs: its status and a signal when it changes. */
-export interface PrinterSource {
-	status(): PrinterStatus;
-	on(event: 'update', listener: () => void): unknown;
-	off(event: 'update', listener: () => void): unknown;
-}
-
-const STATES: Record<string, PrinterSummary['state']> = {
-	IDLE: 'idle',
-	PREPARE: 'preparing',
-	SLICING: 'preparing',
-	RUNNING: 'printing',
-	PAUSE: 'paused',
-	FINISH: 'finished',
-	FAILED: 'failed'
-};
-
+/** Protocol v1's printer: the first enabled one in Settings → Printers. */
 export function summarizePrinter(status: PrinterStatus): PrinterSummary | null {
 	if (!status.configured) return null;
 	const s = status.connected ? status.state : null;
-	const state = s ? (STATES[s.gcodeState] ?? 'idle') : 'offline';
+	const state = printerState(status);
 	const active = state === 'preparing' || state === 'printing' || state === 'paused';
 	return {
 		state,
@@ -141,6 +141,12 @@ export class CloudLink extends EventEmitter {
 	private lastPrinterAt = 0;
 	private printerSoon: ReturnType<typeof setTimeout> | null = null;
 	private onPrinter = () => this.schedulePrinter();
+	/** The protocol spoken on the current connection (v2 unless the cloud only knows v1). */
+	private protocol: 1 | 2 = PROTOCOL;
+	private welcomed = false;
+	private remote: Remote | null = null;
+	private keys: PhoneKeys | null = null;
+	private lastQueue = '';
 
 	constructor(
 		private db: DB,
@@ -149,14 +155,23 @@ export class CloudLink extends EventEmitter {
 		readonly url: string,
 		private appVersion: string,
 		private deviceName = 'Family Print Lab',
-		private printer: PrinterSource | null = null
+		private host: CloudHost | null = null
 	) {
 		super();
 		this.url = url.replace(/\/+$/, '');
 		const row = db.select().from(meta).where(eq(meta.key, KEY)).get();
 		this.stored = row ? (JSON.parse(row.value) as Stored) : { shareNames: true, link: null };
 		lab.events.on('change', this.onChange);
-		printer?.on('update', this.onPrinter);
+		host?.on('update', this.onPrinter);
+		if (host)
+			this.remote = new Remote(
+				host,
+				lab,
+				() => this.remoteSettings(),
+				() => this.phoneKeys(),
+				() => this.plan,
+				() => this.schedulePrinter(true)
+			);
 	}
 
 	start() {
@@ -167,7 +182,8 @@ export class CloudLink extends EventEmitter {
 		this.stopped = true;
 		this.pairingRun++;
 		this.lab.events.off('change', this.onChange);
-		this.printer?.off('update', this.onPrinter);
+		this.host?.off('update', this.onPrinter);
+		this.remote?.stop();
 		this.clearTimers();
 		this.ws?.close(1000, 'Shutting down.');
 	}
@@ -181,6 +197,14 @@ export class CloudLink extends EventEmitter {
 			plan: this.plan,
 			shareNames: this.stored.shareNames,
 			shareProgress: this.stored.shareProgress === true,
+			shareAlerts: this.stored.shareAlerts === true,
+			shareQueue: this.stored.shareQueue === true,
+			snapshots: this.stored.snapshots === true,
+			remoteControl: this.stored.remoteControl === true,
+			phoneKey: this.stored.phoneKey
+				? { id: this.phoneKeys()!.id, createdAt: this.stored.phoneKey.createdAt }
+				: null,
+			protocol: this.protocol,
 			backup: {
 				enabled: this.stored.backup?.enabled === true,
 				last: this.stored.backup?.last ?? null,
@@ -288,8 +312,63 @@ export class CloudLink extends EventEmitter {
 
 	/** Turning progress off also clears what the cloud has (it is sent `null`). */
 	setShareProgress(share: boolean) {
-		this.save({ ...this.stored, shareProgress: share });
-		this.lastPrinter = '';
+		this.setRemote({ shareProgress: share });
+	}
+
+	/**
+	 * What the phone may see and do (protocol v2). The route asks for the parent PIN before remote
+	 * control goes on. Turning something off clears it from the cloud at once.
+	 */
+	setRemote(patch: Partial<RemoteSettings>) {
+		this.save({ ...this.stored, ...patch });
+		this.lastPrinter = this.lastQueue = '';
+		this.sendPrinter();
+		this.emit('status', this.status());
+	}
+
+	remoteSettings(): RemoteSettings {
+		return {
+			shareProgress: this.stored.shareProgress === true,
+			shareAlerts: this.stored.shareAlerts === true,
+			shareQueue: this.stored.shareQueue === true,
+			snapshots: this.stored.snapshots === true,
+			remoteControl: this.stored.remoteControl === true
+		};
+	}
+
+	// ---------- The household phone key (v2) ----------
+
+	private phoneKeys() {
+		const stored = this.stored.phoneKey;
+		if (!stored) return null;
+		if (!this.keys) this.keys = phoneKeys(Buffer.from(stored.key, 'base64url'));
+		return this.keys;
+	}
+
+	/**
+	 * The phone key and the link a phone opens to keep it (the key is in the fragment, which browsers
+	 * never send to a server). Made the first time; the route asks for the parent PIN first.
+	 */
+	phoneKey() {
+		if (!this.stored.phoneKey) this.rotatePhoneKey(false);
+		const key = this.stored.phoneKey!.key;
+		return { id: this.phoneKeys()!.id, url: `${this.url}/phone-key#k=${key}` };
+	}
+
+	/** "Forget all phones": a new key, so phones holding the old one can no longer read or control. */
+	forgetPhones() {
+		this.rotatePhoneKey(true);
+		return this.status();
+	}
+
+	private rotatePhoneKey(log: boolean) {
+		this.keys = null;
+		this.save({
+			...this.stored,
+			phoneKey: { key: encodePhoneKey(newPhoneKey()), createdAt: new Date().toISOString() }
+		});
+		if (log) this.lab.touch('cloud', 'New phone key: phones must scan it again');
+		this.lastPrinter = this.lastQueue = '';
 		this.sendPrinter();
 		this.emit('status', this.status());
 	}
@@ -496,14 +575,22 @@ export class CloudLink extends EventEmitter {
 			`${this.url.replace(/^http/, 'ws')}/device/connect?ticket=${encodeURIComponent(ticket)}`
 		);
 		this.ws = ws;
+		this.welcomed = false;
 		ws.onopen = () =>
-			ws.send(JSON.stringify({ type: 'hello', app: this.appVersion, protocol: PROTOCOL }));
+			ws.send(JSON.stringify({ type: 'hello', app: this.appVersion, protocol: this.protocol }));
 		ws.onmessage = (e) => void this.onMessage(ws, String(e.data));
 		ws.onclose = (e) => {
 			if (this.ws !== ws) return;
 			this.ws = null;
 			if (this.ping) clearInterval(this.ping);
 			if (e.code === 4401) return this.forget('This computer was unlinked in Print Lab Cloud.');
+			// A cloud that does not know v2 yet refuses the hello: speak v1 to it (one printer, no
+			// remote control), and try v2 again on the next connection, in case it was updated.
+			if (e.code === 4400 && !this.welcomed && this.protocol === 2) {
+				this.protocol = 1;
+				return void this.connect();
+			}
+			this.protocol = PROTOCOL;
 			this.reconnectLater(e.code === 4400 ? e.reason || 'Update Family Print Lab.' : null);
 		};
 		ws.onerror = () => {};
@@ -518,6 +605,7 @@ export class CloudLink extends EventEmitter {
 			return;
 		}
 		if (m.type === 'welcome') {
+			this.welcomed = true;
 			this.backoff = 1000;
 			this.error = null;
 			this.plan = m.plan === true;
@@ -530,7 +618,7 @@ export class CloudLink extends EventEmitter {
 			this.set('online');
 			this.ping = setInterval(() => ws.readyState === WebSocket.OPEN && ws.send('ping'), 30_000);
 			this.lastSent = '';
-			this.lastPrinter = '';
+			this.lastPrinter = this.lastQueue = '';
 			this.report();
 			// Always, so the cloud catches a print that ended while offline, and forgets the printer
 			// if sharing was turned off meanwhile (then it is just `null`: nothing about the printer).
@@ -539,9 +627,28 @@ export class CloudLink extends EventEmitter {
 		} else if (m.type === 'plan') {
 			this.plan = m.plan === true;
 			this.emit('status', this.status());
+			// Whether the phone may control follows the plan.
+			this.lastPrinter = '';
+			this.sendPrinter();
 			void this.syncPacks();
 		} else if (m.type === 'decide') {
 			ws.send(JSON.stringify({ type: 'result', commandId: m.commandId, ...this.decide(m) }));
+		} else if (m.type === 'control' && this.protocol === 2) {
+			const result = this.remote
+				? await this.remote.control(m)
+				: { ok: false, error: 'Printers cannot be controlled here.' };
+			if (ws.readyState === WebSocket.OPEN)
+				ws.send(JSON.stringify({ type: 'result', commandId: m.commandId, ...result }));
+		} else if (m.type === 'snapshot.request' && this.protocol === 2) {
+			const answer = this.remote
+				? await this.remote.snapshot(m)
+				: {
+						type: 'snapshot',
+						requestId: String(m.requestId ?? '').slice(0, 80),
+						printerId: String(m.printerId ?? '').slice(0, 80),
+						error: 'Camera pictures are off.'
+					};
+			if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(answer));
 		} else if (m.type === 'library') {
 			// Something was bought (here or on the website): kid packs install themselves.
 			void this.syncPacks();
@@ -598,12 +705,15 @@ export class CloudLink extends EventEmitter {
 		this.set('unlinked');
 	}
 
-	// ---------- Reporting the printer (opt-in) ----------
+	// ---------- Reporting printers (opt-in) ----------
 
-	private schedulePrinter() {
-		if (this.state !== 'online' || !this.stored.shareProgress) return;
-		// A new state (started, paused, finished…) goes at once; progress at most every 30 s.
-		if (this.printerSummary()?.state !== this.lastPrinterState) {
+	/**
+	 * A new state (started, paused, finished…), a new event or a new alert goes at once; progress at
+	 * most every 30 s. `now`: something the phone should hear about right away.
+	 */
+	private schedulePrinter(now = false) {
+		if (this.state !== 'online') return;
+		if (now || this.printerSignature() !== this.lastPrinterState) {
 			if (this.printerSoon) clearTimeout(this.printerSoon);
 			this.printerSoon = null;
 			return this.sendPrinter();
@@ -616,21 +726,64 @@ export class CloudLink extends EventEmitter {
 		}, wait);
 	}
 
+	/** What makes a report go at once: each printer's state, event and alerts. */
+	private printerSignature() {
+		if (this.protocol === 1) return this.printerSummary()?.state ?? '';
+		const printers = this.remote?.summaries(false) ?? null;
+		return JSON.stringify(
+			printers?.map((p) => [p.id, p.state, p.event?.at, p.hms?.map((h) => h.key)]) ?? null
+		);
+	}
+
+	/** v1: the first enabled printer only. */
 	private printerSummary() {
-		return this.stored.shareProgress && this.printer
-			? summarizePrinter(this.printer.status())
-			: null;
+		const first = this.host?.statuses().find((p) => p.configured && p.enabled !== false);
+		return this.stored.shareProgress && first ? summarizePrinter(first) : null;
 	}
 
 	private sendPrinter() {
-		if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-		const printer = this.printerSummary();
-		const message = JSON.stringify({ type: 'printer', printer });
-		if (message === this.lastPrinter) return;
-		this.lastPrinter = message;
-		this.lastPrinterState = printer?.state ?? '';
-		this.lastPrinterAt = Date.now();
-		this.ws.send(message);
+		if (!this.ws || this.ws.readyState !== WebSocket.OPEN || !this.welcomed) return;
+		if (this.protocol === 1) {
+			const printer = this.printerSummary();
+			const message = JSON.stringify({ type: 'printer', printer });
+			if (message === this.lastPrinter) return;
+			this.lastPrinter = message;
+			this.lastPrinterState = printer?.state ?? '';
+			this.lastPrinterAt = Date.now();
+			return this.ws.send(message);
+		}
+		const deviceId = this.stored.link?.deviceId ?? '';
+		// Compared before sealing (every seal differs), so an unchanged report is not sent again.
+		const plain = JSON.stringify([
+			this.remote?.summaries() ?? null,
+			this.remote?.queue() ?? null,
+			this.remoteSettings(),
+			this.plan,
+			this.phoneKeys()?.id
+		]);
+		if (plain !== this.lastPrinter) {
+			this.lastPrinter = plain;
+			this.lastPrinterState = this.printerSignature();
+			this.lastPrinterAt = Date.now();
+			this.ws.send(
+				JSON.stringify(
+					this.remote?.printersMessage(deviceId) ?? { type: 'printers', printers: null }
+				)
+			);
+		}
+		const queue = this.remote?.queueMessage(deviceId) ?? {
+			type: 'queue',
+			items: null,
+			event: null
+		};
+		const queuePlain = JSON.stringify([
+			this.remote?.queue() ?? null,
+			queue.event,
+			this.phoneKeys()?.id
+		]);
+		if (queuePlain === this.lastQueue) return;
+		this.lastQueue = queuePlain;
+		this.ws.send(JSON.stringify(queue));
 	}
 
 	// ---------- Reporting requests ----------

@@ -6,6 +6,7 @@
 	import { plaGrams, smallPartsHazard } from '$lib/shared/kid';
 	import type { PrintRequest } from '$lib/shared/domain';
 	import Avatar from './Avatar.svelte';
+	import PhoneRemote from './cloud-remote/PhoneRemote.svelte';
 
 	const { lab, ui } = useApp();
 	const cloud = $derived(lab.cloud);
@@ -195,15 +196,7 @@
 							lab.call('PATCH', '/api/cloud', { shareNames: e.currentTarget.checked })}
 					/> Send kids’ first names with their requests (otherwise “Your child”)</label
 				>
-				<label class="share"
-					><input
-						type="checkbox"
-						checked={cloud.shareProgress}
-						onchange={(e) =>
-							lab.call('PATCH', '/api/cloud', { shareProgress: e.currentTarget.checked })}
-					/> Share print progress (what is printing, how far along, time left) so the phone can follow
-					it and say when it is done</label
-				>
+				<PhoneRemote />
 				{#if cloud.packs.length}
 					<p class="packs">
 						Template packs from your Family plan: {#each cloud.packs as p, i (p.id)}{i

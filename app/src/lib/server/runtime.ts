@@ -38,7 +38,7 @@ import { TaskCenter } from './tasks';
 import { SketchStore } from './sketches';
 import { parseImport, replaceWorkspace } from './portability';
 import { ParentPin } from './kid/pin';
-import { CloudLink, type PrinterSource } from './cloud/link';
+import { CloudLink, type CloudHost } from './cloud/link';
 import { loadPacks } from './kid/packs';
 import { version as appVersion } from '../../../package.json';
 import type { PrinterStatus } from '$lib/shared/domain';
@@ -209,15 +209,18 @@ export function bootRuntime(o: BootOptions): Runtime {
 	log(`Database ${file} · AI via ${getSettings(db).ai.routing.chat}`);
 
 	loadPacks(db);
-	// Print Lab Cloud (protocol v1) knows one printer: the first one in Settings.
-	const primarySource: PrinterSource = {
-		status: () => printers.primary()?.status() ?? { configured: false },
+	// Print Lab Cloud is optional and does nothing until someone links this computer. It sees the
+	// printers, the bus and (once started) the modules only through this.
+	const cloudHost: CloudHost = {
+		statuses: () => printers.statuses(),
 		on: (_event, listener) => printers.on('update', listener),
-		off: (_event, listener) => printers.off('update', listener)
+		off: (_event, listener) => printers.off('update', listener),
+		send: (id, command) => printers.require(id).send(command, {}),
+		bus,
+		module: (key) => services.get(key as string) as never
 	};
-	// Print Lab Cloud is optional and does nothing until someone links this computer.
 	const cloud = env.CLOUD_URL
-		? new CloudLink(db, lab, models, env.CLOUD_URL, appVersion, undefined, primarySource)
+		? new CloudLink(db, lab, models, env.CLOUD_URL, appVersion, undefined, cloudHost)
 		: null;
 	cloud?.start();
 	// With cloud backup on, the newest snapshot goes to the cloud, encrypted, about once a day.

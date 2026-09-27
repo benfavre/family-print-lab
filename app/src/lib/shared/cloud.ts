@@ -11,8 +11,20 @@ export interface CloudStatus {
 	plan: boolean;
 	/** Send kids' first names with their requests (otherwise "Your child"). */
 	shareNames: boolean;
-	/** Send the printer's progress (state, title, percent, time left) for the phone. Off by default. */
+	/** Send the printers' status (state, title, percent, time left) for the phone. Off by default. */
 	shareProgress: boolean;
+	/** Send the printers' active alerts (code, severity, text) with their status. */
+	shareAlerts: boolean;
+	/** Send the print queue (titles, order, why each waits). */
+	shareQueue: boolean;
+	/** Camera snapshots and live view on the phone, sealed with the phone key. */
+	snapshots: boolean;
+	/** Pause, resume and stop from the phone, signed with the phone key (Family plan). */
+	remoteControl: boolean;
+	/** The household phone key's id (never the key) and when it was made; null until first shown. */
+	phoneKey: { id: string; createdAt: string } | null;
+	/** Protocol spoken with the cloud: 1 for an older cloud (one printer, no remote control). */
+	protocol: 1 | 2;
 	/** Encrypted backups in the cloud (Family plan). The recovery key never leaves this computer. */
 	backup: {
 		enabled: boolean;
@@ -45,6 +57,12 @@ export const CLOUD_OFF: CloudStatus = {
 	plan: false,
 	shareNames: true,
 	shareProgress: false,
+	shareAlerts: false,
+	shareQueue: false,
+	snapshots: false,
+	remoteControl: false,
+	phoneKey: null,
+	protocol: 2,
 	backup: { enabled: false, last: null, error: null },
 	packs: [],
 	pairing: null,
