@@ -1,6 +1,6 @@
 // Family Print Lab desktop: runs the app's own server inside Electron and shows it in a window.
 // Data lives in the per-user app folder; updates come from GitHub Releases (electron-updater).
-const { app, BrowserWindow, Menu, dialog, shell } = require('electron');
+const { app, BrowserWindow, Menu, Notification, dialog, shell } = require('electron');
 const fs = require('node:fs');
 const net = require('node:net');
 const path = require('node:path');
@@ -88,6 +88,28 @@ async function startServer() {
 		CLOUD_URL: process.env.CLOUD_URL ?? 'https://familyprintlab.app',
 		PRINT_LAB_DESKTOP: '1'
 	});
+	// Desktop notifications for the server's notifications module (Integrations → Notifications →
+	// This computer): a click brings the window forward on the page the notification is about.
+	// Shown notifications are kept referenced, or their click handler can be garbage-collected.
+	const shown = new Set();
+	globalThis.printLabDesktop = {
+		notify(title, body, link) {
+			if (!Notification.isSupported()) return;
+			const note = new Notification({ title: String(title), body: String(body ?? '') });
+			shown.add(note);
+			note.on('close', () => shown.delete(note));
+			note.on('click', () => {
+				shown.delete(note);
+				if (!window) createWindow();
+				if (window.isMinimized()) window.restore();
+				window.show();
+				window.focus();
+				if (typeof link === 'string' && link.startsWith('/') && !link.startsWith('//'))
+					void window.loadURL(`${origin}${link}`);
+			});
+			note.show();
+		}
+	};
 	// The server loads drizzle/ and resources/ relative to its working directory.
 	process.chdir(SERVER);
 	await import(pathToFileURL(path.join(SERVER, 'build', 'index.js')).href);
