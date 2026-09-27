@@ -106,10 +106,17 @@ function zipEntries(buf: Buffer): ZipEntry[] {
 			break;
 		}
 	if (eocd < 0) throw bad();
-	const count = buf.readUInt16LE(eocd + 10);
+	let count = buf.readUInt16LE(eocd + 10);
 	let p = buf.readUInt32LE(eocd + 16);
-	if (count === 0xffff || p === 0xffffffff)
-		throw bad('That archive uses the ZIP64 format, which is not supported here.');
+	if (count === 0xffff || p === 0xffffffff) {
+		// ZIP64 (APPNOTE 4.3.14-4.3.15): Bambu Studio writes project 3MFs this way.
+		const locator = eocd - 20;
+		if (locator < 0 || buf.readUInt32LE(locator) !== 0x07064b50) throw bad();
+		const record = Number(buf.readBigUInt64LE(locator + 8));
+		if (record + 56 > buf.length || buf.readUInt32LE(record) !== 0x06064b50) throw bad();
+		count = Number(buf.readBigUInt64LE(record + 32));
+		p = Number(buf.readBigUInt64LE(record + 48));
+	}
 	if (count > MAX_ENTRIES) throw bad('That archive has too many files in it.');
 	const entries: ZipEntry[] = [];
 	for (let i = 0; i < count; i++) {
@@ -117,14 +124,29 @@ function zipEntries(buf: Buffer): ZipEntry[] {
 			throw bad('Corrupt 3MF archive.');
 		const method = buf.readUInt16LE(p + 10),
 			crc = buf.readUInt32LE(p + 16),
-			packed = buf.readUInt32LE(p + 20),
-			size = buf.readUInt32LE(p + 24),
 			nameLen = buf.readUInt16LE(p + 28),
 			extraLen = buf.readUInt16LE(p + 30),
-			commentLen = buf.readUInt16LE(p + 32),
+			commentLen = buf.readUInt16LE(p + 32);
+		let packed = buf.readUInt32LE(p + 20),
+			size = buf.readUInt32LE(p + 24),
 			local = buf.readUInt32LE(p + 42);
-		if (packed === 0xffffffff || size === 0xffffffff || local === 0xffffffff)
-			throw bad('That archive uses the ZIP64 format, which is not supported here.');
+		if (packed === 0xffffffff || size === 0xffffffff || local === 0xffffffff) {
+			// The ZIP64 extra field (id 1) holds the 8-byte values that are 0xffffffff above, in order.
+			let x = p + 46 + nameLen;
+			const extraEnd = Math.min(x + extraLen, buf.length);
+			while (x + 4 <= extraEnd && buf.readUInt16LE(x) !== 1) x += 4 + buf.readUInt16LE(x + 2);
+			if (x + 4 > extraEnd) throw bad('Corrupt 3MF archive.');
+			let q = x + 4;
+			const next = () => {
+				if (q + 8 > extraEnd) throw bad('Corrupt 3MF archive.');
+				const v = Number(buf.readBigUInt64LE(q));
+				q += 8;
+				return v;
+			};
+			if (size === 0xffffffff) size = next();
+			if (packed === 0xffffffff) packed = next();
+			if (local === 0xffffffff) local = next();
+		}
 		const name = buf.subarray(p + 46, p + 46 + nameLen).toString('utf8');
 		if (local + 30 > buf.length) throw bad('Corrupt 3MF archive.');
 		const dataStart = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
@@ -201,9 +223,12 @@ function packZip(entries: ZipEntry[]): Buffer {
 	let offset = 0;
 	for (const e of entries) {
 		const nameBuf = Buffer.from(e.name, 'utf8');
+		// General purpose bit 11: the name is UTF-8 (APPNOTE 4.4.4), for non-ASCII file names.
+		const flags = nameBuf.length !== e.name.length ? 0x0800 : 0;
 		const local = Buffer.alloc(30);
 		local.writeUInt32LE(0x04034b50, 0);
 		local.writeUInt16LE(20, 4);
+		local.writeUInt16LE(flags, 6);
 		local.writeUInt16LE(e.method, 8);
 		local.writeUInt32LE(e.crc, 14);
 		local.writeUInt32LE(e.raw.length, 18);
@@ -213,6 +238,7 @@ function packZip(entries: ZipEntry[]): Buffer {
 		dir.writeUInt32LE(0x02014b50, 0);
 		dir.writeUInt16LE(20, 4);
 		dir.writeUInt16LE(20, 6);
+		dir.writeUInt16LE(flags, 8);
 		dir.writeUInt16LE(e.method, 10);
 		dir.writeUInt32LE(e.crc, 16);
 		dir.writeUInt32LE(e.raw.length, 20);
