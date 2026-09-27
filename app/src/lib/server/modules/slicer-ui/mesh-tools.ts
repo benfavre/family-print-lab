@@ -5,10 +5,10 @@ import { indexed, type Soup } from '../../cad/mesh';
 import { AppError } from '../../validation';
 import type { CutRequest } from '$lib/shared/slicer/mesh-tools';
 
-type Wasm = Awaited<ReturnType<typeof Module>>;
-type Solid = InstanceType<Wasm['Manifold']>;
+export type Wasm = Awaited<ReturnType<typeof Module>>;
+export type Solid = InstanceType<Wasm['Manifold']>;
 let loaded: Promise<Wasm> | undefined;
-const load = () =>
+export const load = () =>
 	(loaded ??= Module().then((w) => {
 		w.setup();
 		return w;
@@ -37,12 +37,26 @@ export function localCutPlane({
 	};
 }
 
-function soupOf(solid: Solid): Soup {
+export function soupOf(solid: Solid): Soup {
 	const { numProp, vertProperties: v, triVerts: t } = solid.getMesh();
 	const soup = new Float32Array(t.length * 3);
 	for (let i = 0; i < t.length; i++)
 		for (let k = 0; k < 3; k++) soup[i * 3 + k] = v[t[i] * numProp + k];
 	return soup;
+}
+
+export function toSolid(w: Wasm, soup: Soup): Solid {
+	const { vertices, triangles } = indexed(soup);
+	const mesh = new w.Mesh({ numProp: 3, vertProperties: vertices, triVerts: triangles });
+	mesh.merge();
+	try {
+		return new w.Manifold(mesh);
+	} catch {
+		throw new AppError(
+			422,
+			'This mesh is not watertight. Repair it in the model workbench before editing it.'
+		);
+	}
 }
 
 export async function cutMesh(
@@ -51,18 +65,7 @@ export async function cutMesh(
 ) {
 	const plane = localCutPlane(request);
 	const w = await load();
-	const { vertices, triangles } = indexed(soup);
-	const mesh = new w.Mesh({ numProp: 3, vertProperties: vertices, triVerts: triangles });
-	mesh.merge();
-	let original: Solid;
-	try {
-		original = new w.Manifold(mesh);
-	} catch {
-		throw new AppError(
-			422,
-			'This mesh is not watertight. Repair it in the model workbench before cutting.'
-		);
-	}
+	const original = toSolid(w, soup);
 	const solids: Solid[] = [original];
 	try {
 		const [above, below] = original.splitByPlane(plane.normal, plane.offset);
