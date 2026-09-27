@@ -20,6 +20,8 @@ import { applyLayerColours } from './layer-material';
 export type Gizmo = 'translate' | 'rotate' | 'scale' | null;
 
 export interface SceneEvents {
+	/** A surface point in project millimetres, after the complete object transform. */
+	onMeasure(point: Vec3): void;
 	onPick(pick: Pick | null, additive: boolean, partId: string | null): void;
 	/** While dragging the gizmo (final: on release). */
 	onTransform(pick: Pick, transform: Transform, final: boolean): void;
@@ -68,6 +70,17 @@ export class SlicerScene {
 	private camera = new THREE.PerspectiveCamera(35, 1, 1, 20000);
 	private controls: OrbitControls;
 	private gizmo: TransformControls;
+	private measuring = false;
+	private measureGeometry = new THREE.BufferGeometry();
+	private measureLine = new THREE.Line(
+		this.measureGeometry,
+		new THREE.LineBasicMaterial({ color: 0xffc44d, depthTest: false })
+	);
+	private measureDots = new THREE.Points(
+		this.measureGeometry,
+		new THREE.PointsMaterial({ color: 0xffc44d, size: 8, sizeAttenuation: false, depthTest: false })
+	);
+	private measurement = new THREE.Group();
 	private beds = new THREE.Group();
 	private objects = new THREE.Group();
 	private geometries = new Map<string, THREE.BufferGeometry>();
@@ -114,6 +127,10 @@ export class SlicerScene {
 		this.gizmo.addEventListener('objectChange', () => this.reportGizmo(false));
 		this.gizmo.addEventListener('mouseUp', () => this.reportGizmo(true));
 		this.scene.add(this.gizmo.getHelper());
+		this.measurement.add(this.measureLine, this.measureDots);
+		this.measureLine.renderOrder = this.measureDots.renderOrder = 10;
+		this.measurement.visible = false;
+		this.scene.add(this.measurement);
 
 		this.scene.add(new THREE.HemisphereLight(0xffffff, 0x404858, 1.6));
 		const key = new THREE.DirectionalLight(0xffffff, 1.8);
@@ -333,14 +350,26 @@ export class SlicerScene {
 
 	setLayFace(on: boolean) {
 		this.layFace = on;
-		this.renderer.domElement.style.cursor = on ? 'crosshair' : '';
+		this.renderer.domElement.style.cursor = on || this.measuring ? 'crosshair' : '';
+		this.attachGizmo();
+	}
+
+	setMeasure(enabled: boolean, points: readonly Vec3[]) {
+		this.measuring = enabled;
+		this.measureGeometry.setAttribute(
+			'position',
+			new THREE.Float32BufferAttribute(points.flat(), 3)
+		);
+		this.measureGeometry.computeBoundingSphere();
+		this.measurement.visible = enabled && points.length > 0;
+		this.renderer.domElement.style.cursor = enabled || this.layFace ? 'crosshair' : '';
 		this.attachGizmo();
 	}
 
 	private attachGizmo() {
 		const one = this.selection.items.length === 1 ? this.selection.items[0] : null;
 		const group = one ? this.instances.get(`${one.objectId}/${one.instanceId}`) : undefined;
-		if (!group || !this.gizmoMode || this.paint || this.layFace) {
+		if (!group || !this.gizmoMode || this.paint || this.layFace || this.measuring) {
 			this.gizmo.detach();
 		} else {
 			if (this.gizmo.object !== group) this.gizmo.attach(group);
@@ -422,6 +451,10 @@ export class SlicerScene {
 			return;
 		const hit = this.hitAt(e);
 		const data = (hit?.object as PartMesh | undefined)?.userData;
+		if (this.measuring) {
+			if (hit && data) this.events.onMeasure([hit.point.x, hit.point.y, hit.point.z]);
+			return;
+		}
 		if (this.layFace && hit && data) {
 			const n = hit.face!.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
 			this.events.onFace({ objectId: data.objectId, instanceId: data.instanceId }, [n.x, n.y, n.z]);
@@ -459,6 +492,8 @@ export class SlicerScene {
 			target = this.controls.target.clone();
 		const ratio = this.renderer.getPixelRatio();
 		const helper = this.gizmo.getHelper();
+		const hadMeasurement = this.measurement.visible;
+		this.measurement.visible = false;
 		const hadHelper = helper.visible;
 		helper.visible = false;
 		this.beds.visible = false;
@@ -476,6 +511,7 @@ export class SlicerScene {
 		} finally {
 			this.beds.visible = true;
 			helper.visible = hadHelper;
+			this.measurement.visible = hadMeasurement;
 			this.renderer.setPixelRatio(ratio);
 			this.camera.position.copy(pos);
 			this.controls.target.copy(target);
@@ -511,6 +547,9 @@ export class SlicerScene {
 		cancelAnimationFrame(this.frame);
 		this.observer.disconnect();
 		this.gizmo.dispose();
+		this.measureGeometry.dispose();
+		this.measureLine.material.dispose();
+		this.measureDots.material.dispose();
 		this.controls.dispose();
 		for (const g of this.geometries.values()) g.dispose();
 		this.renderer.dispose();

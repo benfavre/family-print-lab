@@ -44,6 +44,30 @@ test('the slicer workspace: plates, objects, a modifier, plate settings, undo, a
 		'No slicer is installed'
 	);
 
+	// Measuring is available without an engine and does not edit the project or its undo history.
+	const beforeMeasure = await (await page.request.get(`/api/slicer-projects/${id}`)).json();
+	await page.getByRole('button', { name: 'Measure', exact: true }).click();
+	const measurement = page.getByRole('region', { name: 'Measure', exact: true });
+	await expect(measurement).toContainText('Choose the first point.');
+	await measurement.getByRole('button', { name: 'Enter coordinates' }).click();
+	for (const [axis, value] of [
+		['X', '3'],
+		['Y', '4'],
+		['Z', '12']
+	]) {
+		await measurement.getByLabel(`Point 2 ${axis}`).fill(value);
+		await measurement.getByLabel(`Point 2 ${axis}`).press('Tab');
+	}
+	await expect(measurement.getByRole('status')).toHaveText('Distance: 13.00 mm');
+	await expect(measurement).toContainText('X: 3.00 mm · Y: 4.00 mm · Z: 12.00 mm');
+	await measurement.getByRole('button', { name: 'Clear', exact: true }).click();
+	await expect(measurement).toContainText('Choose the first point.');
+	await page.keyboard.press('Escape');
+	await expect(measurement).toHaveCount(0);
+	expect(await (await page.request.get(`/api/slicer-projects/${id}`)).json()).toEqual(
+		beforeMeasure
+	);
+
 	// A new plate, then undone.
 	await plates.getByRole('button', { name: '+ Plate' }).click();
 	await expect(plates.getByRole('button')).toHaveCount(4);

@@ -17,6 +17,9 @@
 	import PlatePanel from '$lib/components/slicer/PlatePanel.svelte';
 	import SlicePanel from '$lib/components/slicer/SlicePanel.svelte';
 	import type { SlicerScene } from '$lib/components/slicer/scene';
+	import MeasurePanel from '$lib/components/slicer/MeasurePanel.svelte';
+	import type { Vec3 } from '$lib/client/slicer/matrix';
+	import type { Project } from '$lib/shared/slicer/project';
 
 	// The slicer workspace: plates, objects and their settings, painting, slicing with progress, the
 	// toolpath preview and sending, on one slicer project (a Bambu Studio project file).
@@ -28,6 +31,31 @@
 	let scene = $state<SlicerScene | null>(null);
 	let fileInput = $state<HTMLInputElement>();
 	let addOpen = $state(false);
+	let measuring = $state(false);
+	let measurePoints = $state<Vec3[]>([]);
+	let measuredProject: Project | undefined;
+	$effect(() => {
+		const project = ws?.project;
+		if (project !== measuredProject) {
+			measuredProject = project;
+			measurePoints = [];
+		}
+	});
+	$effect(() => {
+		if (ws?.paint || ws?.layFace || ws?.tab !== 'prepare') measuring = false;
+	});
+
+	function toggleMeasure() {
+		if (!ws) return;
+		ws.paint = null;
+		ws.layFace = false;
+		measurePoints = [];
+		measuring = !measuring;
+	}
+	function setGizmo(mode: 'translate' | 'rotate' | 'scale') {
+		measuring = false;
+		if (ws) ws.gizmo = mode;
+	}
 
 	const owner = $derived(lab.project(page.params.id));
 	const models = $derived(
@@ -86,6 +114,7 @@
 		if (!ws) return;
 		ws.plate = index;
 		ws.selection = { items: [], partId: null };
+		measurePoints = [];
 		scene?.focusPlate(index);
 	}
 
@@ -116,11 +145,13 @@
 		else if (!mod && (key === 'delete' || key === 'backspace')) ws.deleteSelection();
 		else if (!mod && key === 'escape') {
 			ws.paint = null;
+			measuring = false;
 			ws.layFace = false;
 			ws.selection = { items: [], partId: null };
-		} else if (!mod && key === 'm') ws.gizmo = 'translate';
-		else if (!mod && key === 'r') ws.gizmo = 'rotate';
-		else if (!mod && key === 's') ws.gizmo = 'scale';
+		} else if (!mod && key === 'm') setGizmo('translate');
+		else if (!mod && key === 'r') setGizmo('rotate');
+		else if (!mod && key === 's') setGizmo('scale');
+		else if (!mod && key === 'd') toggleMeasure();
 		else if (!mod && key === 'f') ws.layFace = !ws.layFace;
 		else return;
 		e.preventDefault();
@@ -238,26 +269,33 @@
 				<div class="seg" role="radiogroup" aria-label="Gizmo">
 					<button
 						role="radio"
-						aria-checked={ws.gizmo === 'translate'}
-						class:on={ws.gizmo === 'translate'}
+						aria-checked={!measuring && ws.gizmo === 'translate'}
+						class:on={!measuring && ws.gizmo === 'translate'}
 						title="Move (M)"
-						onclick={() => ws && (ws.gizmo = 'translate')}>Move</button
+						onclick={() => setGizmo('translate')}>Move</button
 					>
 					<button
 						role="radio"
-						aria-checked={ws.gizmo === 'rotate'}
-						class:on={ws.gizmo === 'rotate'}
+						aria-checked={!measuring && ws.gizmo === 'rotate'}
+						class:on={!measuring && ws.gizmo === 'rotate'}
 						title="Rotate (R)"
-						onclick={() => ws && (ws.gizmo = 'rotate')}>Rotate</button
+						onclick={() => setGizmo('rotate')}>Rotate</button
 					>
 					<button
 						role="radio"
-						aria-checked={ws.gizmo === 'scale'}
-						class:on={ws.gizmo === 'scale'}
+						aria-checked={!measuring && ws.gizmo === 'scale'}
+						class:on={!measuring && ws.gizmo === 'scale'}
 						title="Scale (S)"
-						onclick={() => ws && (ws.gizmo = 'scale')}>Scale</button
+						onclick={() => setGizmo('scale')}>Scale</button
 					>
 				</div>
+				<button
+					class="mini"
+					class:on={measuring}
+					aria-pressed={measuring}
+					title="Measure (D)"
+					onclick={toggleMeasure}>Measure</button
+				>
 				<label class="check" title="Move by 1 mm, turn by 15°, scale by 5 %"
 					><input type="checkbox" bind:checked={ws.snapping} /> Snap</label
 				>
@@ -311,7 +349,7 @@
 			</aside>
 			<main class="sw-stage">
 				<div class="stage-box" class:hidden={ws.tab !== 'prepare'}>
-					<SlicerStage {ws} bind:scene />
+					<SlicerStage {ws} bind:scene {measuring} bind:measurePoints />
 				</div>
 				{#if ws.tab === 'preview'}
 					<div class="preview-box">
@@ -337,6 +375,10 @@
 				{/if}
 			</main>
 			<aside class="right">
+				{#if measuring}<MeasurePanel
+						bind:points={measurePoints}
+						close={() => (measuring = false)}
+					/>{/if}
 				{#if ws.paint}<PaintPanel {ws} />{:else}<ObjectPanel {ws} />{/if}
 				<SlicePanel {ws} snapshot={(plate) => scene?.snapshot(plate) ?? null} />
 				<PlatePanel {ws} />
