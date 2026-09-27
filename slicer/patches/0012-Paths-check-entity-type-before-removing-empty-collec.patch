@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Benjamin Favre <ben@webdesign29.net>
+Date: Sun, 27 Sep 2026 11:15:50 +0000
+Subject: [PATCH] Paths: check entity type before removing empty collections
+
+Why: Extrusion paths and loops also enter chaining. Downcasting every entity to a collection is undefined behaviour. Remove only actual empty collections and retain borrowed entities of other types.
+
+Files: src/libslic3r/ShortestPath.cpp. Upstreamable: yes; corrects undefined behaviour independently of the facade, reproduced by strict sanitizer slice/export tests.
+
+Co-Authored-By: Codex <noreply@openai.com>
+---
+ src/libslic3r/ShortestPath.cpp | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/libslic3r/ShortestPath.cpp b/src/libslic3r/ShortestPath.cpp
+index ce45376..9cb7f75 100644
+--- a/src/libslic3r/ShortestPath.cpp
++++ b/src/libslic3r/ShortestPath.cpp
+@@ -1031,7 +1031,10 @@ void reorder_extrusion_entities(std::vector<ExtrusionEntity*> &entities, const s
+ void chain_and_reorder_extrusion_entities(std::vector<ExtrusionEntity*> &entities, const Point *start_near)
+ {
+     // this function crashes if there are empty elements in entities
+-    entities.erase(std::remove_if(entities.begin(), entities.end(), [](ExtrusionEntity *entity) { return static_cast<ExtrusionEntityCollection *>(entity)->empty(); }),
++    entities.erase(std::remove_if(entities.begin(), entities.end(), [](ExtrusionEntity *entity) {
++                       const auto *collection = dynamic_cast<const ExtrusionEntityCollection *>(entity);
++                       return collection && collection->empty();
++                   }),
+                    entities.end());
+ 	reorder_extrusion_entities(entities, chain_extrusion_entities(entities, start_near));
+ }

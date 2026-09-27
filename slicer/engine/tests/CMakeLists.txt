@@ -18,6 +18,8 @@ printlab_test(test_slice_config printlab_rpc)
 if (PRINTLAB_WITH_UPSTREAM)
     printlab_test(test_facade printlab_facade)
     printlab_test(test_arrange printlab_facade)
+    # A scheduler rendezvous regression must fail instead of hanging a native build forever.
+    set_tests_properties(test_facade test_arrange PROPERTIES TIMEOUT 180)
     # Needs Bambu Studio's profiles: the checkout's resources/ (upstream.sh fetch has them).
     set_tests_properties(test_facade PROPERTIES ENVIRONMENT "PRINTLAB_TEST_RESOURCES=${PRINTLAB_UPSTREAM_DIR}/resources")
     set_tests_properties(test_arrange PROPERTIES ENVIRONMENT "PRINTLAB_TEST_RESOURCES=${PRINTLAB_UPSTREAM_DIR}/resources")

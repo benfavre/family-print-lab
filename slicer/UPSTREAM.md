@@ -9,9 +9,9 @@ new Bambu Studio release is a rebase of a handful of small patches, not a merge 
 
 <!-- pin:start -->
 
-| Upstream | Tag | Commit | Patch queue |
-| --- | --- | --- | --- |
-| Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 10, 6 patch(es), hash `8e4c6e3f8cf8f5fab5698f42d380ddff0b0f9a81597a4db7aba62efbc9046da8` |
+| Upstream     | Tag            | Commit                                     | Patch queue                                                                                       |
+| ------------ | -------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 13, 12 patch(es), hash `627243b81a95466552b56a0a6d0206897f6128f6c6e9d603a480eb99f18a41c4` |
 
 <!-- pin:end -->
 
@@ -161,7 +161,8 @@ it on every pull request.
    headless build (`DEP_BUILD_WXWIDGETS=OFF`, `DEP_BUILD_FFMPEG=OFF`, `DEP_BUILD_LIBHARU=OFF`,
    `DEP_BUILD_GLFW=OFF`) and without the GL targets (`dep_GLEW`, `dep_OpenCSG`). It builds `m4` into
    the build directory when the host lacks it (GMP needs it). The result is stamped with a key (tag,
-   git tree of `deps/`, platform) that CI also uses for its cache; `build-deps.sh --print-key` shows it.
+   git tree of `deps/`, platform, compiler, generator, architecture and C/C++ flags) that CI also uses
+   for its cache; `build-deps.sh --print-key` shows it.
    About 75 minutes with `-j 2` on an 8-core laptop, 634 MB installed.
 2. The engine: `cmake -S slicer/engine -B .build/engine -DPRINTLAB_UPSTREAM_DIR=slicer/.upstream
 -DCMAKE_PREFIX_PATH=.build/deps/usr/local`, which adds upstream with `add_subdirectory(…
@@ -179,7 +180,8 @@ changes are checked against the engine too). `upstream.sh test` runs ctest, then
 `PRINTLAB_SLICER_PATH` set to the build (protocol conformance and golden slices included), plus
 the TypeScript/native 3MF round trips with `PRINTLAB_PROJECT_CODEC` set to the built helper.
 
-The patch queue holds two build fixes and four memory-safety fixes, all marked upstreamable:
+The patch queue holds two build fixes, nine memory-safety fixes and a scheduler fix, all marked
+upstreamable:
 
 - 0001: the top-level `CMakeLists.txt` asked for OpenGL, GLEW and GLFW even with the GUI off, and
   those are what fails on a headless host.
@@ -194,8 +196,19 @@ The patch queue holds two build fixes and four memory-safety fixes, all marked u
 - 0005: release placeholder strings when comparisons change their type or move assignment replaces
   them, and release the 3MF exporter's temporary heap ZIP buffers after their readers finish.
 
-- 0006: copy nullable override defaults through their common typed vector base, avoiding invalid
-  casts between nullable and non-nullable sibling classes during configuration initialisation.
+- 0006: use common typed vector bases for nullable override defaults, volumetric-speed repair and
+  extruder remapping. This avoids sibling-type casts and preserves the boolean nil byte `255`.
+
+- 0007: initialise Clipper polygon-node join/end enums before copying or moving nodes and trees.
+- 0008: initialise worker names and numeric locales on scheduler entry, avoiding a barrier that
+  assumes every worker can run simultaneously. Per-worker locale guards release their resources.
+- 0009: use shared vector bases for nullable absolute values and filament-time estimates.
+- 0010: convert integer boxes to the floating distance type before squaring distances.
+- 0011: capture the optional spiral processor as a pointer without dereferencing it for unused filters.
+- 0012: check extrusion entity types before filtering empty collections.
+
+Miniz uses its portable byte-load implementation (`MINIZ_USE_UNALIGNED_LOADS_AND_STORES=0`)
+in every engine build, so ZIP reads and writes retain alignment sanitizer checks.
 
 ## State of the engine
 
@@ -204,8 +217,8 @@ The patch queue holds two build fixes and four memory-safety fixes, all marked u
   `service.ts` (what jobs call) through both, and the protocol conformance tests against the real
   protocol-only binary.
 - The protocol layer and features pass locally with Make, Ninja and Ninja Multi-Config (`--no-upstream`); native Windows and macOS verification remains outstanding.
-- The full engine builds, links and runs on Linux x64 (Ubuntu 22.04, GCC 11, `-j 2`: about 75
-  minutes for the dependencies and about two hours for libslic3r and the engine). ctest passes
+- The full engine builds, links and runs on Linux x64. On the previous machine (Ubuntu 22.04, GCC 11,
+  `-j 2`), dependencies took about 75 minutes and libslic3r plus the engine about two hours. ctest passes
   (`test_facade` slices a cube for the P1S), the protocol conformance tests pass, the golden boxes
   for the X1C, P1S, A1 mini, H2D and X2D slice to the recorded layer counts and nozzle diameters, and
   a job sliced by the engine prints to Succeeded on the simulated P1S
@@ -227,8 +240,13 @@ The patch queue holds two build fixes and four memory-safety fixes, all marked u
   Patch 0005 also fixes string-comparison/move-assignment and temporary ZIP-buffer leaks. After
   the fixes, Valgrind reports zero memory errors and zero definitely/indirectly lost bytes across
   three repeated slices and export. Small reachable/possibly-lost runtime allocations remain
-  (5,696 bytes total in that run). Full sanitizer validation and golden time/weight recording are
+  (4,648 reachable and 4,160 possibly lost bytes in the final run, including TBB worker TLS). Full sanitizer validation and golden time/weight recording are
   still in progress.
+- Strict sanitizer checks also exposed nullable configuration casts and the invalid read of nil byte
+  `255` as a boolean; patch 0006 preserves the common vector representation. The facade restores
+  the concrete printer-technology enum expected by upstream and returns raw G-code strings at the
+  JSON boundary, avoiding INI escaping. The native preset oracle now passes against the TypeScript
+  resolver, comparing documented numeric/point spellings semantically and G-code byte for byte.
 - A re-configure used to rebuild all of libslic3r, because its version header carries the configure
   time; `upstream.sh build` now sets `SOURCE_DATE_EPOCH` to the pinned commit's time.
 - Native `preview.get` writes the browser's PLPV format from `GCodeProcessorResult`. Its layers,
@@ -241,12 +259,14 @@ The patch queue holds two build fixes and four memory-safety fixes, all marked u
   and their owner indices until the upstream grouping pass selects them. Wipe-tower arrangement
   reservations pass both portable sizing tests and native arrangement tests.
 - Native `project.open`/`project.save` pass all seven TypeScript reference fixtures in both
-  directions, including unknown fields, attachments, painting and transforms. Geometry import/export
-  uses libslic3r; a preservation codec retains fields its slicing model normalises. Opening/saving
+  directions, including unknown fields, attachments, painting and transforms. Libslic3r validates
+  geometry compatibility; a preservation codec serialises the final archive and retains fields
+  the slicing model normalises. Opening/saving
   unsupported configuration remains possible, while slicing refuses invalid settings instead of
-  silently substituting defaults. An eighth integration test covers that boundary. `config.validate`
+  silently substituting defaults. Nine cross-language integration cases cover those fixtures, invalid settings and the two-point
+  layer-profile compatibility boundary. `config.validate`
   still needs to share all per-plate preparation with slicing.
-- The current machine is Linux x64 (Ubuntu 24.04, GCC 13.3, 24 logical CPUs, 62 GiB RAM shared with
+- The current machine is Linux x64 (Ubuntu 24.04, GCC 13.3, 24 available CPU workers (`nproc`; 32 logical CPUs system-wide), 62 GiB RAM shared with
   other processes). The first complete dependency and release-engine build at `-j 24` took
   **1,239.93 seconds (20 minutes 40 seconds)**. The pinned source fetch took 22.48 seconds.
 - Make, Ninja and Ninja Multi-Config dependency-target discovery and protocol builds are verified

@@ -40,8 +40,8 @@ double number(const DynamicPrintConfig &config, const char *key, double fallback
 }
 
 std::vector<double> numbers(const DynamicPrintConfig &config, const char *key) {
-	if (auto *v = config.option<ConfigOptionFloats>(key)) return v->values;
-	if (auto *v = config.option<ConfigOptionFloatsNullable>(key)) return v->values;
+	// Nullable and plain floats are sibling classes with the same typed vector base.
+	if (auto *v = dynamic_cast<const ConfigOptionVector<double> *>(config.option(key))) return v->values;
 	return {};
 }
 
@@ -61,8 +61,8 @@ bool enabled(const DynamicPrintConfig &config, const char *key) {
 }
 
 bool sequential(const DynamicPrintConfig &config) {
-	const auto *option = config.option<ConfigOptionEnum<PrintSequence>>("print_sequence");
-	return option && option->value == PrintSequence::ByObject;
+	const auto *option = config.option("print_sequence");
+	return option && option->getInt() == static_cast<int>(PrintSequence::ByObject);
 }
 
 arrangement::ArrangePolygons wipe_towers(const ProjectState &state, int first_plate,
@@ -88,16 +88,16 @@ arrangement::ArrangePolygons wipe_towers(const ProjectState &state, int first_pl
 	for (int bed = 0; bed < MAX_NUM_PLATES; ++bed) {
 		const int index = first_plate + bed;
 		auto config = plate_config(state, index, source_config, scratch);
-		const auto *timelapse = config.option<ConfigOptionEnum<TimelapseType>>("timelapse_type");
+		const auto *timelapse = config.option("timelapse_type");
 		if (!wipe_tower::needed(enabled(config, "enable_prime_tower"), sequential(config),
-		                        timelapse && timelapse->value == TimelapseType::tlSmooth,
+		                        timelapse && timelapse->getInt() == static_cast<int>(TimelapseType::tlSmooth),
 		                        enabled(config, "enable_wrapping_detection"),
 		                        params.allow_multi_materials_on_same_plate, items)) continue;
 		wipe_tower::Settings s;
 		s.width = number(config, "prime_tower_width");
 		s.wipe_volume = maximum(config, "filament_prime_volume", 0);
-		if (const auto *mode = config.option<ConfigOptionEnum<PrimeVolumeMode>>("prime_volume_mode"))
-			if (mode->value == pvmSaving) s.wipe_volume = 15;
+		if (const auto *mode = config.option("prime_volume_mode"))
+			if (mode->getInt() == static_cast<int>(pvmSaving)) s.wipe_volume = 15;
 		s.layer_height = number(config, "layer_height", 0.08);
 		s.infill_gap = number(config, "prime_tower_infill_gap", 100) / 100.;
 		s.extruders = std::max<int>(1, numbers(config, "nozzle_diameter").size());

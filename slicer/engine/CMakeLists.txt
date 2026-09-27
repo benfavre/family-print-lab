@@ -86,6 +86,9 @@ if (PRINTLAB_WITH_UPSTREAM)
     # our link line as a plain -lcereal (header-only, so there is no such library).
     find_package(cereal REQUIRED)
     add_subdirectory("${PRINTLAB_UPSTREAM_DIR}" upstream EXCLUDE_FROM_ALL)
+    # Miniz's optional x86 unaligned pointer casts violate C alignment rules. Use its portable
+    # byte-load path in every build, retaining alignment sanitizers for all ZIP read/write code.
+    target_compile_definitions(miniz_static PUBLIC MINIZ_USE_UNALIGNED_LOADS_AND_STORES=0)
     find_package(ZLIB REQUIRED)
     target_compile_definitions(printlab_features PRIVATE PRINTLAB_HAVE_ZLIB)
     target_link_libraries(printlab_features PRIVATE ZLIB::ZLIB)

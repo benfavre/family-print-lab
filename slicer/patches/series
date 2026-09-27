@@ -6,3 +6,9 @@
 0004-G-code-initialise-caches-and-ignore-absent-wipe-towe.patch
 0005-Memory-release-placeholder-strings-and-temporary-3MF.patch
 0006-Config-preserve-nullable-values-through-shared-vecto.patch
+0007-Clipper-initialise-polygon-node-join-and-end-types.patch
+0008-Threads-initialise-workers-on-scheduler-entry.patch
+0009-Config-read-nullable-filament-values-through-shared-.patch
+0010-Geometry-square-box-distances-in-the-result-type.patch
+0011-G-code-capture-the-optional-spiral-processor-without.patch
+0012-Paths-check-entity-type-before-removing-empty-collec.patch

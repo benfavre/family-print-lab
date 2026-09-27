@@ -91,7 +91,12 @@ TEST("slices a cube for the P1S and exports a printable file") {
 
 	CancelToken cancel;
 	int updates = 0;
-	PlateStats stats = facade->slice(id, 1, [&](const Progress &) { ++updates; }, cancel);
+	auto progress = [&](const Progress &p) {
+		++updates;
+		if (std::getenv("PRINTLAB_TEST_PROGRESS"))
+			std::fprintf(stderr, "slice %d%%: %s\n", p.percent, p.message.c_str());
+	};
+	PlateStats stats = facade->slice(id, 1, progress, cancel);
 	CHECK_EQ(stats.layers, 50);
 	CHECK(std::isfinite(stats.seconds));
 	CHECK(stats.seconds > 0 && stats.seconds < 86400);
@@ -102,7 +107,7 @@ TEST("slices a cube for the P1S and exports a printable file") {
 		CHECK(std::isfinite(f.meters) && f.meters >= 0 && f.meters < 1000);
 	}
 	for (int repeat = 0; repeat < 2; ++repeat) {
-		auto again = facade->slice(id, 1, [](const Progress &) {}, cancel);
+		auto again = facade->slice(id, 1, progress, cancel);
 		CHECK(std::isfinite(again.seconds));
 		CHECK(std::abs(again.seconds - stats.seconds) < 0.01);
 		CHECK_EQ(again.filaments.size(), stats.filaments.size());

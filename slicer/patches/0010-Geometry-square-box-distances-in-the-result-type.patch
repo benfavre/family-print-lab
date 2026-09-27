@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Benjamin Favre <ben@webdesign29.net>
+Date: Sun, 27 Sep 2026 11:15:49 +0000
+Subject: [PATCH] Geometry: square box distances in the result type
+
+Why: Integer coordinate boxes overflow while squaring bridging distances, before conversion to the floating result. Convert box coordinates before the distance arithmetic in nearest and radius queries.
+
+Files: src/libslic3r/AABBTreeIndirect.hpp. Upstreamable: yes; corrects undefined behaviour independently of the facade, reproduced by strict sanitizer slice/export tests.
+
+Co-Authored-By: Codex <noreply@openai.com>
+---
+ src/libslic3r/AABBTreeIndirect.hpp | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/libslic3r/AABBTreeIndirect.hpp b/src/libslic3r/AABBTreeIndirect.hpp
+index 6d64795..9a98b6d 100644
+--- a/src/libslic3r/AABBTreeIndirect.hpp
++++ b/src/libslic3r/AABBTreeIndirect.hpp
+@@ -614,8 +614,8 @@ namespace detail {
+             if (node_right.bbox.contains(distancer.origin.template cast<BBoxScalar>()))
+ 			  	look_right();
+ 			// if haven't looked left and could be less than current min, then look
+-			Scalar left_up_sqr_d  = node_left.bbox.squaredExteriorDistance(distancer.origin);
+-			Scalar right_up_sqr_d = node_right.bbox.squaredExteriorDistance(distancer.origin);
++			Scalar left_up_sqr_d  = node_left.bbox.template cast<Scalar>().squaredExteriorDistance(distancer.origin);
++			Scalar right_up_sqr_d = node_right.bbox.template cast<Scalar>().squaredExteriorDistance(distancer.origin);
+ 			if (left_up_sqr_d < right_up_sqr_d) {
+ 			  	if (! looked_left && left_up_sqr_d < up_sqr_d)
+ 			    	look_left();
+@@ -651,11 +651,11 @@ namespace detail {
+             assert(node_left.is_valid());
+             assert(node_right.is_valid());
+ 
+-            if (node_left.bbox.squaredExteriorDistance(distancer.origin) < squared_distance_limit) {
++            if (node_left.bbox.template cast<Scalar>().squaredExteriorDistance(distancer.origin) < squared_distance_limit) {
+                 indexed_primitives_within_distance_squared_recurisve(distancer, left_node_idx, squared_distance_limit,
+                                                                      found_primitives_indices);
+             }
+-            if (node_right.bbox.squaredExteriorDistance(distancer.origin) < squared_distance_limit) {
++            if (node_right.bbox.template cast<Scalar>().squaredExteriorDistance(distancer.origin) < squared_distance_limit) {
+                 indexed_primitives_within_distance_squared_recurisve(distancer, right_node_idx, squared_distance_limit,
+                                                                      found_primitives_indices);
+             }

@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Benjamin Favre <ben@webdesign29.net>
+Date: Sun, 27 Sep 2026 10:55:43 +0000
+Subject: [PATCH] Clipper: initialise polygon node join and end types
+
+Why: copying a newly constructed PolyNode during polygon union reads uninitialised enum members. UBSan detects an invalid EndType while arranging a wipe tower. Initialise both enums before any node or tree copy.
+
+Files: src/clipper/clipper.hpp. Upstreamable: yes; removes undefined behaviour in Clipper polygon ownership independently of the facade.
+
+Co-Authored-By: Codex <noreply@openai.com>
+---
+ src/clipper/clipper.hpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/clipper/clipper.hpp b/src/clipper/clipper.hpp
+index b1dae3c..edff8f3 100644
+--- a/src/clipper/clipper.hpp
++++ b/src/clipper/clipper.hpp
+@@ -136,7 +136,7 @@ typedef std::vector< PolyNode* > PolyNodes;
+ class PolyNode 
+ { 
+ public:
+-    PolyNode() : Childs(), Parent(0), Index(0), m_IsOpen(false) {}
++    PolyNode() : Childs(), Parent(0), Index(0), m_IsOpen(false), m_jointype(jtSquare), m_endtype(etClosedPolygon) {}
+     virtual ~PolyNode(){};
+     Path Contour;
+     PolyNodes Childs;

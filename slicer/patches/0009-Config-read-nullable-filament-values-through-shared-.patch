@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Benjamin Favre <ben@webdesign29.net>
+Date: Sun, 27 Sep 2026 11:15:49 +0000
+Subject: [PATCH] Config: read nullable filament values through shared bases
+
+Why: ConfigBase absolute-value resolution and filament time estimation downcast nullable options to sibling plain types. Read their common typed vectors instead, retaining indexing and missing-option behaviour.
+
+Files: src/libslic3r/Config.cpp, src/libslic3r/PrintObject.cpp. Upstreamable: yes; corrects undefined behaviour independently of the facade, reproduced by strict sanitizer slice/export tests.
+
+Co-Authored-By: Codex <noreply@openai.com>
+---
+ src/libslic3r/Config.cpp      | 6 +++---
+ src/libslic3r/PrintObject.cpp | 4 ++--
+ 2 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/src/libslic3r/Config.cpp b/src/libslic3r/Config.cpp
+index 69f449c..9aa8ee7 100644
+--- a/src/libslic3r/Config.cpp
++++ b/src/libslic3r/Config.cpp
+@@ -713,7 +713,7 @@ double ConfigBase::get_abs_value_at(const t_config_option_key &opt_key, size_t i
+     const ConfigOption *raw_opt = this->option(opt_key);
+     assert(raw_opt != nullptr);
+     if (raw_opt->type() == coFloats) {
+-        return static_cast<const ConfigOptionFloats*>(raw_opt)->get_at(index);
++        return static_cast<const ConfigOptionVector<double>*>(raw_opt)->get_at(index);
+     }
+     if (raw_opt->type() == coFloatsOrPercents) {
+         const ConfigDef *def = this->def();
+@@ -726,8 +726,8 @@ double ConfigBase::get_abs_value_at(const t_config_option_key &opt_key, size_t i
+         } else {
+             const ConfigOption *ratio_opt = this->option(opt_def->ratio_over);
+             assert(ratio_opt->type() == coFloats);
+-            const ConfigOptionFloats *ratio_values = static_cast<const ConfigOptionFloats *>(ratio_opt);
+-            return static_cast<const ConfigOptionFloatsOrPercents *>(raw_opt)->get_at(index).get_abs_value(ratio_values->get_at(index));
++            const ConfigOptionVector<double> *ratio_values = static_cast<const ConfigOptionVector<double> *>(ratio_opt);
++            return static_cast<const ConfigOptionVector<FloatOrPercent> *>(raw_opt)->get_at(index).get_abs_value(ratio_values->get_at(index));
+         }
+     }
+ 
+diff --git a/src/libslic3r/PrintObject.cpp b/src/libslic3r/PrintObject.cpp
+index cc9a3f8..7c53cd3 100644
+--- a/src/libslic3r/PrintObject.cpp
++++ b/src/libslic3r/PrintObject.cpp
+@@ -324,8 +324,8 @@ std::unordered_map<int, std::unordered_map<int, double>> PrintObject::calc_estim
+ 
+     const auto* opt_filament_variant      = full_print_config.option<ConfigOptionStrings>("filament_extruder_variant");
+     const auto* opt_filament_self_idx     = full_print_config.option<ConfigOptionInts>("filament_self_index");
+-    const auto* opt_filament_max_vol_spd  = full_print_config.option<ConfigOptionFloats>("filament_max_volumetric_speed");
+-    const auto* opt_filament_flow_ratio   = full_print_config.option<ConfigOptionFloats>("filament_flow_ratio");
++    const auto* opt_filament_max_vol_spd  = dynamic_cast<const ConfigOptionVector<double> *>(full_print_config.option("filament_max_volumetric_speed"));
++    const auto* opt_filament_flow_ratio   = dynamic_cast<const ConfigOptionVector<double> *>(full_print_config.option("filament_flow_ratio"));
+     if (!opt_filament_variant || !opt_filament_self_idx || !opt_filament_max_vol_spd || !opt_filament_flow_ratio) {
+         BOOST_LOG_TRIVIAL(warning) << "calc_estimated_filament_print_time: filament_* config option missing, skip estimation";
+         return {};
