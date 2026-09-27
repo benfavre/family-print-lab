@@ -22,7 +22,7 @@ test('the printer page shows the live camera, and the Media page lists timelapse
 	await expect
 		.poll(() => img.evaluate((i: HTMLImageElement) => i.naturalWidth), { timeout: 15_000 })
 		.toBeGreaterThan(0);
-	await expect(panel.getByText('LIVE')).toBeVisible();
+	await expect(panel.getByText('LIVE', { exact: true })).toBeVisible();
 
 	const snap = await page.request.get(`/api/printers/${x2d.id}/camera/snapshot.jpg`);
 	expect(snap.status()).toBe(200);
