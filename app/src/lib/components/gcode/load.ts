@@ -4,11 +4,13 @@ import { decodePreview, type PreviewData } from '$lib/shared/slicer/preview';
 import type { PreviewPending } from '$lib/shared/gcode-preview';
 
 export async function loadPreview(
-	o: { jobId: string; plate: number; file: string; signal: AbortSignal },
+	o: { jobId: string; plate: number; file: string; signal: AbortSignal; url?: string },
 	onWaiting: (taskId: string) => void,
 	pollMs = 1500
 ): Promise<PreviewData> {
-	const url = `/api/jobs/${o.jobId}/sliced/preview?plate=${o.plate}&f=${encodeURIComponent(o.file)}`;
+	// `url`: a preview kept elsewhere (the slicer workspace's sliced plates).
+	const url =
+		o.url ?? `/api/jobs/${o.jobId}/sliced/preview?plate=${o.plate}&f=${encodeURIComponent(o.file)}`;
 	let task: string | null = null;
 	for (;;) {
 		const res = await fetch(url, { signal: o.signal });
