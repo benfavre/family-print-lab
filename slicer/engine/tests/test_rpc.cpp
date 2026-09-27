@@ -3,6 +3,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
+#include <set>
 #include <thread>
 
 #include "check.hpp"
@@ -154,16 +155,35 @@ TEST("cancels a running request with $/cancel while ping still answers") {
 }
 
 TEST("runs different projects side by side and one project in order") {
+	// Hold both projects inside their handlers: overlap is a fact we observe, not a wall-clock
+	// performance threshold. The deadlines below only bound a broken scheduler's failure.
+	std::mutex gate_mutex;
+	std::condition_variable gate_cv;
+	std::set<long long> entered;
+	bool release = false, timed_out = false;
 	Harness h;
-	auto start = std::chrono::steady_clock::now();
-	h.send(R"({"jsonrpc":"2.0","id":20,"method":"test.wait","params":{"projectId":"a","steps":10,"stepMs":20}})");
-	h.send(R"({"jsonrpc":"2.0","id":21,"method":"test.wait","params":{"projectId":"b","steps":10,"stepMs":20}})");
-	h.send(R"({"jsonrpc":"2.0","id":22,"method":"test.wait","params":{"projectId":"a","steps":1,"stepMs":1}})");
+	h.server.add("test.gated", {{}, false, [&](const Json &, CallContext &ctx) {
+		std::unique_lock<std::mutex> lock(gate_mutex);
+		entered.insert(ctx.id.as_int());
+		gate_cv.notify_all();
+		if (!gate_cv.wait_for(lock, std::chrono::seconds(10), [&] { return release; })) timed_out = true;
+		return Json(Json::Object{{"ok", true}});
+	}});
+	h.send(R"({"jsonrpc":"2.0","id":20,"method":"test.gated","params":{"projectId":"a"}})");
+	h.send(R"({"jsonrpc":"2.0","id":21,"method":"test.gated","params":{"projectId":"b"}})");
+	h.send(R"({"jsonrpc":"2.0","id":22,"method":"test.gated","params":{"projectId":"a"}})");
+	{
+		std::unique_lock<std::mutex> lock(gate_mutex);
+		CHECK(gate_cv.wait_for(lock, std::chrono::seconds(5), [&] { return entered.count(20) && entered.count(21); }));
+		CHECK(!entered.count(22)); // a's first handler is still blocked, so its second cannot run
+		release = true;
+		gate_cv.notify_all();
+	}
 	CHECK(h.answer(20).has("result"));
 	CHECK(h.answer(21).has("result"));
 	CHECK(h.answer(22).has("result"));
-	auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
-	CHECK(ms < 380); // a and b overlapped (serially it would be 400 ms or more)
+	h.server.join();
+	CHECK(!timed_out);
 	std::lock_guard<std::mutex> lock(h.m);
 	size_t at20 = 0, at22 = 0;
 	for (size_t i = 0; i < h.out.size(); ++i) {
