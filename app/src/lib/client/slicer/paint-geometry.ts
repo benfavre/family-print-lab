@@ -1,3 +1,4 @@
+// origin: BambuStudio src/libslic3r/TriangleSelector.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
 // Geometry of the native facet tree, without changing the model mesh's triangle ids.
 // Child order: BambuStudio src/libslic3r/TriangleSelector.cpp::perform_split at
 // https://github.com/bambulab/BambuStudio/blob/926a7192574bcb9b3a732e1ec59a46d79cb45466/src/libslic3r/TriangleSelector.cpp
