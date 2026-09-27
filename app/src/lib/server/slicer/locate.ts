@@ -74,14 +74,15 @@ export const platformKey = (h: Pick<SlicerHost, 'platform' | 'arch'>) => `${h.pl
  * server, and this one takes a fake host for tests.
  */
 export function findRepo(cwd: string, host: SlicerHost = realHost()): string | null {
-	let dir = path.resolve(cwd);
+	const p = host.platform === 'win32' ? path.win32 : path.posix;
+	let dir = p.resolve(cwd);
 	for (;;) {
 		if (
-			host.isFile(path.join(dir, 'slicer', 'UPSTREAM.md')) ||
-			host.isFile(path.join(dir, 'slicer', 'upstream.lock'))
+			host.isFile(p.join(dir, 'slicer', 'UPSTREAM.md')) ||
+			host.isFile(p.join(dir, 'slicer', 'upstream.lock'))
 		)
 			return dir;
-		const parent = path.dirname(dir);
+		const parent = p.dirname(dir);
 		if (parent === dir) return null;
 		dir = parent;
 	}

@@ -21,7 +21,7 @@ import {
 } from './cli';
 import { machinePreset, selectionOf } from './profile-book';
 import { sliceModel, type SliceSettings } from './service';
-import { fakeInstall, type FakeInstall } from './__fixtures__/install';
+import { FAKE_CLI, fakeInstall, type FakeInstall } from './__fixtures__/install';
 
 /** Transforms equal to float precision. */
 function near(actual: Transform, expected: Transform) {
@@ -273,6 +273,9 @@ describe('CliEngine against a fake Bambu Studio', () => {
 				source: 'installed'
 			},
 			workDir: fs.mkdtempSync(path.join(work, 'cli-')),
+			// Spawn a real Node child on every OS; Windows does not execute AppRun's Unix shebang.
+			command: process.execPath,
+			commandArgs: [FAKE_CLI],
 			env: { FAKE_CLI_LOG: install.log, ...env }
 		});
 		engines.push(e);

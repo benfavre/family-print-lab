@@ -17,12 +17,27 @@ const SERIES = path.resolve(import.meta.dirname, '../../../../../slicer/patches/
 
 function lock(): Record<string, string> {
 	const out: Record<string, string> = {};
-	for (const line of fs.readFileSync(LOCK, 'utf8').split('\n')) {
+	for (const line of fs.readFileSync(LOCK, 'utf8').split(/\r?\n/)) {
 		const m = line.replace(/(^|\s)#.*$/, '').match(/^\s*([a-z_]+)\s*=\s*(.*?)\s*$/);
 		if (m) out[m[1]] = m[2];
 	}
 	return out;
 }
+
+function patchesIn(text: string) {
+	return text
+		.split(/\r?\n/)
+		.map((line) => line.replace(/(^|\s)#.*$/, '').trim())
+		.filter(Boolean);
+}
+
+it('reads the same patch identity from LF and Windows CRLF checkouts', () => {
+	const series =
+		'# queue documentation\n\n0001-example.patch # explanation\n  # another comment\n0002-other.patch\n';
+	const expected = ['0001-example.patch', '0002-other.patch'];
+	expect(patchesIn(series)).toEqual(expected);
+	expect(patchesIn(series.replaceAll('\n', '\r\n'))).toEqual(expected);
+});
 
 /** One line the engine wrote, as far as these tests look at it. */
 interface Line {
@@ -92,11 +107,7 @@ describe.runIf(!!BIN)('printlab-slicer protocol conformance', () => {
 		const engine = await StdioEngine.open({ command: BIN!, workDir });
 		try {
 			const pin = lock();
-			const patches = fs
-				.readFileSync(SERIES, 'utf8')
-				.split('\n')
-				.map((l) => l.replace(/(^|\s)#.*$/, '').trim())
-				.filter(Boolean);
+			const patches = patchesIn(fs.readFileSync(SERIES, 'utf8'));
 			expect(engine.info).toMatchObject({
 				engine: 'printlab-slicer',
 				protocol: { major: 1 },
