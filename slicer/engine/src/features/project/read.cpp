@@ -2,6 +2,7 @@
 // accepting the slicer's normalisation as a project edit.
 // origin: BambuStudio src/libslic3r/Format/bbs_3mf.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
 #include "common.hpp"
+#include "layer_profile.hpp"
 #include <regex>
 
 namespace printlab::project_io {
@@ -107,6 +108,13 @@ void project_config(Json &project, const Files &files) {
 	if (!text(files, LAB).empty()) {
 		Json lab = Json::parse(text(files, LAB));
 		if (lab["format"] == Json(1)) {
+			auto &objects = project["objects"].as_array();
+			for (size_t i = 0; i < objects.size() && i < lab["layerHeightProfiles"].size(); ++i) {
+				const Json &source = objects[i];
+				Json restored = restore_layer_profile(source["layerHeightProfile"], lab["layerHeightProfiles"][i]);
+				if (restored.is_array())
+					objects[i]["layerHeightProfile"] = restored;
+			}
 			auto keep = [](const Json &ref, const Json &saved) {
 				return saved.is_object() && saved["kind"] == ref["kind"] && saved["name"] == ref["name"] ? saved : ref;
 			};
@@ -393,7 +401,7 @@ Json read(const Files &files, const StoreMesh &store) {
 		std::string n;
 		while (nums >> n)
 			profile.push_back(number(n));
-		if (profile.size() > 4 && profile.size() % 2 == 0)
+		if (profile.size() >= 4 && profile.size() % 2 == 0)
 			objects.as_array()[id - 1]["layerHeightProfile"] = profile;
 	}
 	for (const auto *file : {RANGES, CUT}) {

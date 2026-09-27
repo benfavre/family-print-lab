@@ -5,6 +5,7 @@
 // for the settings, and the per-object side files. Passthrough files are copied byte for byte.
 //
 // origin: BambuStudio src/libslic3r/Format/bbs_3mf.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
+import { studioLayerProfile } from './layer-profile';
 import fs from 'node:fs';
 import { writeZip } from '../cad/mesh';
 import { AppError } from '../validation';
@@ -204,7 +205,7 @@ export function write3mf(project: Project, sources: WriteSources): Buffer {
 	const heights = objects
 		.map((o, i) =>
 			o.layerHeightProfile && o.layerHeightProfile.length >= 4
-				? `object_id=${i + 1}|${o.layerHeightProfile.map(formatNumber).join(';')}\n`
+				? `object_id=${i + 1}|${studioLayerProfile(o.layerHeightProfile).map(formatNumber).join(';')}\n`
 				: ''
 		)
 		.join('');

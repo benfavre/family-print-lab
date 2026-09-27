@@ -5,6 +5,7 @@
 // the 1-based object order. Files we do not model are kept byte for byte in `passthrough`.
 //
 // origin: BambuStudio src/libslic3r/Format/bbs_3mf.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
+import { restoreLayerProfile } from './layer-profile';
 import { readZip } from '../cad/mesh';
 import { AppError } from '../validation';
 import { child, childrenNamed, parseXml, rootElement, xmlUnescape, type XmlNode } from './xml';
@@ -377,7 +378,7 @@ function readProject(buf: Buffer, o: ReadOptions): ReadResult {
 			if (!m) continue;
 			const values = m[2].split(';').map(Number);
 			const obj = objects[Number(m[1]) - 1];
-			if (obj && values.length > 4 && values.length % 2 === 0 && values.every(Number.isFinite))
+			if (obj && values.length >= 4 && values.length % 2 === 0 && values.every(Number.isFinite))
 				obj.layerHeightProfile = values;
 			else warnings.push(`Layer height profile ${m[1]} skipped.`);
 		}
@@ -453,6 +454,13 @@ function readProject(buf: Buffer, o: ReadOptions): ReadResult {
 	);
 	const printLab = parsePrintLabFile(text(PRINT_LAB_FILE));
 	if (printLab) {
+		objects.forEach((object, i) => {
+			const restored = restoreLayerProfile(
+				object.layerHeightProfile,
+				printLab.layerHeightProfiles?.[i]
+			);
+			if (restored) object.layerHeightProfile = restored;
+		});
 		const keep = (ref: PresetRef, saved: PresetRef | undefined) =>
 			saved && saved.name === ref.name && saved.kind === ref.kind ? saved : ref;
 		presets.printer = keep(presets.printer, printLab.presets?.printer);

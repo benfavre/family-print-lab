@@ -64,6 +64,38 @@ describe.runIf(!!BIN)('native project preservation codec', () => {
 			}
 		}, 60_000);
 	}
+	it('preserves two-point profiles in both directions and exports a Studio-readable midpoint', () => {
+		const input = fs.readFileSync(path.join(dir, 'synth-bambu-features.3mf'));
+		const reference = read3mf(input);
+		const profile = [0, 0.2, 20, 0.1];
+		reference.project.objects[0].layerHeightProfile = profile;
+		const tsWritten = write3mf(reference.project, {
+			mesh: (id) => reference.meshes.get(id)!.geometry
+		});
+		const first = run(tsWritten);
+		expect(normalise(first)).toEqual(reference.project);
+		const written = writeZip(
+			Object.entries(first.files).map(([n, b]) => [n, Buffer.from(b, 'base64')])
+		);
+		expect(read3mf(written).project).toEqual(reference.project);
+		expect(
+			Buffer.from(first.files['Metadata/layer_heights_profile.txt'], 'base64').toString()
+		).toContain('object_id=1|0;0.2;10;0.15000000000000002;20;0.1');
+		expect(normalise(run(written))).toEqual(reference.project);
+		const files = readZip(written, () => 'all');
+		files.set(
+			'Metadata/layer_heights_profile.txt',
+			Buffer.from('object_id=1|0;0.2;10;0.18;20;0.1\n')
+		);
+		const edited = writeZip([...files]);
+		expect(normalise(run(edited))).toEqual(read3mf(edited).project);
+		expect(normalise(run(edited)).objects[0].layerHeightProfile).toEqual([
+			0, 0.2, 10, 0.18, 20, 0.1
+		]);
+		files.delete('Metadata/print_lab.json');
+		files.set('Metadata/layer_heights_profile.txt', Buffer.from('object_id=1|0;0.2;20;0.1\n'));
+		expect(normalise(run(writeZip([...files]))).objects[0].layerHeightProfile).toEqual(profile);
+	});
 	it('writes edited names, transforms, settings and arbitrary binary attachments', () => {
 		const input = fs.readFileSync(path.join(dir, 'synth-bambu-features.3mf'));
 		const first = run(input);
