@@ -30,8 +30,9 @@ export function setKidCookie(cookies: Cookies, profileId: string, secure: boolea
 	});
 }
 
-export function clearKidCookie(cookies: Cookies) {
-	cookies.delete(KID_COOKIE, { path: '/' });
+/** `secure` as when it was set: a Secure deletion over plain http is ignored by the browser. */
+export function clearKidCookie(cookies: Cookies, secure: boolean) {
+	cookies.delete(KID_COOKIE, { path: '/', httpOnly: true, sameSite: 'strict', secure });
 }
 
 // Model files: the preview mesh (GET) and the thumbnails the kid page renders after saving (PUT).
