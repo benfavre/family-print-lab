@@ -9,6 +9,14 @@ optional companion with its own releases. Earlier releases remain documented in 
 These changes are on `parity` after the published 2.2.0 tag. They are **not included in the 2.2.0
 installers**.
 
+- Match H2D/X2D filaments to feeders connected to the correct nozzle. Reject known wrong-side
+  selections before sending, including forced sends; queue dispatch checks the same restrictions.
+- Recheck filament warnings after waking a printer, before uploading a file.
+- Enable native configuration validation with the same plate overrides, filament grouping and
+  calibration preparation used for slicing, without discarding existing previews or sliced files.
+- Ignore invalid time and filament estimates in imported sliced files, using valid G-code or
+  filament metadata where available.
+
 - Clarify phone pairing for several computers: scan each computer’s key and revoke a lost phone on
   each computer. The Cloud companion now keeps multiple keys without replacing existing pairings,
   including keys saved by older phone clients; this also works with the released 2.2.0 app.
@@ -16,6 +24,9 @@ installers**.
 - Fix Windows dependency target discovery when command output contains carriage returns, and select
   native Windows Perl when building OpenSSL.
 - Set the C++ standard required by OCCT on AppleClang and support macOS's bundled Bash 3.2.
+- Use portable JSON number formatting on older macOS targets and select native Windows
+  `pkg-config.exe` explicitly.
+- Supply missing upstream header includes exposed by Clang/libc++ when precompiled headers are off.
 - Retain completed native dependency caches when a later build step fails, and allow retries of one
   engine platform at a time. Complete Windows and macOS native-engine verification remains pending.
 

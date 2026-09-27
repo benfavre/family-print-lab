@@ -191,3 +191,45 @@ Validation for this follow-up:
   protocol-only skip, plus both phone approval and cloud-remote simulator browser tests.
 
 No engine code or installer assets changed in this follow-up.
+
+## Bambu and slicer integration follow-up (2026-09-27)
+
+Send mapping now respects reported AMS nozzle bindings and the fixed left/right external-spool
+addresses on dual-nozzle printers. Known wrong-side selections cannot be forced, including empty
+or unreported external spools. Automatic mapping and queue selection use the same restrictions;
+the Send panel updates when a feeder changes nozzle. Single-nozzle files and unknown legacy AMS
+bindings retain their previous behaviour. Material warnings are checked again after waking a printer,
+before any upload, and still require an explicit override.
+
+Native `config.validate` is enabled and shares slicing's preparation of plate overrides, filament
+maps, nozzle volumes, grouping and calibration. Validation keeps existing sliced files and previews.
+Imported sliced files discard negative/non-finite estimates and fall back to valid G-code or filament
+metadata, keeping invalid values out of planning and filament accounting.
+
+The baseline app check had zero errors/warnings. Its native-backed unit run had 1,430 passes,
+13 skips and one failure: the local binary still reported the previous patch queue. The selected
+browser baseline had three passes and one failure because the editing test assumed no engine was
+installed. That test now explicitly exercises the no-engine case on any host.
+
+The focused printer checks pass all 78 unit/simulator tests and the browser test for rebinding an
+AMS feeder while the Send panel is open. Imported-estimate and FTP checks pass all 19 tests.
+The full native-backed app run passes 1,467 tests across 158 files, with four optional/protocol-only
+skips. App check has zero errors/warnings; Prettier and ESLint pass. The rebuilt engine passes
+12 native and nine protocol tests, plus 105 integration tests with one protocol-only skip.
+Dependencies refreshed in 473.23 seconds; the release-engine rebuild took 389.05 seconds and its
+final incremental build 25.10 seconds, at 24 workers.
+The new native validation tests pass Valgrind with zero errors and zero definite/indirect leaks;
+3,840 possibly-lost bytes in TBB worker TLS and 4,256 reachable bytes remain, without suppressions.
+This follow-up used release builds and Valgrind; the full ASan/UBSan results above are from the earlier
+continuation pass.
+All 63 browser tests pass in 4.2 minutes. The first full run found one further catalogue-dependent
+test assumption: a broad infill search stayed on Quality while the requested field was on Strength.
+Searching for the exact setting key makes that test work with the installed native catalogue too.
+
+Windows/macOS build work continues. Both completed their dependency superbuilds in earlier attempts;
+native `pkg-config.exe` selection and old-macOS JSON formatting fix the subsequent configure/compiler
+errors. The next macOS attempt passed the JSON stage and exposed a missing upstream header include,
+fixed by patch 0017. A later missing `<sstream>` include is fixed by patch 0018; both failures were
+reproduced and checked with Clang, using libc++ for the standard-library case. These changes are on
+`parity`, not in the published 2.2.0 installers. Complete Windows/macOS native build verification
+remains pending in GitHub Actions. No physical printer has been used.

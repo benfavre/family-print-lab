@@ -284,8 +284,9 @@ in every engine build, so ZIP reads and writes retain alignment sanitizer checks
   the slicing model normalises. Opening/saving
   unsupported configuration remains possible, while slicing refuses invalid settings instead of
   silently substituting defaults. Nine cross-language integration cases cover those fixtures, invalid settings and the two-point
-  layer-profile compatibility boundary. `config.validate`
-  still needs to share all per-plate preparation with slicing.
+  layer-profile compatibility boundary. `config.validate` shares plate overrides, nozzle-volume and
+  filament-map preparation, flush volumes, filament grouping and calibration setup with slicing.
+  It checks a selected plate or every populated plate without replacing cached slices or previews.
 - The current machine is Linux x64 (Ubuntu 24.04, GCC 13.3, 24 available CPU workers (`nproc`; 32 logical CPUs system-wide), 62 GiB RAM shared with
   other processes). The first complete dependency and release-engine build at `-j 24` took
   **1,239.93 seconds (20 minutes 40 seconds)**. The pinned source fetch took 22.48 seconds.
@@ -293,6 +294,14 @@ in every engine build, so ZIP reads and writes retain alignment sanitizer checks
   three-source correction took another 395.31 seconds (6 minutes 35 seconds). Strict native and
   integration validation completed in 52.48 seconds. The final release rebuild, reusing dependencies,
   took 330.73 seconds (5 minutes 31 seconds) at `-j 24`.
+- The printer/validation follow-up refreshed dependencies in 473.23 seconds (7 minutes 53 seconds)
+  at `-j 24`. The release-engine rebuild took 389.05 seconds (6 minutes 29 seconds), followed by
+  a 25.10-second incremental rebuild for patch 0018 and the final queue metadata. All 12 native,
+  nine protocol and 105 integration tests pass (one protocol-only skip), including selected/all-plate
+  validation, unchanged cached previews/exports and H2D/X2D validation before and after slicing.
+  The new validation tests also pass Valgrind in 153.41 seconds: zero errors and zero definite or
+  indirect leaks, without suppressions. TBB worker TLS accounts for 3,840 possibly-lost bytes;
+  4,256 reachable bytes remain. The earlier full ASan/UBSan results above predate this follow-up.
 - The v2.2.0 release's clean Ubuntu 22.04 CI dependency/engine build passed in 3,465 seconds
   (57 minutes 45 seconds) at four workers. Ten native tests and 105 integration tests pass (one
   protocol-only skip). The published Linux package and bundled engine also start successfully in
@@ -305,8 +314,16 @@ in every engine build, so ZIP reads and writes retain alignment sanitizer checks
   the workflow now selects native Strawberry Perl and checks its required modules before building.
   macOS rebuilt all dependencies after the AppleClang standard-selection fix in patch 0016. Its
   older Bash then rejected an empty configure-argument array; the nonempty replacement passes
-  Release, sanitizer and debug-mode checks under Bash 3.2. Full native
-  builds on those runners remain unverified and nonblocking. The v2.2.0 desktop installers for
+  Release, sanitizer and debug-mode checks under Bash 3.2. Subsequent attempts completed dependencies
+  on both platforms. Windows then selected Strawberry's extensionless `pkg-config` wrapper, which
+  native CMake cannot execute; the workflow now installs and explicitly selects `pkg-config.exe`.
+  macOS rejected floating-point `std::to_chars` for deployment targets below 13.3; those targets now
+  use a locale-independent, round-trip-tested formatter. The next macOS attempt passed that stage
+  and exposed an incomplete `ExPolygon` definition in `ClipperZUtils.hpp`; patch 0017 supplies its
+  missing include, verified with Clang before and after the fix. The following attempt reached
+  `LocalesUtils.cpp`, where libc++ requires an explicit `<sstream>` include (patch 0018). Its failing
+  and corrected forms were reproduced with Clang/libc++ locally. Full native builds on those runners
+  remain unverified and nonblocking. The v2.2.0 desktop installers for
   Windows/macOS therefore use the installed-Studio fallback. Local Linux AppImage and Debian
   packaging succeeds; the packaged app launches on loopback and preserves all 2,556 engine files.
 
