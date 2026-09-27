@@ -17,9 +17,12 @@ import type { LayerView } from '$lib/client/slicer/layer-view';
 import { applyLayerColours } from './layer-material';
 import { paintedFacets } from '$lib/client/slicer/paint-geometry';
 
+import type { TextPlacement } from '$lib/shared/slicer/text';
+
 export type Gizmo = 'translate' | 'rotate' | 'scale' | null;
 
 export interface SceneEvents {
+	onTextFace(hit: TextPlacement): void;
 	/** A surface point in project millimetres, after the complete object transform. */
 	onMeasure(point: Vec3): void;
 	onPick(pick: Pick | null, additive: boolean, partId: string | null): void;
@@ -70,6 +73,7 @@ export class SlicerScene {
 	private camera = new THREE.PerspectiveCamera(35, 1, 1, 20000);
 	private controls: OrbitControls;
 	private gizmo: TransformControls;
+	private textTarget: Pick | null = null;
 	private measuring = false;
 	private measureGeometry = new THREE.BufferGeometry();
 	private measureLine = new THREE.Line(
@@ -351,7 +355,15 @@ export class SlicerScene {
 
 	setLayFace(on: boolean) {
 		this.layFace = on;
-		this.renderer.domElement.style.cursor = on || this.measuring ? 'crosshair' : '';
+		this.renderer.domElement.style.cursor =
+			on || this.measuring || this.textTarget ? 'crosshair' : '';
+		this.attachGizmo();
+	}
+
+	setTextPick(target: Pick | null) {
+		this.textTarget = target;
+		this.renderer.domElement.style.cursor =
+			target || this.measuring || this.layFace ? 'crosshair' : '';
 		this.attachGizmo();
 	}
 
@@ -363,14 +375,22 @@ export class SlicerScene {
 		);
 		this.measureGeometry.computeBoundingSphere();
 		this.measurement.visible = enabled && points.length > 0;
-		this.renderer.domElement.style.cursor = enabled || this.layFace ? 'crosshair' : '';
+		this.renderer.domElement.style.cursor =
+			enabled || this.layFace || this.textTarget ? 'crosshair' : '';
 		this.attachGizmo();
 	}
 
 	private attachGizmo() {
 		const one = this.selection.items.length === 1 ? this.selection.items[0] : null;
 		const group = one ? this.instances.get(`${one.objectId}/${one.instanceId}`) : undefined;
-		if (!group || !this.gizmoMode || this.paint || this.layFace || this.measuring) {
+		if (
+			!group ||
+			!this.gizmoMode ||
+			this.paint ||
+			this.layFace ||
+			this.measuring ||
+			this.textTarget
+		) {
 			this.gizmo.detach();
 		} else {
 			if (this.gizmo.object !== group) this.gizmo.attach(group);
@@ -452,6 +472,27 @@ export class SlicerScene {
 			return;
 		const hit = this.hitAt(e);
 		const data = (hit?.object as PartMesh | undefined)?.userData;
+		if (this.textTarget) {
+			if (
+				hit &&
+				data &&
+				data.objectId === this.textTarget.objectId &&
+				data.instanceId === this.textTarget.instanceId &&
+				data.type === 'model'
+			) {
+				const normal = hit
+					.face!.normal.clone()
+					.applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld));
+				this.events.onTextFace({
+					objectId: data.objectId,
+					instanceId: data.instanceId,
+					partId: data.partId,
+					point: [hit.point.x, hit.point.y, hit.point.z],
+					normal: [normal.x, normal.y, normal.z]
+				});
+			}
+			return;
+		}
 		if (this.measuring) {
 			if (hit && data) this.events.onMeasure([hit.point.x, hit.point.y, hit.point.z]);
 			return;

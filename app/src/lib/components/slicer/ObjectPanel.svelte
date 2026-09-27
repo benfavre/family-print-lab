@@ -21,6 +21,7 @@
 	import SettingsEditor from './SettingsEditor.svelte';
 	import LayerHeightEditor from './LayerHeightEditor.svelte';
 	import CutPanel from './CutPanel.svelte';
+	import TextPanel from './TextPanel.svelte';
 	import BooleanPanel from './BooleanPanel.svelte';
 
 	// The selected object (or part): name, position, rotation and scale, filament, its own settings,
@@ -404,7 +405,11 @@
 				{/if}
 			</details>
 		{/if}
-		{#if !part}<CutPanel {ws} object={obj} instance={inst} />{/if}
+		{#if !part}<CutPanel {ws} object={obj} instance={inst} /><TextPanel
+				{ws}
+				object={obj}
+				instance={inst}
+			/>{/if}
 	</section>
 {/if}
 

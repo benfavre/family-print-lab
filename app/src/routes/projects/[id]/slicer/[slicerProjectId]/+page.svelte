@@ -42,19 +42,23 @@
 		}
 	});
 	$effect(() => {
-		if (ws?.paint || ws?.layFace || ws?.tab !== 'prepare') measuring = false;
+		if (ws?.paint || ws?.layFace || ws?.textTarget || ws?.tab !== 'prepare') measuring = false;
 	});
 
 	function toggleMeasure() {
 		if (!ws) return;
 		ws.paint = null;
+		ws.textTarget = null;
 		ws.layFace = false;
 		measurePoints = [];
 		measuring = !measuring;
 	}
 	function setGizmo(mode: 'translate' | 'rotate' | 'scale') {
 		measuring = false;
-		if (ws) ws.gizmo = mode;
+		if (ws) {
+			ws.gizmo = mode;
+			ws.textTarget = null;
+		}
 	}
 
 	const owner = $derived(lab.project(page.params.id));
@@ -145,6 +149,7 @@
 		else if (!mod && (key === 'delete' || key === 'backspace')) ws.deleteSelection();
 		else if (!mod && key === 'escape') {
 			ws.paint = null;
+			ws.textTarget = null;
 			measuring = false;
 			ws.layFace = false;
 			ws.selection = { items: [], partId: null };
