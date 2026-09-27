@@ -102,7 +102,7 @@ export class ProfileLibrary implements ProfileService {
 	} | null {
 		const loc = this.where();
 		if (!loc) return null;
-		let mtime = 0;
+		let mtime: number;
 		try {
 			mtime = fs.statSync(`${loc.dir}/BBL.json`).mtimeMs;
 		} catch {
