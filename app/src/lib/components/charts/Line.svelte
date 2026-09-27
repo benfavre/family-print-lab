@@ -40,7 +40,7 @@
 		{#each [...axis].reverse() as v (v)}<span>{format(v)}</span>{/each}
 	</div>
 	<div class="area">
-		<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" role="img" aria-label={label}>
+		<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" aria-hidden="true">
 			{#each axis as v (v)}<line class="grid" x1="0" x2={W} y1={y(v)} y2={y(v)} />{/each}
 			<path class="line" d={linePath(xy)} style:stroke={toneColor(tone)} />
 		</svg>
@@ -62,10 +62,23 @@
 			{#if l !== null}<span style:left="{(x(i) / W) * 100}%">{l}</span>{/if}
 		{/each}
 	</div>
+	<!-- The same numbers for screen readers (the dots' tooltips need a mouse). -->
+	<table class="sr-only">
+		<caption>{label}</caption>
+		<tbody>
+			{#each points as p, i (i)}
+				<tr>
+					<th scope="row">{p.label}</th>
+					<td>{p.value === null ? '—' : format(p.value)}{p.hint ? ` · ${p.hint}` : ''}</td>
+				</tr>
+			{/each}
+		</tbody>
+	</table>
 </figure>
 
 <style>
 	.chart {
+		position: relative;
 		display: grid;
 		grid-template-columns: auto 1fr;
 		gap: 6px 8px;

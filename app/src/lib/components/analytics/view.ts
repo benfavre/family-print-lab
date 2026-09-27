@@ -75,10 +75,21 @@ export function materialTones(s: Pick<AnalyticsSummary, 'byMaterial'>, keep = 5)
 
 export const OTHER = 'Other';
 
-/** Monthly filament split by material (top five and "Other"), with empty months filled in. */
-export function monthlyStacks(months: MonthMaterial[], tones: Map<string, Tone>, other: boolean) {
+/**
+ * Monthly filament split by material (top five and "Other"), with empty months filled in. Columns run
+ * over the filter's dates when it has them (like the weekly chart), else from the first to the last
+ * month with filament.
+ */
+export function monthlyStacks(
+	months: MonthMaterial[],
+	tones: Map<string, Tone>,
+	other: boolean,
+	span: { from: string | null; to: string | null } = { from: null, to: null }
+) {
 	if (!months.length) return { columns: [], series: [], values: [] };
-	const keys = monthsBetween(months[0].month, months.at(-1)!.month);
+	const first = [span.from?.slice(0, 7), months[0].month].filter(Boolean).sort()[0]!;
+	const last = [span.to?.slice(0, 7), months.at(-1)!.month].filter(Boolean).sort().at(-1)!;
+	const keys = monthsBetween(first, last);
 	const oneYear = keys[0].slice(0, 4) === keys.at(-1)!.slice(0, 4);
 	const series = [
 		...[...tones].map(([key, tone]) => ({ key, label: key, tone })),

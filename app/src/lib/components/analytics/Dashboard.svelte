@@ -12,7 +12,7 @@
 	// The statistics panels for one summary.
 	let { s }: { s: AnalyticsSummary } = $props();
 	const colours = $derived(materialTones(s));
-	const stacks = $derived(monthlyStacks(s.months, colours.tones, colours.other));
+	const stacks = $derived(monthlyStacks(s.months, colours.tones, colours.other, s.filter));
 	const materialItems = $derived.by(() => {
 		const used = s.byMaterial.filter((m) => m.grams > 0);
 		const top = used

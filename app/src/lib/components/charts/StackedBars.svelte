@@ -37,7 +37,7 @@
 	<div class="y-axis" aria-hidden="true">
 		{#each [...axis].reverse() as v (v)}<span>{format(v)}</span>{/each}
 	</div>
-	<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" role="img" aria-label={label}>
+	<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" aria-hidden="true">
 		{#each axis as v (v)}<line class="grid" x1="0" x2={W} y1={y(v)} y2={y(v)} />{/each}
 		{#each columns as c, ci (c.key)}
 			{#each series as s, si (s.key)}
@@ -61,6 +61,24 @@
 			{#if l !== null}<span style:left="{((i + 0.5) * band * 100) / W}%">{l}</span>{/if}
 		{/each}
 	</div>
+	<!-- The same numbers for screen readers (the segments' tooltips need a mouse). -->
+	<table class="sr-only">
+		<caption>{label}</caption>
+		<thead>
+			<tr>
+				<td></td>
+				{#each series as s (s.key)}<th scope="col">{s.label}</th>{/each}
+			</tr>
+		</thead>
+		<tbody>
+			{#each columns as c, ci (c.key)}
+				<tr>
+					<th scope="row">{c.label}</th>
+					{#each series as s, si (s.key)}<td>{format(values[ci]?.[si] ?? 0)}</td>{/each}
+				</tr>
+			{/each}
+		</tbody>
+	</table>
 	<figcaption>
 		{#each series as s, i (s.key)}
 			<span
@@ -73,6 +91,7 @@
 
 <style>
 	.chart {
+		position: relative;
 		display: grid;
 		grid-template-columns: auto 1fr;
 		gap: 6px 8px;

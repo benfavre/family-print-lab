@@ -74,4 +74,32 @@ describe('dashboard view helpers', () => {
 		]);
 		expect(monthlyStacks([], tones, other).columns).toEqual([]);
 	});
+
+	it('runs the monthly columns over the filter dates, like the weekly chart', () => {
+		const one = [{ month: '2026-08', material: 'PLA', grams: 10, cost: null }];
+		const tones = new Map([['PLA', 'cyan' as const]]);
+		const span = { from: '2026-06-15', to: '2026-09-27' };
+		expect(monthlyStacks(one, tones, false, span).columns.map((c) => c.key)).toEqual([
+			'2026-06',
+			'2026-07',
+			'2026-08',
+			'2026-09'
+		]);
+		expect(monthlyStacks(one, tones, false, span).values).toEqual([[0], [0], [10], [0]]);
+		// All time: first to last month with filament.
+		expect(monthlyStacks(one, tones, false).columns.map((c) => c.key)).toEqual(['2026-08']);
+		// A range across new year labels months with their year.
+		const years = monthlyStacks(one, tones, false, { from: '2025-12-01', to: null });
+		expect(years.columns.map((c) => c.label)).toEqual([
+			'Dec 25',
+			'Jan 26',
+			'Feb 26',
+			'Mar 26',
+			'Apr 26',
+			'May 26',
+			'Jun 26',
+			'Jul 26',
+			'Aug 26'
+		]);
+	});
 });
