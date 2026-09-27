@@ -8,6 +8,7 @@ import { hms } from './hms';
 import { notifications } from './notifications';
 import { power } from './power';
 import { maintenance } from './maintenance';
+import { vision } from './vision';
 
 export const FEATURES: SimFeature[] = [
 	core,
@@ -17,5 +18,6 @@ export const FEATURES: SimFeature[] = [
 	hms,
 	notifications,
 	power,
-	maintenance
+	maintenance,
+	vision
 ];

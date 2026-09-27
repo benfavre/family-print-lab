@@ -38,8 +38,17 @@ export function addTimelapse(sim: SimPrinter, at = new Date()) {
 	sim.log(`🎞 timelapse saved: ${name}.mp4`);
 }
 
+/**
+ * Pictures another feature shows instead of the test pattern while it has one (ai-vision: a simulated
+ * print, and spaghetti on demand). Returning null falls back to the test pattern.
+ */
+export const simFrameSources = new WeakMap<SimPrinter, () => Buffer | null>();
+
 /** Serves frames to every client that sends a valid auth packet. Resolves with the port. */
-export function frameServer(log: (m: string) => void = () => {}): Promise<number> {
+export function frameServer(
+	log: (m: string) => void = () => {},
+	next: () => Buffer | null = () => null
+): Promise<number> {
 	let frame = 0;
 	const server = net.createServer((socket) => {
 		let buffer = Buffer.alloc(0);
@@ -58,7 +67,7 @@ export function frameServer(log: (m: string) => void = () => {}): Promise<number
 			}
 			socket.setTimeout(0);
 			const send = () => {
-				const jpeg = FRAMES[frame++ % FRAMES.length];
+				const jpeg = next() ?? FRAMES[frame++ % FRAMES.length];
 				socket.write(Buffer.concat([frameHeader(jpeg.length), jpeg]));
 			};
 			send();
@@ -99,7 +108,7 @@ export const camera: SimFeature = {
 		const day = 86_400_000;
 		addTimelapse(sim, new Date(Date.now() - 3 * day));
 		addTimelapse(sim, new Date(Date.now() - day));
-		frameServer(sim.log)
+		frameServer(sim.log, () => simFrameSources.get(sim)?.() ?? null)
 			.then((port) => {
 				ipcam(sim).sim_frame_port = port;
 				liveviewOn(sim, port);
