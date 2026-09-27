@@ -23,8 +23,11 @@ async function dropFile(page: Page, name: string, text: string) {
 		},
 		[name, text]
 	);
-	await page.locator('body').dispatchEvent('dragover', { dataTransfer: dt });
-	await expect(page.locator('.drop-frame')).toBeVisible();
+	// The frame hides 200 ms after the last dragover, so keep dragging until it shows, then drop.
+	await expect(async () => {
+		await page.locator('body').dispatchEvent('dragover', { dataTransfer: dt });
+		await expect(page.locator('.drop-frame')).toBeVisible({ timeout: 100 });
+	}).toPass();
 	await page.locator('body').dispatchEvent('drop', { dataTransfer: dt });
 }
 
@@ -33,7 +36,7 @@ test('a dropped STL lands in a new project, or in the project chosen', async ({ 
 	await ready(page);
 	await dropFile(page, 'Rocket fin.stl', STL);
 	const dialog = page.getByRole('dialog', { name: 'Add “Rocket fin.stl” to…' });
-	await expect(dialog.getByLabel('Name')).toHaveValue('Rocket fin');
+	await expect(dialog.getByLabel('Name', { exact: true })).toHaveValue('Rocket fin');
 	await dialog.getByRole('button', { name: 'Add' }).click();
 	await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}$/);
 	await expect(page.getByRole('heading', { level: 1, name: 'Rocket fin' })).toBeVisible({

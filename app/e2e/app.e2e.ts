@@ -12,6 +12,10 @@ test.describe.configure({ mode: 'serial' });
 test.beforeEach(async ({ context }) => {
 	await context.addInitScript(() => sessionStorage.setItem('print-lab-profile', 'all'));
 });
+// A test that slows the shared simulator puts it back, even when it fails half-way.
+test.afterEach(async ({ request }) => {
+	await request.post(`${SIM}/api/speed`, { data: { speed: 120 } });
+});
 
 test('home shows the migrated workspace with live printer status', async ({ page }) => {
 	await page.goto('/');
@@ -229,9 +233,10 @@ test('a sliced file is attached, sent to the printer, printed and closed automat
 			timeout: 30_000
 		})
 		.toBe('RUNNING');
-	await page.getByRole('button', { name: '❚❚ Pause' }).click();
-	await expect(page.getByRole('button', { name: '▶ Resume' })).toBeVisible({ timeout: 10_000 });
-	await page.getByRole('button', { name: '▶ Resume' }).click();
+	await page.getByRole('button', { name: '❚❚ Pause', exact: true }).click();
+	const resume = page.getByRole('button', { name: '▶ Resume', exact: true });
+	await expect(resume).toBeVisible({ timeout: 10_000 });
+	await resume.click();
 	await page.request.post(`${SIM}/api/speed`, { data: { speed: 300 } });
 	await expect
 		.poll(
@@ -241,7 +246,6 @@ test('a sliced file is attached, sent to the printer, printed and closed automat
 			}
 		)
 		.toBe('Succeeded');
-	await page.request.post(`${SIM}/api/speed`, { data: { speed: 120 } }); // the suite's usual pace
 });
 
 test('the command palette navigates and the backup exports', async ({ page }) => {

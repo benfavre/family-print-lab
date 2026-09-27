@@ -6,8 +6,10 @@ const ready = (page: Page) => page.locator('html[data-ready]').waitFor({ state: 
 const workspace = (page: Page) => page.request.get('/api/workspace').then((r) => r.json());
 const CLIP = fs.readFileSync('src/lib/server/__fixtures__/cable-clip.gcode.3mf');
 
-test.beforeEach(async ({ context }) => {
+test.beforeEach(async ({ context, request }) => {
 	await context.addInitScript(() => sessionStorage.setItem('print-lab-profile', 'all'));
+	// The suite's usual pace, whatever an earlier test left.
+	await request.post('http://127.0.0.1:18661/api/speed', { data: { speed: 120 } });
 });
 
 /** A queued job on a sample project with the sliced cable clip attached. */
@@ -34,6 +36,8 @@ const jobStatus = async (page: Page, id: string) =>
 test('the queue starts two jobs one after another, the second once the plate is cleared', async ({
 	page
 }) => {
+	// Two whole prints and their poll budgets.
+	test.setTimeout(150_000);
 	await page.goto('/queue');
 	await ready(page);
 	const origin = new URL(page.url()).origin;

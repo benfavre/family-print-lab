@@ -61,7 +61,12 @@ test('Maintenance: wiki tasks, add and mark done, earlier print hours, nozzle lo
 	await page.getByRole('combobox', { name: /^Type/ }).selectOption('hardened_steel');
 	await page.getByRole('button', { name: 'Log the change' }).click();
 	await expect(log.filter({ hasText: 'Nozzle changed to 0.6 mm hardened steel' })).toHaveCount(1);
-	await expect(log.filter({ hasText: 'Nozzle changed' })).toContainText('120.0 h');
+	// Earlier tests finish prints on this X2D, so the odometer is those hours plus the 120.
+	const odo = (await (await page.request.get(`/api/printers/${x2d.id}/maintenance`)).json())
+		.odometer;
+	await expect(log.filter({ hasText: 'Nozzle changed' })).toContainText(
+		`${odo.totalHours.toFixed(1)} h`
+	);
 
 	// Firmware: read-only facts and the wiki's release notes.
 	await expect(

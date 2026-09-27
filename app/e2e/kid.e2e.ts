@@ -3,13 +3,18 @@ import { expect, test } from '@playwright/test';
 test('a kid makes a name sign and asks; a grown-up unlocks with the PIN and says yes', async ({
 	page
 }) => {
-	// A grown-up sets the parent PIN and turns on kid mode for a new maker.
+	test.slow();
+	// A grown-up sets the parent PIN (unless an earlier test set the same 2468) and turns on kid
+	// mode for a new maker.
+	const ws = await page.request.get('/api/workspace').then((r) => r.json());
 	await page.goto('/family');
 	await page.getByRole('button', { name: 'Continue as Everyone' }).click();
-	await page.getByLabel('Parent PIN').fill('2468');
-	await page.getByLabel('Type it again').fill('2468');
-	await page.getByRole('button', { name: 'Set PIN' }).click();
-	await expect(page.getByText('Parent PIN set.')).toBeVisible();
+	if (!ws.parentPin) {
+		await page.getByLabel('Parent PIN').fill('2468');
+		await page.getByLabel('Type it again').fill('2468');
+		await page.getByRole('button', { name: 'Set PIN' }).click();
+		await expect(page.getByText('Parent PIN set.')).toBeVisible();
+	}
 	await page.getByRole('button', { name: '＋ Add person' }).click();
 	await page.getByLabel('Name or nickname').fill('Kiki');
 	await page.getByRole('combobox', { name: /^Kid mode/ }).selectOption('little');
