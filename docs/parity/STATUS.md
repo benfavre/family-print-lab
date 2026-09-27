@@ -256,8 +256,9 @@ profiles and verify that the app uses its isolated test data directory. Three co
 with fresh databases pass all 65 cases each; the command-palette test now focuses the main region
 explicitly before testing shortcuts. Cloud passes 82 unit tests and 106 browser cases.
 
-macOS native compilation, 12 native tests and 105 integration tests pass (one protocol-only skip);
-its cached-dependency build took 11 minutes 54 seconds. The Linux queue-18 rebuild took 6 minutes
-34 seconds at 24 workers. Windows native and Windows/macOS packaged release verification are
+macOS native compilation, 13 native tests and 105 integration tests pass (one protocol-only skip);
+its startup-regression build took 14 minutes 25 seconds with cached dependencies. The Linux
+queue-19 rebuild took 4 minutes 21 seconds at 24 workers, followed by all 13 native, ten protocol
+and 105 integration tests. Its refreshed AppImage passes the installed-app and bundled-profile checks. Windows native and Windows/macOS packaged release verification are
 still pending. MSVC startup output now has an early redirect and a separate static-initialiser
 regression, so third-party startup messages cannot corrupt the NDJSON protocol.

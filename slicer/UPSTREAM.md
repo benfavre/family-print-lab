@@ -345,7 +345,11 @@ in every engine build, so ZIP reads and writes retain alignment sanitizer checks
   early-startup stdout redirect and cross-translation-unit logging regression add one native and
   one protocol test: the local totals are now 13 native, ten protocol and 105 integration passes
   (one protocol-only skip). The startup-test incremental rebuild took 10.26 seconds. Windows
-  runs the protocol and startup tests before its longer native build.
+  runs the protocol and startup tests before its longer native build. The queue-19 Linux rebuild
+  took 260.73 seconds (4 minutes 21 seconds) at 24 workers and passed those same suites. The new
+  macOS startup regression also passed: 13 native tests and 105 integration tests (one skip), with
+  an 865-second cached-dependency build. The refreshed queue-19 Linux AppImage starts successfully
+  and loads all 56 bundled printer profiles.
 
 For a future rebuild, from the repository root:
 
