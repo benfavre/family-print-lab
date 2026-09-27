@@ -47,7 +47,9 @@ export interface Message {
 /** Replaces {{name}} placeholders; unknown or empty ones become nothing, spaces tidied. */
 export function render(template: string, vars: Partial<Record<TemplateVar, string>>): string {
 	return template
-		.replace(/\{\{\s*([a-z]+)\s*\}\}/g, (_, name: string) => vars[name as TemplateVar] ?? '')
+		.replace(/\{\{\s*([a-z]+)\s*\}\}/g, (_, name: string) =>
+			Object.hasOwn(vars, name) ? (vars[name as TemplateVar] ?? '') : ''
+		)
 		.replace(/[ \t]{2,}/g, ' ')
 		.replace(/ ([.,:;!?])/g, '$1')
 		.trim();

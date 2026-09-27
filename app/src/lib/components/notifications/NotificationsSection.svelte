@@ -251,8 +251,9 @@
 			</ul>
 		{:else}
 			<p class="panel-empty">
-				No channels yet. Try ntfy: install the free ntfy app on your phone, add a channel here and
-				subscribe to its topic.
+				No channels yet.{#if s.desktopAvailable}
+					Add “This computer” for system notifications on this computer.{/if} For your phone, try ntfy:
+				install the free ntfy app, add a channel here and subscribe to its topic.
 			</p>
 		{/if}
 

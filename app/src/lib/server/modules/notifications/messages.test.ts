@@ -38,6 +38,7 @@ describe('templates', () => {
 		);
 		expect(render('{{printer}}: {{error}} .', { printer: 'X2D' })).toBe('X2D:.');
 		expect(render('Hello {{nope}} {{kid}}', { kid: 'Mia' })).toBe('Hello Mia');
+		expect(render('{{constructor}} {{valueof}} ok', {})).toBe('ok');
 	});
 });
 
