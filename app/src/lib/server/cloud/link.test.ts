@@ -34,6 +34,7 @@ afterEach(async () => {
 /** A stand-in printer: set `status` and call `update()`. */
 class FakePrinter extends EventEmitter {
 	status: () => PrinterStatus = () => ({ configured: true, connected: true, state: null });
+	statuses = () => [{ id: 'p1', name: 'Printer', ...this.status() }];
 	update() {
 		this.emit('update');
 	}
@@ -112,7 +113,7 @@ describe('Print Lab Cloud link', () => {
 		await until(() => link.status().plan === false, 'the plan change');
 		sim.setPlan(true);
 		await until(() => link.status().plan === true, 'the plan back');
-		expect(sim.state().hello).toEqual({ app: '2.0.0', protocol: 1 });
+		expect(sim.state().hello).toEqual({ app: '2.0.0', protocol: 2 });
 		const { requestId } = await kidRequest();
 		await until(() => sim.state().requests.length === 1, 'the request');
 		const [reported] = sim.state().requests;
@@ -200,8 +201,12 @@ describe('Print Lab Cloud link', () => {
 		).rejects.toThrow(/Cannot reach Print Lab Cloud/);
 	});
 
-	it('shares print progress only when switched on, with only what the phone shows', async () => {
+	it('speaks v1 to an older cloud, sharing only the first printer’s progress', async () => {
+		await sim.close();
+		sim = await startCloudSim(0, '127.0.0.1', [1]);
 		const link = await linked();
+		expect(sim.state().hello).toEqual({ app: '2.0.0', protocol: 1 });
+		expect(link.status().protocol).toBe(1);
 		printer.status = printing('RUNNING', 40);
 		printer.update();
 		await new Promise((r) => setTimeout(r, 100));
