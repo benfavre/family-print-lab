@@ -21,11 +21,30 @@ export function pngSize(b: Buffer) {
 	return { width: b.readUInt32BE(16), height: b.readUInt32BE(20) };
 }
 
+/**
+ * The ffmpeg demuxer for a picture, from its first bytes (null when it is not JPEG, PNG, WebP or GIF).
+ * ffmpeg is never left to guess: a file that only claims to be a picture (an HLS playlist, a concat
+ * list) could otherwise make it open other files or addresses.
+ */
+export function pictureDemuxer(b: Buffer) {
+	if (isPng(b)) return 'png_pipe';
+	if (b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'jpeg_pipe';
+	if (
+		b.length > 12 &&
+		b.toString('latin1', 0, 4) === 'RIFF' &&
+		b.toString('latin1', 8, 12) === 'WEBP'
+	)
+		return 'webp_pipe';
+	if (/^GIF8[79]a$/.test(b.toString('latin1', 0, 6))) return 'gif_pipe';
+	return null;
+}
+
 /** Converts a picture to a sketch-sized PNG, or null when it cannot. */
 export async function toPng(image: Buffer, ffmpeg: string | null): Promise<Buffer | null> {
 	const { width, height } = pngSize(image);
 	if (width && width <= 1600 && height <= 8000 && image.length <= SKETCH_MAX) return image;
-	if (!ffmpeg) return null;
+	const demuxer = pictureDemuxer(image);
+	if (!ffmpeg || !demuxer) return null;
 	const png = await new Promise<Buffer | null>((resolve) => {
 		const child = spawn(
 			ffmpeg,
@@ -33,6 +52,10 @@ export async function toPng(image: Buffer, ffmpeg: string | null): Promise<Buffe
 				'-hide_banner',
 				'-loglevel',
 				'error',
+				'-protocol_whitelist',
+				'pipe',
+				'-f',
+				demuxer,
 				'-i',
 				'pipe:0',
 				'-frames:v',

@@ -52,10 +52,28 @@ export const TYPES = {
 	]
 };
 
+/** The 8 groups of an IPv6 address (with an embedded IPv4 tail expanded), or null. */
+function ipv6Groups(ip: string): number[] | null {
+	let s = ip.toLowerCase().replace(/%.*$/, '');
+	const v4 = s.match(/(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+	if (v4) {
+		const [a, b, c, d] = v4.slice(1).map(Number);
+		s = `${s.slice(0, v4.index)}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+	}
+	const [head, tail, extra] = s.split('::');
+	if (extra !== undefined) return null;
+	const left = head ? head.split(':') : [];
+	const right = tail ? tail.split(':') : [];
+	const fill = tail === undefined ? 0 : 8 - left.length - right.length;
+	if (fill < 0) return null;
+	const groups = [...left, ...Array(fill).fill('0'), ...right].map((h) => parseInt(h, 16));
+	return groups.length === 8 && groups.every((g) => g >= 0 && g <= 0xffff) ? groups : null;
+}
+
 /** Loopback, private, link-local, multicast, CGNAT, unspecified and other non-public addresses. */
 export function blockedAddress(ip: string): boolean {
 	if (net.isIPv4(ip)) {
-		const [a, b] = ip.split('.').map(Number);
+		const [a, b, c] = ip.split('.').map(Number);
 		return (
 			a === 0 ||
 			a === 10 ||
@@ -65,33 +83,32 @@ export function blockedAddress(ip: string): boolean {
 			(a === 172 && b >= 16 && b <= 31) ||
 			(a === 192 && b === 168) ||
 			(a === 192 && b === 0) ||
+			(a === 192 && b === 88 && c === 99) ||
 			(a === 198 && (b === 18 || b === 19)) ||
+			(a === 198 && b === 51 && c === 100) ||
+			(a === 203 && b === 0 && c === 113) ||
 			a >= 224
 		);
 	}
-	if (net.isIPv6(ip)) {
-		const s = ip.toLowerCase();
-		const mapped = s.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-		if (mapped) return blockedAddress(mapped[1]);
-		if (/^::ffff:[0-9a-f]{1,4}:[0-9a-f]{1,4}$/.test(s)) {
-			const [hi, lo] = s
-				.slice(7)
-				.split(':')
-				.map((h) => parseInt(h, 16));
-			return blockedAddress(`${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`);
-		}
-		return (
-			s === '::' ||
-			s === '::1' ||
-			/^f[cd]/.test(s) ||
-			/^fe[89ab]/.test(s) ||
-			/^ff/.test(s) ||
-			s.startsWith('64:ff9b:') ||
-			s.startsWith('2001:db8:') ||
-			/^::(\d|$)/.test(s)
-		);
-	}
-	return true;
+	const g = net.isIPv6(ip) ? ipv6Groups(ip) : null;
+	if (!g) return true;
+	const v4 = (hi: number, lo: number) => `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
+	// ::/96 (unspecified, loopback, deprecated IPv4-compatible) is refused; ::ffff:0:0/96 (IPv4-mapped)
+	// and ::ffff:0:0:0/96 (IPv4-translated) carry an IPv4 address: judge that one.
+	if (g.slice(0, 6).every((x) => x === 0)) return true;
+	if (g.slice(0, 5).every((x) => x === 0) && g[5] === 0xffff) return blockedAddress(v4(g[6], g[7]));
+	if (g.slice(0, 4).every((x) => x === 0) && g[4] === 0xffff && g[5] === 0)
+		return blockedAddress(v4(g[6], g[7]));
+	return (
+		(g[0] & 0xfe00) === 0xfc00 || // fc00::/7 unique local
+		(g[0] & 0xffc0) === 0xfe80 || // fe80::/10 link-local
+		(g[0] & 0xffc0) === 0xfec0 || // fec0::/10 old site-local
+		(g[0] & 0xff00) === 0xff00 || // ff00::/8 multicast
+		(g[0] === 0x64 && g[1] === 0xff9b) || // 64:ff9b::/96 and /48 NAT64
+		(g[0] === 0x2001 && g[1] === 0xdb8) || // documentation
+		(g[0] === 0x2002 && blockedAddress(v4(g[1], g[2]))) || // 6to4 around a local IPv4
+		(g[0] === 0x2001 && g[1] === 0) // Teredo
+	);
 }
 
 /** Checks a URL before any connection: https, no credentials, default port, host on the list. */
