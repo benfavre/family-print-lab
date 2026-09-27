@@ -3,7 +3,7 @@
 // and finalize replaces layer_duration with seconds. Arc interpolation already includes offsets.
 #include <algorithm>
 #include <cmath>
-#include <fstream>
+#include <boost/nowide/fstream.hpp>
 #include <limits>
 
 #include "rpc/convert.hpp"
@@ -62,7 +62,7 @@ PreviewResult UpstreamFacade::preview_get(const std::string &project_id, int pla
 	try {
 		auto header = preview::header(segments, plate, tools, result.stats.seconds);
 		auto bytes = preview::encode(segments, to_json(header).dump());
-		std::ofstream out(path, std::ios::binary);
+		boost::nowide::ofstream out(path, std::ios::binary);
 		out.write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
 		out.close();
 		if (!out) throw std::runtime_error("Could not write " + path);

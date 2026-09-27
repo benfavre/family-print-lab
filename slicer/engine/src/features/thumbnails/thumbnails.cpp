@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <filesystem>
 #include <limits>
 
 #ifdef PRINTLAB_HAVE_ZLIB
@@ -188,7 +189,7 @@ std::string encode_png(const std::vector<uint8_t> &rgba, int width, int height) 
 }
 
 bool write_png(const std::string &path, const std::vector<Mesh> &meshes, const Options &options) {
-	std::ofstream f(path, std::ios::binary);
+	std::ofstream f(std::filesystem::u8path(path), std::ios::binary);
 	if (!f) return false;
 	std::string png = encode_png(render(meshes, options), options.width, options.height);
 	f.write(png.data(), static_cast<std::streamsize>(png.size()));

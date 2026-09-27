@@ -1,6 +1,6 @@
 #include <atomic>
 #include <cstdio>
-#include <fstream>
+#include <boost/nowide/fstream.hpp>
 
 #include <boost/filesystem.hpp>
 
@@ -41,14 +41,15 @@ DynamicPrintConfig to_config(const ConfigMap &map, const std::string &scratch_di
 		}
 	}
 	{
-		std::ofstream out(file, std::ios::binary);
+		boost::nowide::ofstream out(file, std::ios::binary);
 		out << j.dump();
 	}
 	std::map<std::string, std::string> key_values;
 	std::string reason;
 	// ConfigBase::load_from_json (Config.cpp): the loader Bambu Studio uses for preset files.
 	config.load_from_json(file, ForwardCompatibilitySubstitutionRule::EnableSilent, key_values, reason);
-	std::remove(file.c_str());
+	boost::system::error_code cleanup_error;
+	boost::filesystem::remove(file, cleanup_error);
 	if (!reason.empty())
 		throw EngineError(err::INVALID_CONFIG, "Some settings could not be read.", reason);
 	return config;

@@ -64,19 +64,41 @@ const golden = JSON.parse(fs.readFileSync(FILE, 'utf8')) as Golden;
 const tag = fs.readFileSync(LOCK, 'utf8').match(/^tag=v?(.+)$/m)?.[1] ?? '';
 
 let engine: StdioEngine | null = null;
+let workDir: string | undefined;
 let slicing = false;
 const measured: Record<string, Partial<Case>> = {};
 
 describe.runIf(!!BIN)('golden slices', () => {
 	beforeAll(async () => {
-		const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fpl-golden-'));
+		workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fpl-golden-é-印刷-'));
 		engine = await StdioEngine.open({ command: BIN!, workDir });
 		slicing = engine.has('slice');
-	});
+		if (slicing) {
+			// Installed resources and account folders can both contain Unicode on Windows. Exercise
+			// profile enumeration/reads as well as scratch configs, G-code and generated thumbnails.
+			const source = engine.info.profiles!;
+			expect(source).not.toBeNull();
+			const resourcesDir = path.join(workDir, 'ressources-é-印刷');
+			const profiles = path.join(resourcesDir, 'profiles');
+			fs.mkdirSync(profiles, { recursive: true });
+			fs.cpSync(source.dir, path.join(profiles, 'BBL'), { recursive: true });
+			fs.copyFileSync(
+				path.join(path.dirname(source.dir), 'BBL.json'),
+				path.join(profiles, 'BBL.json')
+			);
+			await engine.close();
+			engine = await StdioEngine.open({ command: BIN!, workDir, resourcesDir });
+			expect(engine.info.profiles).toEqual({
+				dir: path.join(profiles, 'BBL'),
+				vendorVersion: source.vendorVersion
+			});
+		}
+	}, 60_000);
 	afterAll(async () => {
 		// The tag before closing: a closed engine has no info.
 		const upstreamTag = engine?.info.upstream.tag;
 		await engine?.close();
+		if (workDir) fs.rmSync(workDir, { recursive: true, force: true });
 		if (process.env.GOLDEN_UPDATE === '1' && Object.keys(measured).length) {
 			const reason = process.env.GOLDEN_REASON;
 			if (!reason) throw new Error('Set GOLDEN_REASON to say why the golden values change.');
@@ -117,6 +139,9 @@ describe.runIf(!!BIN)('golden slices', () => {
 		expect(r.grams).toBeGreaterThan(0);
 
 		expect(file.plates).toHaveLength(1);
+		expect(file.thumbnails.get(1)?.subarray(0, 8)).toEqual(
+			Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+		);
 		expect(file.plates[0].layers).toBe(c.layers);
 		expect(file.plates[0].md5).toMatch(/^[0-9A-F]{32}$/);
 		expect(file.printerModelId).toBe(PRINTER_MODELS[c.model].code);

@@ -46,7 +46,7 @@ describe.runIf(!!BIN)('native toolpath preview', () => {
 		'writes browser-readable layers, filters travel, and invalidates previews after edits',
 		{ timeout: 300_000 },
 		async ({ skip }) => {
-			const work = fs.mkdtempSync(path.join(os.tmpdir(), 'fpl-preview-'));
+			const work = fs.mkdtempSync(path.join(os.tmpdir(), 'fpl-preview-é-印刷-'));
 			const engine = await StdioEngine.open({ command: BIN!, workDir: work });
 			try {
 				if (!engine.has('preview.v1')) skip();
@@ -108,7 +108,10 @@ describe.runIf(!!BIN)('native toolpath preview', () => {
 					}
 				];
 				await engine.call('project.sync', { projectId, project, presets });
-				const output = path.join(work, 'preview.bin');
+				expect(
+					fs.readdirSync(path.join(work, 'scratch')).filter((name) => name.startsWith('config-'))
+				).toEqual([]);
+				const output = path.join(work, 'aperçu-模型.bin');
 				await expect(
 					engine.call('preview.get', { projectId, plate: 1, path: output })
 				).rejects.toMatchObject({ code: ERROR.INVALID_PARAMS });

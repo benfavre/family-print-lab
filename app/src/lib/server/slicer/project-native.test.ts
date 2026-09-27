@@ -22,13 +22,14 @@ function portable(project: Project): Project {
 describe.runIf(!!BIN)('native project files', () => {
 	for (const name of fixtures) {
 		it(`round-trips ${name} in both directions`, { timeout: 180_000 }, async ({ skip }) => {
-			const work = fs.mkdtempSync(path.join(os.tmpdir(), 'fpl-project-'));
+			const work = fs.mkdtempSync(path.join(os.tmpdir(), 'fpl-project-é-印刷-'));
 			const engine = await StdioEngine.open({ command: BIN!, workDir: work });
 			try {
 				if (!engine.has('slice')) skip(); // The protocol-only CI build has no upstream facade.
 				expect(engine.has('project.open')).toBe(true);
 				expect(engine.has('project.save')).toBe(true);
-				const input = path.join(dir, name);
+				const input = path.join(work, `modèle-${name}`);
+				fs.copyFileSync(path.join(dir, name), input);
 				const reference = read3mf(fs.readFileSync(input));
 				const opened = await engine.call('project.open', { path: input });
 				expect(portable(opened.project)).toEqual(reference.project);
@@ -37,10 +38,10 @@ describe.runIf(!!BIN)('native project files', () => {
 					if (mesh.storage.kind === 'file')
 						expect(fs.readFileSync(mesh.storage.path)).toEqual(reference.meshes.get(mesh.id)!.stl);
 				}
-				const output = path.join(work, 'native.3mf');
+				const output = path.join(work, 'enregistré-模型.3mf');
 				await engine.call('project.save', { projectId: opened.projectId, path: output });
 				expect(read3mf(fs.readFileSync(output)).project).toEqual(reference.project);
-				const tsFile = path.join(work, 'typescript.3mf');
+				const tsFile = path.join(work, 'typescript-é-印刷.3mf');
 				fs.writeFileSync(
 					tsFile,
 					write3mf(reference.project, { mesh: (id) => reference.meshes.get(id)!.geometry })
