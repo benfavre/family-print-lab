@@ -1,19 +1,31 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { SlicerScene } from './scene';
+	import type { Vec3 } from '$lib/client/slicer/matrix';
+	import { addMeasurePoint } from '$lib/client/slicer/measure';
 	import type { WorkspaceState } from '$lib/client/slicer/workspace.svelte';
 	import { clickPick, pickPart } from '$lib/client/slicer/selection';
 	import { PAINT_BLOCKER, PAINT_ENFORCER } from '$lib/shared/slicer/paint';
 
 	// The 3D view of the workspace: every plate, the objects, the gizmo, picking and painting.
-	let { ws, scene = $bindable(null) }: { ws: WorkspaceState; scene?: SlicerScene | null } =
-		$props();
+	let {
+		ws,
+		scene = $bindable(null),
+		measuring = false,
+		measurePoints = $bindable([])
+	}: {
+		ws: WorkspaceState;
+		scene?: SlicerScene | null;
+		measuring?: boolean;
+		measurePoints?: Vec3[];
+	} = $props();
 	let host: HTMLDivElement;
 	let failed = $state(false);
 
 	onMount(() => {
 		try {
 			scene = new SlicerScene(host, {
+				onMeasure: (point) => (measurePoints = addMeasurePoint(measurePoints, point)),
 				onPick: (pick, additive, partId) =>
 					ws.select(
 						pick && partId && !additive
@@ -49,6 +61,9 @@
 	});
 	$effect(() => {
 		scene?.setBed(ws.bed, ws.project.plates.length, ws.plate);
+	});
+	$effect(() => {
+		scene?.setMeasure(measuring, measurePoints);
 	});
 	let framed = false;
 	$effect(() => {
