@@ -11,7 +11,7 @@ new Bambu Studio release is a rebase of a handful of small patches, not a merge 
 
 | Upstream | Tag | Commit | Patch queue |
 | --- | --- | --- | --- |
-| Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 18, 19 patch(es), hash `63212c591b0baca881cab32d4765271de1b127afd56b4294275c224bf01309df` |
+| Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 19, 20 patch(es), hash `0e319b62a41e88cd3f1615c36ae19f62ecb644216a9d1a659d8ebbf8c17565b8` |
 
 <!-- pin:end -->
 
@@ -229,6 +229,10 @@ upstreamable:
   headless configuration keeps its core runtime copies and no longer requires omitted GUI DLLs.
   `python3 slicer/tests/windows-dll-copy.test.py` checks the actual upstream CMake function after
   `upstream.sh fetch`: headless without FFmpeg, GUI with FFmpeg, and an explicit missing-GUI-DLL error.
+- 0020: define `NOMINMAX` independently of precompiled headers on Windows, and explicitly include
+  Boost filesystem and `<numeric>` where the Windows build exposed missing declarations.
+  `python3 slicer/tests/windows-platform.test.py` compiles with upstream's actual Windows definitions
+  and checks SDK macro isolation without PCH (using the real Windows SDK when run with MSVC).
 
 Miniz uses its portable byte-load implementation (`MINIZ_USE_UNALIGNED_LOADS_AND_STORES=0`)
 in every engine build, so ZIP reads and writes retain alignment sanitizer checks.

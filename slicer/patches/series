@@ -19,3 +19,4 @@
 0017-Build-include-ExPolygon-where-ClipperZUtils-uses-its.patch
 0018-Build-include-stringstream-for-numeric-locale-format.patch
 0019-Build-copy-FFmpeg-DLLs-only-for-the-GUI.patch
+0020-Build-declare-Windows-dependencies-without-precompil.patch
