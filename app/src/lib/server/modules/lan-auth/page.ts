@@ -46,6 +46,8 @@ function shell(title: string, body: string) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
+<!-- With the app-wide no-referrer policy a form post sends "Origin: null", which the same-host check refuses. -->
+<meta name="referrer" content="same-origin">
 <title>${esc(title)} · Family Print Lab</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>${STYLE}</style>
