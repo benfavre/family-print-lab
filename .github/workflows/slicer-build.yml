@@ -9,8 +9,8 @@ name: Slicer build
 on:
   push:
     # Tags build this workflow through release.yml; do not duplicate its native builds.
-    branches: ['**']
-    paths: ['slicer/**', '.github/workflows/slicer-build.yml']
+    branches: ["**"]
+    paths: ["slicer/**", ".github/workflows/slicer-build.yml"]
   workflow_dispatch:
     inputs:
       platform:
@@ -66,7 +66,8 @@ jobs:
       - name: Dependency cache key
         id: key
         run: echo "key=$(slicer/scripts/build-deps.sh --print-key)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
+        id: dependencies
         with:
           path: slicer/.build/deps/usr/local
           key: ${{ steps.key.outputs.key }}
@@ -82,6 +83,22 @@ jobs:
             perl -MIPC::Cmd -MLocale::Maketext::Simple -e 'die "Native Windows Perl is required\n" unless $^O eq "MSWin32";'
           fi
           slicer/scripts/upstream.sh build -j 4
+      - name: Check completed dependencies
+        id: completed-dependencies
+        if: ${{ always() && steps.key.outcome == 'success' && steps.dependencies.outputs.cache-hit != 'true' }}
+        env:
+          EXPECTED_KEY: ${{ steps.key.outputs.key }}
+        run: |
+          if [ -d slicer/.build/deps/usr/local/lib ] &&
+             [ -f slicer/.build/deps/.stamp ] &&
+             [ "$(cat slicer/.build/deps/.stamp)" = "$EXPECTED_KEY" ]; then
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/cache/save@v4
+        if: ${{ always() && steps.completed-dependencies.outputs.ready == 'true' }}
+        with:
+          path: slicer/.build/deps/usr/local
+          key: ${{ steps.key.outputs.key }}
       - uses: actions/setup-node@v4
         with:
           node-version-file: app/.nvmrc

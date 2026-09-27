@@ -110,6 +110,36 @@ for generator in "${GENERATORS[@]}"; do
 	fi
 done
 
+# Exercise configure argument expansion without a native build, including the empty-sanitizer
+# case that used to abort under macOS Bash 3.2 with set -u. Preserve flags containing spaces.
+mkdir -p "$TEMP/cmake-probe"
+cat >"$TEMP/cmake-probe/cmake" <<'SH'
+#!/usr/bin/env bash
+set -eu
+if [ "$1" = -S ]; then printf '%s\n' "$@" >"$PRINTLAB_CMAKE_CAPTURE"; fi
+SH
+chmod +x "$TEMP/cmake-probe/cmake"
+for mode in release sanitize debug-symbols; do
+	# MSVC intentionally rejects UBSan; its Release/debug argument expansion still runs below.
+	case "$(uname -s):$mode" in MINGW*:sanitize | MSYS*:sanitize | CYGWIN*:sanitize) continue ;; esac
+	args=(--no-upstream)
+	expected=Release
+	if [ "$mode" != release ]; then args+=("--$mode"); expected=RelWithDebInfo; fi
+	capture="$TEMP/configure-$mode.txt"
+	PATH="$TEMP/cmake-probe:$PATH" PRINTLAB_CMAKE_CAPTURE="$capture" \
+		bash "$SLICER/scripts/upstream.sh" build "${args[@]}" >"$TEMP/configure-$mode.log" 2>&1 ||
+		{ cat "$TEMP/configure-$mode.log"; fail "$mode configure argument expansion"; }
+	[ "$(grep -c '^-DCMAKE_BUILD_TYPE=' "$capture")" = 1 ] || fail 'build type must appear once'
+	grep -Fxq -- "-DCMAKE_BUILD_TYPE=$expected" "$capture" || fail "$mode build type"
+	if [ "$mode" = sanitize ]; then
+		grep -Fq -- '-fsanitize=address,undefined,float-cast-overflow -fno-omit-frame-pointer' "$capture" ||
+			fail 'sanitizer flags lost their argument boundaries'
+	elif grep -q 'fsanitize=' "$capture"; then
+		fail 'sanitizer flags leaked into an uninstrumented configure'
+	fi
+	pass "$mode configure arguments expand with strict shell options"
+done
+
 # Testing a missing configuration must fail rather than report a false green test run.
 if bash "$SLICER/scripts/upstream.sh" test --sanitize --native-only >"$TEMP/missing.log" 2>&1; then
 	fail 'missing sanitizer build was accepted'

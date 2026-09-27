@@ -481,7 +481,9 @@ cmd_build() {
 	done
 	[ -f "$SLICER/engine/CMakeLists.txt" ] || die "slicer/engine/CMakeLists.txt is missing."
 	local plat engine binary
-	local flags=()
+	# Bash 3.2 (the macOS system shell) treats empty arrays as unset with set -u.
+	# Every configure has a build type, so keep the argument array nonempty in every mode.
+	local flags=("-DCMAKE_BUILD_TYPE=$config")
 	plat="$(platform_key)"
 	if [ "$mode" = sanitize ]; then
 		case "$plat" in win32-*) die "--sanitize needs GCC or Clang on Linux or macOS (MSVC has no UBSan)." ;; esac
@@ -494,7 +496,7 @@ cmd_build() {
 	if [ $upstream = 0 ]; then
 		[ $deps_only = 0 ] || die "--deps-only and --no-upstream cannot be combined."
 		engine="$BUILD/engine-protocol${mode:+-$mode}"
-		cmake -S "$SLICER/engine" -B "$engine" -DPRINTLAB_WITH_UPSTREAM=OFF -DCMAKE_BUILD_TYPE="$config" "${flags[@]}"
+		cmake -S "$SLICER/engine" -B "$engine" -DPRINTLAB_WITH_UPSTREAM=OFF "${flags[@]}"
 		cmake --build "$engine" --config "$config" -j "$jobs"
 		say "built the protocol-only engine: $(engine_binary "$engine" "$config") (no slicing core)."
 		return 0
@@ -510,7 +512,7 @@ cmd_build() {
 	SOURCE_DATE_EPOCH="$(g log -1 --format=%ct printlab-base)"
 	export SOURCE_DATE_EPOCH
 	cmake -S "$SLICER/engine" -B "$engine" -DPRINTLAB_UPSTREAM_DIR="$UP" \
-		-DCMAKE_PREFIX_PATH="$BUILD/deps/usr/local" -DCMAKE_BUILD_TYPE="$config" "${flags[@]}"
+		-DCMAKE_PREFIX_PATH="$BUILD/deps/usr/local" "${flags[@]}"
 	# The upstream subdirectory is EXCLUDE_FROM_ALL. Build our default targets so new engine tests
 	# are included automatically without maintaining a second list in this script.
 	nice -n 10 cmake --build "$engine" --config "$config" -j "$jobs"
