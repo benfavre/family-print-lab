@@ -30,10 +30,12 @@ export function parseManifest(text) {
 	const result = { files: [] };
 	let file;
 	let inFiles = false;
+	let seenFiles = false;
 	for (const line of text.replaceAll('\r\n', '\n').split('\n')) {
 		if (!line.trim()) continue;
 		if (line === 'files:') {
-			assert.equal(inFiles, false, 'Duplicate files section');
+			assert.equal(seenFiles, false, 'Duplicate files section');
+			seenFiles = true;
 			inFiles = true;
 			continue;
 		}
@@ -55,6 +57,7 @@ export function parseManifest(text) {
 		assert.ok(top, `Unsupported updater manifest line: ${line}`);
 		assert.ok(!(top[1] in result), `Duplicate ${top[1]}`);
 		result[top[1]] = scalar(top[2]);
+		inFiles = false;
 		file = undefined;
 	}
 	assert.ok(result.files.length > 0, 'Empty updater files');

@@ -22,6 +22,19 @@ export async function stageRelease({ root, version, appVersion, repository, sha 
 			`Refusing existing or inaccessible ${endpoint} (${response.status})`
 		);
 	}
+	// Tag lookup documents published releases; list with this write-scoped token also includes drafts.
+	// https://docs.github.com/en/rest/releases/releases#list-releases
+	for (let page = 1; ; page++) {
+		const response = await api(`releases?per_page=100&page=${page}`);
+		assert.equal(response.status, 200, 'Could not check existing draft releases');
+		const releases = await response.json();
+		assert.ok(Array.isArray(releases), 'Invalid release listing');
+		assert.ok(
+			!releases.some((release) => release.tag_name === tag),
+			`Refusing existing release for ${tag}`
+		);
+		if (releases.length < 100) break;
+	}
 	const ready = fs.mkdtempSync(path.join(os.tmpdir(), 'printlab-release-'));
 	try {
 		for (const asset of assets)

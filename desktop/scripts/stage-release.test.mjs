@@ -138,6 +138,58 @@ test('accepts quoted filenames and CRLF updater manifests', (t) => {
 	assert.equal(parseManifest(text).version, version);
 });
 
+test('rejects file records after top-level fields and cannot reopen the files section', (t) => {
+	const { manifest } = fixture(t);
+	const text = fs.readFileSync(manifest, 'utf8');
+	const record = text.match(/  - url:[\s\S]*?(?=path:)/)[0];
+	assert.throws(() => parseManifest(`${text}${record}`), /File outside files section/);
+	assert.throws(() => parseManifest(`${text}files:\n${record}`), /Duplicate files section/);
+});
+
+test('finds a draft on a later release-list page even when tag lookup returns 404', async (t) => {
+	const { root } = fixture(t);
+	const pages = [];
+	await assert.rejects(
+		stageRelease(
+			{ root, version, appVersion: version, repository: 'owner/repo', sha },
+			{
+				api: async (endpoint, body) => {
+					assert.equal(body, undefined, 'Must not create a tag');
+					if (!endpoint.startsWith('releases?')) return { status: 404 };
+					pages.push(endpoint);
+					return {
+						status: 200,
+						json: async () =>
+							pages.length === 1
+								? Array.from({ length: 100 }, (_, i) => ({ tag_name: `v0.0.${i}`, draft: false }))
+								: [{ tag_name: 'v2.2.1', draft: true }]
+					};
+				},
+				gh: () => assert.fail('Must not create a release')
+			}
+		),
+		/Refusing existing release/
+	);
+	assert.deepEqual(pages, ['releases?per_page=100&page=1', 'releases?per_page=100&page=2']);
+});
+
+test('release-list failure prevents tag creation', async (t) => {
+	const { root } = fixture(t);
+	await assert.rejects(
+		stageRelease(
+			{ root, version, appVersion: version, repository: 'owner/repo', sha },
+			{
+				api: async (endpoint, body) => {
+					assert.equal(body, undefined);
+					return { status: endpoint.startsWith('releases?') ? 403 : 404 };
+				},
+				gh: () => assert.fail('Must not create a release')
+			}
+		),
+		/Could not check existing draft releases/
+	);
+});
+
 for (const status of [200, 401, 403, 500])
 	test(`refuses existing/inaccessible tags and releases (${status}) without mutations`, async (t) => {
 		const { root } = fixture(t);
@@ -168,6 +220,7 @@ test('creates only a new exact-SHA tag and draft, uploads unchanged verified byt
 		{
 			api: async (endpoint, body) => {
 				calls.push({ endpoint, body });
+				if (endpoint.startsWith('releases?')) return { status: 200, json: async () => [] };
 				if (body) {
 					assert.deepEqual(body, { ref: 'refs/tags/v2.2.1', sha });
 					return { status: 201, json: async () => ({ object: { sha } }) };
@@ -192,9 +245,9 @@ test('creates only a new exact-SHA tag and draft, uploads unchanged verified byt
 			}
 		}
 	);
-	assert.equal(calls[2].endpoint, 'git/refs');
-	assert.equal(calls[3][1], 'create');
-	assert.equal(calls[4][1], 'upload');
+	assert.equal(calls[3].endpoint, 'git/refs');
+	assert.equal(calls[4][1], 'create');
+	assert.equal(calls[5][1], 'upload');
 	assert.equal(result.draft, true);
 });
 
@@ -204,7 +257,10 @@ test('a concurrent tag creation fails without creating or changing any release',
 		stageRelease(
 			{ root, version, appVersion: version, repository: 'owner/repo', sha },
 			{
-				api: async (_endpoint, body) => ({ status: body ? 422 : 404 }),
+				api: async (endpoint, body) =>
+					endpoint.startsWith('releases?')
+						? { status: 200, json: async () => [] }
+						: { status: body ? 422 : 404 },
 				gh: () => assert.fail('Must not create a release')
 			}
 		),
