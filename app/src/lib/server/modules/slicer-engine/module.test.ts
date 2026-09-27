@@ -132,7 +132,7 @@ describe('slicing jobs through the module', () => {
 				fleet: ['C12'],
 				modules: ['slicer-engine'],
 				speed: 1200,
-				env: { PRINTLAB_SLICER_PATH: process.env.PRINTLAB_SLICER_PATH }
+				env: { PRINTLAB_SLICER_PATH: process.env.PRINTLAB_SLICER_PATH ?? '' }
 			});
 			const engine = await t.rt.module('slicer-engine')!.open();
 			if (!engine?.has('slice')) skip(); // a protocol-only build cannot slice
