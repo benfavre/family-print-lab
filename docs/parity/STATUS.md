@@ -140,7 +140,7 @@ No physical printer or Windows/macOS native runner was used for the local contin
 
 ## Release deployment (2026-09-27)
 
-Print Lab Cloud 0.2.0 is deployed at `https://familyprintlab.app` from `d9eedfd`. Migration
+The initial Print Lab Cloud 0.2.0 release was deployed at `https://familyprintlab.app` from `d9eedfd`. Migration
 `0007_remote.sql` was applied before deployment. Existing production variables, secrets and resource
 bindings were preserved. Public pages and phone-key assets return 200; unauthenticated printer pages
 redirect to sign-in and the printer API returns 401. Worker version:
@@ -161,3 +161,33 @@ issues. Fixes and regression checks are committed on `parity`; targeted native r
 CI now retains completed dependency caches after later failures and supports one-platform retries.
 These follow-up build changes do not alter the v2.2.0 tag. Installers remain unsigned, and no physical
 printer has been used.
+
+## Phone integration follow-up (2026-09-27)
+
+The Cloud companion now keeps phone keys for several linked computers, preserving the legacy
+single-key browser entry. Status, queues, camera replies and commands use the correct computer’s key.
+Missing or rotated keys affect only the matching computer; a phone can forget one saved key or all
+of them. Key storage failures do not downgrade to plain-text status. Camera switching clears the
+previous image, and commands cancelled with Escape cannot reuse an earlier confirmation.
+
+This update is compatible with the released desktop 2.2.0 protocol; no desktop upgrade is required.
+The desktop pairing instructions and protocol documentation are updated on `parity` for the next
+installer release. Physical-printer verification remains outstanding.
+
+Cloud `22f7d47` is deployed as Worker `315b07b8-5538-4a99-8295-a379003bd90c`. Production bindings
+were unchanged, no D1 migration was required, and the live phone-key page passed anonymous pairing,
+reload and individual/all-forgetting checks in an isolated browser. Secrets stayed out of network
+requests. Printer/account authentication boundaries and deployed helper/service-worker assets were
+verified. The public website and changelogs also include the integration update.
+
+Validation for this follow-up:
+
+- Cloud: check and formatting pass; 81 unit/integration tests pass (76 before this change).
+- Cloud: 106 browser/service-worker checks pass, including 48 public website checks, 48 real-browser
+  keyring cases across three widths and both themes, and 10 service-worker notification cases.
+- Desktop baseline: check reports zero errors/warnings; 1,398 unit tests pass with 46 optional/native
+  and protocol-only skips in this run. Native-engine tests were not enabled for this UI/Cloud change.
+- Desktop after changes: check, Prettier and ESLint pass; 44 Cloud unit tests pass with one
+  protocol-only skip, plus both phone approval and cloud-remote simulator browser tests.
+
+No engine code or installer assets changed in this follow-up.

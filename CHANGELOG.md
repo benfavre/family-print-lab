@@ -9,6 +9,10 @@ optional companion with its own releases. Earlier releases remain documented in 
 These changes are on `parity` after the published 2.2.0 tag. They are **not included in the 2.2.0
 installers**.
 
+- Clarify phone pairing for several computers: scan each computer’s key and revoke a lost phone on
+  each computer. The Cloud companion now keeps multiple keys without replacing existing pairings,
+  including keys saved by older phone clients; this also works with the released 2.2.0 app.
+
 - Fix Windows dependency target discovery when command output contains carriage returns, and select
   native Windows Perl when building OpenSSL.
 - Set the C++ standard required by OCCT on AppleClang and support macOS's bundled Bash 3.2.

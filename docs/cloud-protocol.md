@@ -102,13 +102,25 @@ apps refresh.
 A random 32-byte key the app makes the first time a parent chooses **Show phone key** (Family page →
 Answer from your phone, parent PIN required). It is kept in the app's database (so encrypted backups
 carry it) and on the family's phones, never in the cloud. The key id is the first 8 bytes of
-SHA-256 of the key (hex).
+SHA-256 of the key (hex). Each linked computer creates its own key; a phone may hold several.
 
 - The app shows a QR code of `{cloud}/phone-key#k=<key, base64url>`. The key is in the URL fragment,
   which browsers never send to a server; the cloud's `/phone-key` page stores it in the phone's
-  IndexedDB and removes it from the address bar. Phones without a camera app can paste the link.
-- **Forget all phones** makes a new key: phones with the old one can no longer open anything or send
-  commands until they scan the new one.
+  IndexedDB, indexed by the derived key id, and removes it from the address bar. Adding another
+  computer’s key does not replace existing keys. Phones without a camera app can paste the link.
+  Existing browsers with a single raw key under the `keys` store’s `phone` entry keep that pairing;
+  the companion reads it alongside the newer entries, deduplicated by key id.
+- **Forget all phones** makes a new key on that computer: phones with the old one can no longer open
+  its new messages or send it commands until they scan the new one. Other computers are unaffected.
+  Revoke a lost phone on every computer it was paired with.
+- The phone selects a saved key using the public key id in a `PLS1` message, then authenticates the
+  ciphertext and its additional data. Controls and camera replies use the same key that opened that
+  printer’s status, never an arbitrary saved key. UI command feedback and notification tags include
+  both computer and printer identifiers.
+- A phone can remove one saved key or all of them; this changes only that browser, not the computer’s
+  key. Individual removal also removes a matching legacy `phone` entry. Storage failures do not
+  silently fall back to trusting plain-text printer data. With any saved key, the phone refuses
+  unsealed printer and queue details, including the compatibility path from other computers.
 - Two subkeys, HKDF-SHA256 with salt `family-print-lab`: `info "phone seal v1"` (AES-256-GCM, 32
   bytes) and `info "phone mac v1"` (HMAC-SHA256, 32 bytes).
 - **Sealed** data: `"PLS1" | key id (8 bytes) | IV (12 bytes) | ciphertext | tag (16 bytes)`, base64 in

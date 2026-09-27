@@ -89,7 +89,8 @@
 			<div class="how">
 				<p>
 					Scan this with the camera of each grown-up’s phone and open the link. Print Lab keeps the
-					key on the phone; Print Lab Cloud never sees it.
+					key on the phone; Print Lab Cloud never sees it. Scan a key from each linked computer;
+					adding this key keeps the others.
 				</p>
 				<p class="hint">
 					With it, a phone signed in to your account can see camera pictures and, if you allow it,

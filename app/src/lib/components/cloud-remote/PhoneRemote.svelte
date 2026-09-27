@@ -42,7 +42,7 @@
 		if (
 			await ui.ask(
 				'Forget all phones?',
-				'Every phone will need to scan the new phone key before it can see pictures or control the printers again.',
+				'Every phone will need to scan this computer’s new key before it can see its pictures or control its printers again. Other computers are unaffected.',
 				'Forget all phones'
 			)
 		)
@@ -94,6 +94,9 @@
 			{:else}
 				Pictures and remote control need the phone key on each grown-up’s phone.
 			{/if}
+		</p>
+		<p>
+			Using several computers? Scan the phone key from each one; your phone keeps them together.
 		</p>
 		<button class="ghost-button" onclick={() => (dialog = 'show')}>Show phone key</button>
 		{#if cloud.phoneKey}
