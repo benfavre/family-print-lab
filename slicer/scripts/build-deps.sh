@@ -18,7 +18,6 @@ set -euo pipefail
 SLICER="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 UP="${PRINTLAB_UPSTREAM_DIR:-$SLICER/.upstream}"
 BUILD="${PRINTLAB_SLICER_BUILD_DIR:-$SLICER/.build}"
-DEPS="$BUILD/deps"
 JOBS=2
 PRINT_KEY=0
 
@@ -63,6 +62,15 @@ platform() {
 # The upstream tag under our patches (upstream.sh fetch tags that commit printlab-base).
 TAG="$(git -C "$UP" tag --points-at printlab-base 2>/dev/null | grep -v '^printlab-' | head -n 1 || true)"
 PLATFORM="$(platform)"
+# Configure from the build directory below. Keep override paths independent of that working
+# directory, including Windows paths supplied by GitHub Actions to Git Bash.
+if [[ "$PLATFORM" == win32-* ]]; then
+	UP="$(cygpath -u "$UP")"
+	BUILD="$(cygpath -u "$BUILD")"
+fi
+UP="$(cd "$UP" && pwd -P)"
+case "$BUILD" in /*) ;; *) BUILD="$PWD/$BUILD" ;; esac
+DEPS="$BUILD/deps"
 case "$PLATFORM" in
 win32-*)
 	COMPILER="${CXX:-cl}"
@@ -79,7 +87,7 @@ esac
 # Installed dependencies are Release builds even when the engine is instrumented. Compiler,
 # generator and architecture changes must not reuse an incompatible cached prefix.
 FINGERPRINT="$(printf '%s\n' "$COMPILER_VERSION" "$GENERATOR" "${CMAKE_GENERATOR_PLATFORM:-}" \
-	"${CFLAGS:-}" "${CXXFLAGS:-}" 'Release;DEP_DEBUG=OFF;headless-v2' |
+	"${CFLAGS:-}" "${CXXFLAGS:-}" 'Release;DEP_DEBUG=OFF;headless-v3' |
 	sha256 | cut -c1-12)"
 KEY="deps-${TAG:-$(git -C "$UP" rev-parse --short HEAD)}-$(git -C "$UP" rev-parse HEAD:deps | cut -c1-12)-$PLATFORM-$FINGERPRINT"
 if [ "$PRINT_KEY" = 1 ]; then
@@ -116,28 +124,40 @@ for tool in "${TOOLS_NEEDED[@]}"; do
 done
 
 say "building Bambu Studio's dependencies ($KEY) with -j $JOBS into ${DEPS}; this takes hours the first time."
-mkdir -p "$DEPS"
-# A few upstream recipes run `make -j` or `make -j<cores>` themselves (GMP, MPFR, OpenSSL); nice keeps
-# the machine usable meanwhile.
-export CMAKE_BUILD_PARALLEL_LEVEL="$JOBS"
-nice -n 10 cmake -S "$UP/deps" -B "$DEPS/build" \
-	-G "$GENERATOR" \
-	-DCMAKE_BUILD_TYPE=Release \
-	-DCMAKE_PROJECT_INCLUDE="$SLICER/scripts/dependency-targets.cmake" \
-	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-	-DDESTDIR="$DEPS" \
-	-DDEP_DEBUG=OFF \
-	-DDEP_WX_GTK3=ON \
-	-DDEP_BUILD_WXWIDGETS=OFF \
-	-DDEP_BUILD_FFMPEG=OFF \
-	-DDEP_BUILD_LIBHARU=OFF \
-	-DDEP_BUILD_GLFW=OFF
-# Every dependency target except the GL ones (their dependencies come along).
-TARGETS=()
-while IFS= read -r t; do
-	[ -z "$t" ] || TARGETS+=("$t")
-done <"$DEPS/build/printlab-dependency-targets.txt"
-[ ${#TARGETS[@]} -gt 0 ] || die "the superbuild lists no dependency targets."
-nice -n 10 cmake --build "$DEPS/build" --config Release -j "$JOBS" --target "${TARGETS[@]}"
+mkdir -p "$DEPS/build"
+# Upstream detects a surrounding repository to add --directory to git apply. Our dependency
+# archives live beside .upstream, so that relative path escapes its repository: newer Git rejects
+# it and older Git may silently skip the patch. Isolate both configure and archive patch commands
+# from enclosing repositories. Git's ceiling must be an ancestor, not the working directory itself.
+PATCH_CEILING="$(cd "$BUILD" && pwd -P)"
+if [[ "$PLATFORM" == win32-* ]]; then
+	PATCH_CEILING="$(cygpath -w "$PATCH_CEILING")"
+fi
+(
+	export GIT_CEILING_DIRECTORIES="$PATCH_CEILING"
+	cd "$DEPS/build"
+	# A few upstream recipes run `make -j` or `make -j<cores>` themselves (GMP, MPFR, OpenSSL); nice keeps
+	# the machine usable meanwhile.
+	export CMAKE_BUILD_PARALLEL_LEVEL="$JOBS"
+	nice -n 10 cmake -S "$UP/deps" -B "$DEPS/build" \
+		-G "$GENERATOR" \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_PROJECT_INCLUDE="$SLICER/scripts/dependency-targets.cmake" \
+		-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+		-DDESTDIR="$DEPS" \
+		-DDEP_DEBUG=OFF \
+		-DDEP_WX_GTK3=ON \
+		-DDEP_BUILD_WXWIDGETS=OFF \
+		-DDEP_BUILD_FFMPEG=OFF \
+		-DDEP_BUILD_LIBHARU=OFF \
+		-DDEP_BUILD_GLFW=OFF
+	# Every dependency target except the GL ones (their dependencies come along).
+	TARGETS=()
+	while IFS= read -r t; do
+		[ -z "$t" ] || TARGETS+=("$t")
+	done <"$DEPS/build/printlab-dependency-targets.txt"
+	[ ${#TARGETS[@]} -gt 0 ] || die "the superbuild lists no dependency targets."
+	nice -n 10 cmake --build "$DEPS/build" --config Release -j "$JOBS" --target "${TARGETS[@]}"
+)
 echo "$KEY" >"$DEPS/.stamp"
 say "dependencies built into $DEPS/usr/local."

@@ -10,11 +10,31 @@ trap 'rm -rf "$TEMP"' EXIT
 fail() { echo "not ok - $*" >&2; exit 1; }
 pass() { echo "ok - $*"; }
 
+# Reproduce the real layout: a dependency build under the app repository beside a nested upstream
+# repository, with an unpacked archive that has no .git directory of its own.
+git init --quiet "$TEMP"
 UP="$TEMP/upstream"
 mkdir -p "$UP/deps/nested"
 cat >"$UP/deps/CMakeLists.txt" <<'CMAKE'
 cmake_minimum_required(VERSION 3.19)
 project(BambuStudio-deps)
+# Match upstream deps/CMakeLists.txt and OCCT's conditional git-apply prefix.
+execute_process(COMMAND git rev-parse --is-inside-work-tree
+    RESULT_VARIABLE git_status OUTPUT_VARIABLE git_inside OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET)
+if(git_status EQUAL 0 AND git_inside STREQUAL "true")
+    file(RELATIVE_PATH BINARY_DIR_REL "${CMAKE_SOURCE_DIR}/.." "${CMAKE_BINARY_DIR}")
+endif()
+set(archive "${CMAKE_BINARY_DIR}/dep_OCCT-prefix/src/dep_OCCT")
+file(MAKE_DIRECTORY "${archive}")
+file(WRITE "${archive}/value.txt" "before\n")
+set(patch_args)
+if(BINARY_DIR_REL)
+    list(APPEND patch_args --directory "${BINARY_DIR_REL}/dep_OCCT-prefix/src/dep_OCCT")
+endif()
+add_custom_target(dep_Patch
+    COMMAND git apply ${patch_args} "${CMAKE_SOURCE_DIR}/one.patch"
+    WORKING_DIRECTORY "${archive}" VERBATIM)
 add_custom_target(dep_Core
     COMMAND ${CMAKE_COMMAND} -E make_directory "${DESTDIR}/usr/local/lib"
     COMMAND ${CMAKE_COMMAND} -E touch "${DESTDIR}/core-built")
@@ -27,6 +47,14 @@ CMAKE
 cat >"$UP/deps/nested/CMakeLists.txt" <<'CMAKE'
 add_custom_target(dep_Nested COMMAND ${CMAKE_COMMAND} -E touch "${DESTDIR}/nested-built")
 CMAKE
+cat >"$UP/deps/one.patch" <<'PATCH'
+diff --git a/value.txt b/value.txt
+--- a/value.txt
++++ b/value.txt
+@@ -1 +1 @@
+-before
++after
+PATCH
 git init --quiet "$UP"
 git -C "$UP" add deps
 git -C "$UP" -c user.name=Tester -c user.email=test@example.invalid commit --quiet -m 'Toy dependencies'
@@ -56,10 +84,12 @@ for generator in "${GENERATORS[@]}"; do
 	bash "$SLICER/scripts/build-deps.sh" -j 2 >"$log" 2>&1 || { cat "$log"; fail "$generator dependency build"; }
 	[ -f "$PRINTLAB_SLICER_BUILD_DIR/deps/core-built" ] || fail 'root dependency was skipped'
 	[ -f "$PRINTLAB_SLICER_BUILD_DIR/deps/nested-built" ] || fail 'nested dependency was skipped'
+	[ "$(cat "$PRINTLAB_SLICER_BUILD_DIR/deps/build/dep_OCCT-prefix/src/dep_OCCT/value.txt")" = after ] ||
+		fail 'archive patch was silently skipped inside the surrounding repository'
 	[ "$(cat "$PRINTLAB_SLICER_BUILD_DIR/deps/.stamp")" = "$key" ] || fail 'wrong cache stamp'
 	bash "$SLICER/scripts/build-deps.sh" -j 2 >"$log" 2>&1
 	grep -q 'already built' "$log" || fail 'matching cache was not reused'
-	pass "$generator discovers and builds dependencies, excludes GUI targets and reuses its cache"
+	pass "$generator builds dependencies, applies archive patches, excludes GUI targets and reuses its cache"
 
 	if [ "${BUILD_PROTOCOL:-0}" = 1 ]; then
 		bash "$SLICER/scripts/upstream.sh" build --no-upstream -j 2 >"$TEMP/protocol-$index.log" 2>&1 ||
