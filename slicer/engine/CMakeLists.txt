@@ -55,9 +55,9 @@ add_library(printlab_rpc STATIC
     src/facade/identity.cpp)
 target_include_directories(printlab_rpc PUBLIC src "${CMAKE_CURRENT_BINARY_DIR}/generated")
 find_package(Threads REQUIRED)
-target_link_libraries(printlab_rpc PUBLIC Threads::Threads)
+target_link_libraries(printlab_rpc PUBLIC Threads::Threads printlab_features)
 
-add_library(printlab_features STATIC src/features/thumbnails/thumbnails.cpp)
+add_library(printlab_features STATIC src/features/thumbnails/thumbnails.cpp src/features/calib/calib.cpp)
 target_include_directories(printlab_features PUBLIC src)
 
 if (PRINTLAB_WITH_UPSTREAM)
@@ -95,6 +95,7 @@ if (PRINTLAB_WITH_UPSTREAM)
         src/facade/upstream/arrange_orient.cpp
         src/facade/upstream/slice.cpp
         src/facade/upstream/export.cpp
+        src/facade/upstream/calib.cpp
         src/facade/upstream/facade.cpp
         src/facade/upstream/link_shims.cpp)
     # libslic3r's MD5 calls (bbs_3mf.cpp, utils.cpp) come from OpenSSL, which upstream only links
@@ -106,7 +107,10 @@ if (PRINTLAB_WITH_UPSTREAM)
     # reach this directory: the facade takes the same list from there.
     get_directory_property(_upstream_includes DIRECTORY "${PRINTLAB_UPSTREAM_DIR}" INCLUDE_DIRECTORIES)
     target_include_directories(printlab_facade PRIVATE ${_upstream_includes})
-    target_compile_definitions(printlab_facade PRIVATE PRINTLAB_UPSTREAM_RESOURCES="${PRINTLAB_UPSTREAM_DIR}/resources")
+    # Our own resources (calibration models ported from OrcaSlicer) sit beside the source when the
+    # engine runs from its build directory; a bundle has them under resources/printlab/.
+    target_compile_definitions(printlab_facade PRIVATE PRINTLAB_UPSTREAM_RESOURCES="${PRINTLAB_UPSTREAM_DIR}/resources"
+                               PRINTLAB_OWN_RESOURCES="${CMAKE_CURRENT_SOURCE_DIR}/resources")
 else ()
     add_library(printlab_facade STATIC src/facade/null_facade.cpp)
     target_link_libraries(printlab_facade PUBLIC printlab_rpc)

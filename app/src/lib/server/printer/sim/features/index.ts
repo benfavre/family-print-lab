@@ -9,6 +9,7 @@ import { notifications } from './notifications';
 import { power } from './power';
 import { maintenance } from './maintenance';
 import { vision } from './vision';
+import { slicerCalibration } from './slicer-calibration';
 
 export const FEATURES: SimFeature[] = [
 	core,
@@ -19,5 +20,6 @@ export const FEATURES: SimFeature[] = [
 	notifications,
 	power,
 	maintenance,
-	vision
+	vision,
+	slicerCalibration
 ];

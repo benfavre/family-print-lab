@@ -1,0 +1,7 @@
+# The pinned OrcaSlicer source for what slicer-calibration ports from it (see ports/ORIGINS.md): the
+# linear ("YOLO") flow rate test's set-up and its two models. Nothing is built from OrcaSlicer; this
+# records which release the ports were compared against. Same key=value format as upstream.lock.
+name=OrcaSlicer
+url=https://github.com/OrcaSlicer/OrcaSlicer.git
+tag=v2.4.2
+commit=8500fcdccaa10b5099ac20d252af3a7c560046f1

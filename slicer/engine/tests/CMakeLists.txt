@@ -8,6 +8,7 @@ endfunction()
 printlab_test(test_json printlab_rpc)
 printlab_test(test_rpc printlab_rpc printlab_facade)
 printlab_test(test_thumbnails printlab_features)
+printlab_test(test_calib printlab_features)
 if (PRINTLAB_WITH_UPSTREAM)
     printlab_test(test_facade printlab_facade)
     # Needs Bambu Studio's profiles: the checkout's resources/ (upstream.sh fetch has them).

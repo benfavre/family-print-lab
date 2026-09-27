@@ -1,5 +1,7 @@
 #include "convert.hpp"
 
+#include <algorithm>
+
 namespace printlab {
 
 namespace {
@@ -357,6 +359,104 @@ Json to_json(const SlicedPlate &p) {
 }
 Json to_json(const Progress &p) {
 	return Json(Json::Object{{"stage", p.stage}, {"percent", p.percent}, {"message", p.message}});
+}
+
+Json to_json(const PresetRef &r) {
+	return Json(Json::Object{{"kind", kind_name(r.kind)}, {"name", r.name}, {"source", r.source}});
+}
+
+Json to_json(const Project &p, const std::map<std::string, MeshInfo> &meshes) {
+	Json extras = Json::object();
+	for (const auto &kv : p.extras) extras[kv.first] = kv.second;
+	Json filaments_sel = Json::array();
+	for (const auto &f : p.presets.filaments) filaments_sel.push_back(to_json(f));
+	Json presets(Json::Object{{"printer", to_json(p.presets.printer)}, {"process", to_json(p.presets.process)}, {"filaments", filaments_sel}});
+	Json filaments = Json::array();
+	for (const auto &f : p.filaments) {
+		size_t i = static_cast<size_t>(std::max(1, f.index) - 1);
+		Json preset = i < p.presets.filaments.size() ? to_json(p.presets.filaments[i]) : Json();
+		filaments.push_back(Json(Json::Object{{"index", f.index}, {"preset", preset}, {"color", f.color}, {"type", f.type}}));
+	}
+	Json plates = Json::array();
+	for (const auto &pl : p.plates) {
+		Json instances = Json::array();
+		for (const auto &r : pl.instances) instances.push_back(Json(Json::Object{{"objectId", r.object_id}, {"instanceId", r.instance_id}}));
+		Json pj(Json::Object{{"index", pl.index}, {"name", pl.name}, {"locked", pl.locked}, {"instances", instances}, {"config", to_json(pl.config)}});
+		if (!pl.bed_type.empty()) pj["bedType"] = pl.bed_type;
+		if (!pl.print_sequence.empty()) pj["printSequence"] = pl.print_sequence;
+		if (pl.spiral_vase) pj["spiralVase"] = true;
+		plates.push_back(pj);
+	}
+	Json objects = Json::array();
+	for (const auto &o : p.objects) {
+		Json parts = Json::array(), instances = Json::array(), ranges = Json::array();
+		for (const auto &pt : o.parts) {
+			Json pj(Json::Object{{"id", pt.id}, {"name", pt.name}, {"type", part_type_name(pt.type)}, {"mesh", pt.mesh},
+			                     {"transform", to_json(pt.transform)}, {"config", to_json(pt.config)}});
+			if (pt.filament > 0) pj["filament"] = pt.filament;
+			parts.push_back(pj);
+		}
+		for (const auto &in : o.instances)
+			instances.push_back(Json(Json::Object{{"id", in.id}, {"transform", to_json(in.transform)}, {"printable", in.printable}}));
+		for (const auto &r : o.height_ranges)
+			ranges.push_back(Json(Json::Object{{"minZ", r.min_z}, {"maxZ", r.max_z}, {"config", to_json(r.config)}}));
+		objects.push_back(Json(Json::Object{{"id", o.id}, {"name", o.name}, {"parts", parts}, {"instances", instances},
+		                                    {"config", to_json(o.config)}, {"heightRanges", ranges}, {"printable", o.printable}}));
+	}
+	Json mesh_refs = Json::object();
+	for (const auto &kv : p.meshes) {
+		auto info = meshes.find(kv.first);
+		Json bbox = Json::array();
+		size_t triangles = 0;
+		if (info != meshes.end()) {
+			for (double v : info->second.bbox) bbox.push_back(v);
+			triangles = info->second.triangles;
+		} else
+			for (int i = 0; i < 6; ++i) bbox.push_back(0);
+		mesh_refs[kv.first] = Json(Json::Object{{"id", kv.first},
+		                                        {"triangles", static_cast<double>(triangles)},
+		                                        {"vertices", static_cast<double>(triangles * 3)},
+		                                        {"bbox", bbox},
+		                                        {"storage", Json(Json::Object{{"kind", "file"}, {"path", kv.second.path}})}});
+	}
+	return Json(Json::Object{{"format", 1},
+	                         {"meta", Json(Json::Object{{"title", p.title}, {"application", "Print Lab Slicer"}, {"extras", extras}})},
+	                         {"presets", presets},
+	                         {"projectConfig", to_json(p.project_config)},
+	                         {"filaments", filaments},
+	                         {"plates", plates},
+	                         {"objects", objects},
+	                         {"meshes", mesh_refs},
+	                         {"passthrough", Json::object()}});
+}
+
+calib::Request calib_request_from(const Json &params, const std::string &where) {
+	calib::Request r;
+	r.kind = calib::kind_from(need_string(params, "kind", where));
+	const Json &p = params["params"];
+	if (!p.is_null() && !p.is_object()) bad(at(where, "params"), "expected an object");
+	r.start = opt_number(p, "start", 0);
+	r.end = opt_number(p, "end", 0);
+	r.step = opt_number(p, "step", 0);
+	r.pass = static_cast<int>(opt_number(p, "pass", 1));
+	r.linear = opt_bool(p, "linear", false);
+	r.print_numbers = opt_bool(p, "printNumbers", true);
+	return r;
+}
+
+Json to_json(const CalibResult &r) {
+	Json steps = Json::array();
+	for (const auto &s : r.steps) {
+		Json sj(Json::Object{{"value", s.value}, {"label", s.label}});
+		if (s.z_max > s.z_min) {
+			sj["zMin"] = s.z_min;
+			sj["zMax"] = s.z_max;
+		}
+		steps.push_back(sj);
+	}
+	Json out(Json::Object{{"projectId", r.project_id}, {"project", to_json(r.project, r.meshes)}, {"title", r.title}, {"steps", steps}});
+	if (r.base_flow_ratio > 0) out["baseFlowRatio"] = r.base_flow_ratio;
+	return out;
 }
 
 } // namespace printlab
