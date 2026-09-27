@@ -1,7 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 
 // Printer controls on the simulated X2D: lights, a temperature, the reasons shown for controls that
-// cannot be used right now, the print checks, and the guarded custom G-code box.
+// cannot be used right now, the print checks (door check included), the jog pad and the guarded custom
+// G-code box.
 const ready = (page: Page) => page.locator('html[data-ready]').waitFor({ state: 'attached' });
 
 test.beforeEach(async ({ context }) => {
@@ -45,6 +46,21 @@ test('Controls: light, bed temperature, reasons, print checks and custom G-code'
 	// Print checks the X2D reports.
 	const checks = page.locator('section.panel', { hasText: 'Print checks' });
 	await expect(checks.getByText('First layer check')).toBeVisible();
+	// The X2D reports a door-open check (fun bit 12); switching it shows in its next report.
+	const door = checks.getByLabel('Door opened while printing');
+	await door.selectOption({ label: 'Pause the print' });
+	await expect
+		.poll(
+			async () =>
+				(await page.request.get(`/api/printers/${x2d.id}/print-options`).then((r) => r.json()))
+					.doorCheck.mode,
+			{ timeout: 15_000 }
+		)
+		.toBe(2);
+
+	// The jog pad works while idle, with Bambu Studio's arrows.
+	await expect(panel.getByRole('button', { name: 'Up 10 mm', exact: true })).toBeEnabled();
+	await expect(panel.getByRole('button', { name: 'Z up 10 mm' })).toBeEnabled();
 
 	// Custom G-code stays hidden until the grown-up says they know what they are doing.
 	await panel.getByText('Custom G-code').click();
