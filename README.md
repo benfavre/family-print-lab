@@ -27,6 +27,10 @@ How this compares with Bambu Handy and Bambu Studio, and what is still to come: 
 
 ## Download
 
+Current release: **[2.2.0](https://github.com/benfavre/family-print-lab/releases/tag/v2.2.0)**. Read the
+[full changelog](CHANGELOG.md) for the slicing, printer and family features, validation and known limits.
+The Linux installer bundles Print Lab Slicer; Windows and macOS use an installed Bambu Studio for slicing.
+
 Get the desktop app for Windows, macOS or Linux from **[familyprintlab.app/download](https://familyprintlab.app/download)** (or the [latest release](https://github.com/benfavre/family-print-lab/releases/latest)). It keeps itself up to date. Your data stays on your computer, in the app's own folder (File → Open data folder), and printer or AI settings go in File → Printer and AI settings.
 
 The installers are not code-signed yet: Windows may show a SmartScreen warning (More info → Run anyway), and on macOS open the app with right-click → Open the first time. Automatic updates on macOS need signing, so Mac users download new versions by hand for now.
@@ -56,7 +60,7 @@ These are detected automatically and shown on the **Integrations** page:
 | [Claude Code](https://claude.com/claude-code) or Codex | AI features using your Claude or ChatGPT subscription                                 |
 | Anthropic API key                                      | AI features billed per use                                                            |
 | Blender 4.2+                                           | Mesh repair, simplification and "Open in Blender"                                     |
-| Print Lab Slicer                                       | The slicing workspace, one-click slicing and calibration tests (bundled with desktop) |
+| Print Lab Slicer                                       | The slicing workspace, one-click slicing and calibration tests (bundled with Linux desktop) |
 | Bambu Studio or OrcaSlicer                             | Slicing when Print Lab Slicer is not installed (no calibration tests)                 |
 | ffmpeg                                                 | Live camera on printers other than the A1 and P1 series, and the rough AI print check |
 | Bambu Lab printers in LAN-only + Developer Mode        | Live status, camera, sending plates, print control                                    |
