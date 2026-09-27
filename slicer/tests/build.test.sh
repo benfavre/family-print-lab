@@ -18,13 +18,14 @@ mkdir -p "$UP/deps/nested"
 cat >"$UP/deps/CMakeLists.txt" <<'CMAKE'
 cmake_minimum_required(VERSION 3.19)
 project(BambuStudio-deps)
-# Exercise Windows target-list line endings even on Linux/macOS. The collector's deferred call
+# Exercise Windows target-list line endings even on Linux/macOS, including duplicated CRs from
+# explicit CRLF passed through a native text writer. The collector's deferred call
 # was registered by project(), so this runs after it has written the target list.
 function(windows_target_lines)
     set(path "${CMAKE_BINARY_DIR}/printlab-dependency-targets.txt")
     file(READ "${path}" targets)
-    string(REPLACE "\r\n" "\n" targets "${targets}")
-    string(REPLACE "\n" "\r\n" targets "${targets}")
+    string(REPLACE "\r" "" targets "${targets}")
+    string(REPLACE "\n" "\r\r\n" targets "${targets}")
     file(WRITE "${path}" "${targets}")
 endfunction()
 cmake_language(DEFER CALL windows_target_lines)
