@@ -371,6 +371,13 @@ in every engine build, so ZIP reads and writes retain alignment sanitizer checks
   dependency that is absent from the bundle. Packaging must include and relocate this runtime
   library before the macOS installer can be considered self-contained.
 
+- The macOS runtime correction passes on macOS: the bundle includes and relocates zstd,
+  retains its BSD notice and re-signs the modified binaries. A downloaded artifact passes the
+  independent Mach-O closure audit. The 737-second build passes 13 native and 105 integration
+  tests (one skip). Windows completes compilation and linkage in 2,277 seconds; its native
+  tests exposed an open reader in a cleanup fixture. That fixture now closes the reader and
+  asserts project removal. Full Windows integration and installed-package checks remain pending.
+
 For a future rebuild, from the repository root:
 
 ```

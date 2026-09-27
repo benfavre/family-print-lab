@@ -276,3 +276,11 @@ The latest Linux and macOS native jobs both pass 13 native tests and 105 integra
 14 minutes 25 seconds respectively. A separate macOS artifact audit found a Homebrew zstd
 dynamic-library reference; runtime bundling and clean-install verification are being corrected
 before release. A successful native test job alone does not establish installer portability.
+
+The macOS runtime correction now passes on the native runner: dylib relocation and signing,
+13 native tests and 105 integration tests (one skip), followed by an independent audit of the
+downloaded artifact. The engine includes zstd and its BSD notice without Homebrew references.
+That cached-dependency build took 12 minutes 17 seconds. Windows now compiles and links in
+37 minutes 57 seconds; 12 of 13 native tests passed before a test kept its G-code reader open
+during cleanup. The reader is now closed and cleanup is asserted explicitly; the corrected
+facade test passes locally, with Windows integration and installer validation still pending.

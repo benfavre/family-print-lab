@@ -41,6 +41,8 @@ manual installation. Printer verification uses simulators.
 - Test RPC concurrency with explicit synchronisation instead of a machine-speed threshold.
 - Keep startup logs out of the slicer's JSON protocol on Windows. Read and write projects,
   profiles, previews and thumbnails in folders containing accents or non-Latin characters.
+- Bundle and relocate macOS runtime libraries, including their licence notices. Audit installed
+  bundles so Homebrew on a build machine cannot conceal a missing dependency.
 - Stage desktop releases as drafts, require all native builds and bundles, and launch installed
   packages on each platform before publication. Check that the packaged server discovers its engine.
 - Verify candidate installers before tagging, accepting native artifacts only when all platform
