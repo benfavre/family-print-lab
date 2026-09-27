@@ -12,6 +12,16 @@ on:
     branches: ['**']
     paths: ['slicer/**', '.github/workflows/slicer-build.yml']
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Engine platform to build
+        type: choice
+        default: all
+        options:
+          - all
+          - linux-x64
+          - darwin-arm64
+          - win32-x64
   workflow_call:
 
 permissions:
@@ -24,17 +34,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-22.04 # the oldest glibc we ship for
-            platform: linux-x64
-            generator: Unix Makefiles
-          - os: macos-14
-            platform: darwin-arm64
-            generator: Unix Makefiles
-          - os: windows-2022
-            platform: win32-x64
-            generator: Visual Studio 17 2022
-    runs-on: ${{ matrix.os }}
+        # Pushes and reusable calls keep the full matrix; manual retries can select one platform.
+        platform: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.platform && inputs.platform != 'all' && format('["{0}"]', inputs.platform) || '["linux-x64","darwin-arm64","win32-x64"]') }}
+    # Ubuntu 22.04 is the oldest glibc we ship for.
+    runs-on: ${{ fromJSON('{"linux-x64":"ubuntu-22.04","darwin-arm64":"macos-14","win32-x64":"windows-2022"}')[matrix.platform] }}
     # Windows and macOS builds of the headless engine are not verified yet; they must not fail the run.
     continue-on-error: ${{ matrix.platform != 'linux-x64' }}
     timeout-minutes: 350
@@ -43,7 +46,7 @@ jobs:
         shell: bash
     env:
       PRINTLAB_SLICER_BUILD_DIR: ${{ github.workspace }}/slicer/.build
-      CMAKE_GENERATOR: ${{ matrix.generator }}
+      CMAKE_GENERATOR: ${{ matrix.platform == 'win32-x64' && 'Visual Studio 17 2022' || 'Unix Makefiles' }}
     steps:
       - uses: actions/checkout@v4
       - uses: ilammy/msvc-dev-cmd@v1
