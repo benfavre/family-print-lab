@@ -5,6 +5,7 @@ import { startTestLab, type TestLab } from '../../testing/harness';
 import { fakeSliced } from '../../printer/sliced';
 import { defaultQueueSettings } from '$lib/shared/queue';
 import type { Queue } from './service';
+import type { ModelCode } from '$lib/shared/printers/models';
 
 async function until(check: () => unknown, ms = 10_000) {
 	const end = Date.now() + ms;
@@ -19,7 +20,7 @@ const cleanups: (() => unknown)[] = [];
 afterEach(async () => {
 	for (const fn of cleanups.splice(0).reverse()) await fn();
 });
-async function lab(fleet: Parameters<typeof startTestLab>[0]['fleet'] = ['C12']) {
+async function lab(fleet: ModelCode[] = ['C12']) {
 	const t = await startTestLab({ modules: ['queue'], fleet });
 	cleanups.push(() => t.stop());
 	return t;
