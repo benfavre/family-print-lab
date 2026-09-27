@@ -2,7 +2,7 @@
 	import { useApp } from '$lib/client/app.svelte';
 	import { usePanel } from '$lib/client/panel';
 	import { duration, weight } from '$lib/client/format';
-	import { autoMapping, loadedSlots } from '$lib/shared/printing';
+	import { autoMapping, loadedSlots, slotFitsNozzle } from '$lib/shared/printing';
 	import { ACTIVE_PRINTER_STATES } from '$lib/shared/domain';
 	import { sameModel } from '$lib/shared/printers/models';
 	import { UI } from '$lib/client/registry';
@@ -42,7 +42,9 @@
 	const busy = $derived(!!status.state && ACTIVE_PRINTER_STATES.has(status.state.gcodeState));
 	// Plain values, so live printer pushes (every ~0.75 s) only re-check when something relevant moved.
 	const connected = $derived(!!status.connected);
-	const slotsKey = $derived(slots.map((s) => `${s.index}${s.type}${s.color}${s.remain}`).join());
+	const slotsKey = $derived(
+		slots.map((s) => JSON.stringify([s.index, s.type, s.color, s.remain, s.nozzle])).join()
+	);
 
 	let useAms = $state(true);
 	let mapping = $state<number[]>([]);
@@ -70,7 +72,13 @@
 	let mappedFor = '';
 	$effect(() => {
 		if (!plate) return;
-		const key = `${plate.index}|${slots.map((s) => `${s.index}${s.type}${s.color}`).join()}`;
+		const key = JSON.stringify([
+			printerId,
+			sliced?.file,
+			plate.index,
+			plate.filaments.map((f) => [f.id, f.type, f.color, f.extruder]),
+			slots.map((s) => [s.index, s.type, s.color, s.nozzle])
+		]);
 		if (key === mappedFor) return;
 		mappedFor = key;
 		mapping = autoMapping(plate.filaments, slots);
@@ -213,9 +221,11 @@
 						>
 							<option value={-1}>Choose a slot…</option>
 							{#each slots as s (s.index)}
-								<option value={s.index}
+								<option value={s.index} disabled={!slotFitsNozzle(f, s)}
 									>{s.label} · {s.type}
-									{s.name}{s.remain !== null && s.remain >= 0 ? ` · ${s.remain}%` : ''}</option
+									{s.name}{s.remain !== null && s.remain >= 0
+										? ` · ${s.remain}%`
+										: ''}{!slotFitsNozzle(f, s) ? ' · Other nozzle' : ''}</option
 								>
 							{/each}
 						</select>

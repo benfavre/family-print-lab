@@ -579,3 +579,99 @@ describe('printer details', () => {
 		expect(() => parse(printerInput, { ...base, port: 70000 })).toThrow();
 	});
 });
+
+describe('feeder safety at dispatch', () => {
+	it('sends a single-nozzle P1S file whose filament_maps names extruder 1', async () => {
+		const t = await lab({ fleet: ['C12'] });
+		const { jobId } = queuedJob(t, 'C12');
+		t.rt.printing.attach(
+			jobId,
+			fakeSliced({ minutes: 1, grams: 1, printerModelId: 'C12', filamentMaps: [1] }),
+			'single.gcode.3mf'
+		);
+		const p = t.printer('C12');
+		const opts = { printerId: p.info.id, useAms: true, amsMapping: [0] };
+		expect(t.rt.printing.check(jobId, opts)).toEqual({ blocking: [], warnings: [] });
+		const task = t.rt.printing.send(jobId, opts);
+		await until(() => t.rt.tasks.get(task.id).status !== 'running');
+		expect(t.rt.tasks.get(task.id).status).toBe('done');
+		expect(job(t, jobId).dispatch?.amsMapping).toEqual([0]);
+	});
+
+	it.each(['PLA', ''])(
+		'blocks a known wrong-side external spool even with a material override (loaded type=%s)',
+		async (type) => {
+			const t = await lab({ fleet: ['N6'] });
+			const { jobId } = queuedJob(t, 'N6');
+			t.rt.printing.attach(
+				jobId,
+				fakeSliced({ minutes: 1, grams: 1, printerModelId: 'N6', filamentMaps: [1] }),
+				'left.gcode.3mf'
+			);
+			const { info, sim } = t.printer('N6');
+			sim.trays().find((x) => x.global === 255)!.tray.tray_type = type;
+			sim.report();
+			await until(
+				() =>
+					t.rt.printers.require(info.id).snapshot?.externalSpools.find((s) => s.global === 255)
+						?.type === type
+			);
+			const filesBefore = [...sim.files.keys()];
+			const opts = { printerId: info.id, useAms: true, amsMapping: [255], force: true };
+			expect(t.rt.printing.check(jobId, opts).blocking).toContain(
+				'Filament 1 uses the left nozzle, but slot Ext R feeds the other nozzle.'
+			);
+			expect(() => t.rt.printing.send(jobId, opts)).toThrow(/left nozzle/);
+			expect([...sim.files.keys()]).toEqual(filesBefore);
+			expect(job(t, jobId).status).toBe('Queued');
+		}
+	);
+
+	it.each([
+		{ type: 'PETG', force: false, error: /holds PETG/ },
+		{ type: '', force: false, error: /has no AMS slot/ },
+		{ type: 'PETG', force: true, error: null }
+	])(
+		'checks freshly reported material after wake (type=$type, force=$force)',
+		async ({ type, force, error }) => {
+			const t = await lab({ fleet: ['C12'] });
+			const p = t.printer('C12');
+			const entry = t.fleet.printers[0];
+			const { jobId } = queuedJob(t, 'C12');
+			const filesBefore = [...entry.sim.files.keys()];
+			await entry.sim.close();
+			await until(() => !t.rt.printers.get(p.info.id)!.connected);
+			const opts = { printerId: p.info.id, useAms: true, amsMapping: [0], wake: true, force };
+			const off = t.rt.hooks.beforeDispatch.add(async () => {
+				const tray = p.sim.trays().find((x) => x.global === 0)!;
+				tray.tray.tray_type = type;
+				await entry.sim.listen(entry.port, '127.0.0.1', entry.ftpPort);
+				await until(() => {
+					const printer = t.rt.printers.require(p.info.id);
+					return (
+						printer.connected &&
+						printer.snapshot?.ams.flatMap((u) => u.trays).find((s) => s.global === 0)?.type === type
+					);
+				});
+			});
+			try {
+				expect(t.rt.printing.check(jobId, opts).warnings).toEqual([]);
+				const task = t.rt.printing.send(jobId, opts);
+				const info = () => t.rt.tasks.list().find((x) => x.id === task.id)!;
+				await until(() => info().status !== 'running', 20_000);
+				if (error) {
+					expect(info().status).toBe('failed');
+					expect(info().error).toMatch(error);
+					expect([...entry.sim.files.keys()]).toEqual(filesBefore);
+					expect(job(t, jobId).status).toBe('Queued');
+				} else {
+					expect(info().status).toBe('done');
+					expect(entry.sim.files.size).toBe(filesBefore.length + 1);
+				}
+			} finally {
+				off();
+			}
+		},
+		30_000
+	);
+});
