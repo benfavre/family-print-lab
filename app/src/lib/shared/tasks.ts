@@ -10,7 +10,8 @@ export type TaskKind =
 	| 'blender-decimate'
 	| 'blender-session'
 	| 'print-send'
-	| 'slice';
+	| 'slice'
+	| 'gcode-preview';
 export type TaskStatus = 'running' | 'done' | 'failed' | 'cancelled';
 
 export interface TaskInfo {

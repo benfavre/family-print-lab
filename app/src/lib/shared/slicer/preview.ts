@@ -36,7 +36,13 @@ export const PREVIEW_FEATURES = [
 	'Prime tower',
 	'Ironing',
 	'Custom',
-	'Wipe'
+	'Wipe',
+	// Appended by gcode-preview: the rest of ExtrusionEntity::role_to_string (src/libslic3r/
+	// ExtrusionEntity.cpp at v02.08.02.61); "Flush" is also what GCodeProcessor calls FLUSH_START blocks.
+	'Floating vertical shell',
+	'Support ironing',
+	'Multiple',
+	'Flush'
 ] as const;
 export const TRAVEL_FEATURE = 1;
 
@@ -59,6 +65,11 @@ export interface PreviewHeader {
 	tools: { index: number; color: string; type: string }[];
 	layers: PreviewLayer[];
 	totalSeconds: number | null;
+	/**
+	 * Set when the writer thinned a very large plate to stay interactive: travel moves left out, and how
+	 * many extrusion moves shorter than 0.05 mm were joined to their neighbour.
+	 */
+	decimated?: { travel: boolean; joined: number };
 }
 export interface PreviewData {
 	header: PreviewHeader;

@@ -85,7 +85,7 @@ export function parseObj(text: string): Soup {
 
 // ---------- ZIP (for 3MF) ----------
 
-interface ZipEntry {
+export interface ZipEntry {
 	name: string;
 	method: number;
 	crc: number;
@@ -97,7 +97,7 @@ interface ZipEntry {
 const MAX_ENTRIES = 10_000;
 
 /** Lists a zip's entries without unpacking them; friendly errors for broken or unsupported files. */
-function zipEntries(buf: Buffer): ZipEntry[] {
+export function zipEntries(buf: Buffer): ZipEntry[] {
 	const bad = (why = 'That file is not a valid 3MF (zip) archive.') => new AppError(400, why);
 	let eocd = -1;
 	for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65_557); i--)
