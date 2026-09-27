@@ -24,7 +24,9 @@ test('Slicer profiles: browse, save a system preset as your own with a change, a
 
 	const editor = section.getByLabel('Preset editor');
 	await expect(editor).toContainText('BAMBU STUDIO');
-	await editor.getByLabel('Find a setting').fill('sparse_infill');
+	// With the native catalogue installed, other sparse_infill settings also occur on Quality.
+	// An exact key search selects the matching Strength page in either catalogue.
+	await editor.getByLabel('Find a setting').fill('sparse_infill_density');
 	await editor.getByLabel('sparse_infill_density', { exact: true }).fill('45%');
 	await editor.getByLabel('sparse_infill_density', { exact: true }).blur();
 	await editor.getByLabel('Name for your copy').fill('Strong X1C');
