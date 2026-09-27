@@ -40,18 +40,19 @@
 	async function rule(change: { autoOn?: boolean; autoOff?: boolean }) {
 		if (!plug) return;
 		busy = true;
-		const r = await lab.call('PATCH', `/api/plugs/${plug.id}`, {
-			version: plug.version,
-			...change
-		});
+		await lab.call('PATCH', `/api/plugs/${plug.id}`, { version: plug.version, ...change });
+		// Reloaded either way, so a refused change does not leave the box ticked.
+		await plugs.load();
 		busy = false;
-		if (r) await plugs.load(lab);
 	}
 </script>
 
 <section class="panel">
 	<h2 class="panel-title">Power</h2>
-	{#if !plugs.loaded}
+	{#if !plugs.loaded && plugs.error}
+		<p class="panel-empty">{plugs.error}</p>
+		<button class="mini" onclick={() => plugs.load()}>Try again</button>
+	{:else if !plugs.loaded}
 		<p class="panel-empty">Loading…</p>
 	{:else if !plug}
 		<p class="panel-empty">

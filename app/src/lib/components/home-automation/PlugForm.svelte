@@ -37,6 +37,16 @@
 	});
 	let busy = $state(false);
 	const saved = (kind: PlugKind) => !!src && src.kind === kind;
+	// A saved password or token is only sent to the address it was saved for (the server refuses to
+	// keep it for a new address), so a changed address needs it typed again.
+	const sameUrl = $derived(!!src && f.url.trim() === (src.config.url ?? ''));
+	const keep = (has: boolean | undefined) => saved(f.kind) && !!has && sameUrl;
+	const secretHint = (has: boolean | undefined) =>
+		keep(has)
+			? 'Leave empty to keep'
+			: saved(f.kind) && has
+				? 'Type it again for this address'
+				: '';
 
 	function config() {
 		const blank = (s: string) => s.trim() || undefined;
@@ -83,7 +93,7 @@
 				);
 		busy = false;
 		if (ok) {
-			await plugs.load(lab);
+			await plugs.load();
 			onclose();
 		}
 	}
@@ -99,7 +109,7 @@
 		)
 			return;
 		if (await lab.call('DELETE', `/api/plugs/${src.id}`, undefined, 'Plug removed.')) {
-			await plugs.load(lab);
+			await plugs.load();
 			onclose();
 		}
 	}
@@ -169,7 +179,7 @@
 						bind:value={f.password}
 						maxlength="500"
 						autocomplete="new-password"
-						placeholder={saved(f.kind) && src?.config.hasPassword ? 'Leave empty to keep' : ''}
+						placeholder={secretHint(src?.config.hasPassword)}
 					/></label
 				>
 			</div>
@@ -181,7 +191,7 @@
 					bind:value={f.password}
 					maxlength="500"
 					autocomplete="new-password"
-					placeholder={saved(f.kind) && src?.config.hasPassword ? 'Leave empty to keep' : ''}
+					placeholder={secretHint(src?.config.hasPassword)}
 				/><small>Only if the plug has a login (the user name is always admin).</small></label
 			>
 		{/if}
@@ -206,10 +216,10 @@
 					>Long-lived access token<input
 						type="password"
 						bind:value={f.token}
-						required={!(saved(f.kind) && src?.config.hasToken)}
+						required={!keep(src?.config.hasToken)}
 						maxlength="500"
 						autocomplete="off"
-						placeholder={saved(f.kind) && src?.config.hasToken ? 'Leave empty to keep' : ''}
+						placeholder={secretHint(src?.config.hasToken)}
 					/><small>Home Assistant: your profile → Security → Long-lived access tokens.</small
 					></label
 				>

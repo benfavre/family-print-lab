@@ -8,6 +8,8 @@ class Plugs {
 	list = $state<PlugInfo[]>([]);
 	states = $state<Record<string, PowerState>>({});
 	loaded = $state(false);
+	/** Why the plugs could not be loaded ('' when they were). */
+	error = $state('');
 	private watching = 0;
 	private off: (() => void) | null = null;
 
@@ -19,12 +21,22 @@ class Plugs {
 		return printerId ? (this.states[printerId] ?? null) : null;
 	}
 
-	async load(lab: AppContext['lab']) {
-		const res = await lab.call<{ plugs: PlugInfo[]; states: PowerState[] }>('GET', '/api/plugs');
-		if (!res) return;
-		this.list = res.plugs;
-		this.states = Object.fromEntries(res.states.map((s) => [s.printerId, s]));
-		this.loaded = true;
+	/** Loads quietly (every printer page has a Power panel): a failure shows in the panels, not as a toast. */
+	async load() {
+		try {
+			const r = await fetch('/api/plugs');
+			const res = await r.json().catch(() => ({}));
+			if (!r.ok) {
+				this.error = res.error ?? `Could not load the plugs (${r.status}).`;
+				return;
+			}
+			this.list = res.plugs;
+			this.states = Object.fromEntries((res.states as PowerState[]).map((s) => [s.printerId, s]));
+			this.error = '';
+			this.loaded = true;
+		} catch {
+			this.error = 'Could not reach the app server. Is it still running?';
+		}
 	}
 
 	/** Listens for power changes while at least one component needs them; returns the stop function. */
@@ -33,7 +45,7 @@ class Plugs {
 			this.off = lab.onLive<PowerState>('home-automation:power', (s) => {
 				this.states = { ...this.states, [s.printerId]: s };
 			});
-		void this.load(lab);
+		void this.load();
 		return () => {
 			if (--this.watching === 0) {
 				this.off?.();

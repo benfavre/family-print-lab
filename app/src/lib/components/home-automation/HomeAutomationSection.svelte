@@ -30,6 +30,7 @@
 	});
 	let mqttTest = $state<{ running: boolean; ok?: boolean; detail?: string }>({ running: false });
 	let savingMqtt = $state(false);
+	let failed = $state('');
 	const origin = typeof location === 'undefined' ? '' : location.origin;
 
 	function adopt(v: HomeAutomationView) {
@@ -40,8 +41,14 @@
 
 	onMount(() => {
 		void (async () => {
-			const v = await lab.call<HomeAutomationView>('GET', '/api/ha/settings');
-			if (v) adopt(v);
+			try {
+				const r = await fetch('/api/ha/settings');
+				const v = await r.json().catch(() => ({}));
+				if (r.ok) adopt(v as HomeAutomationView);
+				else failed = v.error ?? `Could not load the settings (${r.status}).`;
+			} catch {
+				failed = 'Could not reach the app server. Is it still running?';
+			}
 		})();
 		const offMqtt = lab.onLive<{ state: string }>('home-automation:mqtt', ({ state }) => {
 			if (view) view = { ...view, mqtt: { ...view.mqtt, state } };
@@ -176,8 +183,12 @@
 		turn it on, and only talks to devices on your home network that you name.
 	</p>
 
+	{#if failed}<p class="result bad" role="alert">{failed}</p>{/if}
+
 	<h3>Smart plugs</h3>
-	{#if printers.length}
+	{#if printers.length && !plugs.loaded}
+		<p class="panel-empty">{plugs.error || 'Loading…'}</p>
+	{:else if printers.length}
 		<ul class="rows" aria-label="Smart plugs">
 			{#each printers as printer (printer.id)}
 				{@const p = plugs.forPrinter(printer.id)}
@@ -261,7 +272,11 @@
 					bind:value={mqtt.password}
 					maxlength="500"
 					autocomplete="new-password"
-					placeholder={view?.mqtt.hasPassword ? 'Leave empty to keep' : ''}
+					placeholder={view?.mqtt.hasPassword
+						? mqtt.url.trim() === view.mqtt.url
+							? 'Leave empty to keep'
+							: 'Type it again for this broker'
+						: ''}
 				/></label
 			>
 		</div>
