@@ -5,6 +5,7 @@
 	import { useApp } from '$lib/client/app.svelte';
 	import Avatar from './Avatar.svelte';
 	import ProfileBackground from './ProfileBackground.svelte';
+	import FirstRunGate from './onboarding/FirstRunGate.svelte';
 
 	const { lab, ui } = useApp();
 	let opening = $state(false);
@@ -95,6 +96,7 @@
 		<button class="manage-profiles" disabled={opening} onclick={() => choose('all', true)}
 			>{lab.ws.profiles.length ? 'Manage profiles' : 'Create your first profile'}</button
 		>
+		<FirstRunGate />
 	</div>
 	<p class="profile-footnote">One family. Endless things to make.</p>
 </section>
