@@ -90,7 +90,13 @@ export function write3mf(project: Project, sources: WriteSources): Buffer {
 	objects.forEach((obj, i) => {
 		const file = `${OBJECTS_DIR}object_${i + 1}.model`;
 		for (const part of obj.parts) {
-			const key = `${part.mesh}#${part.sourceId ?? 'new'}`;
+			// Painting and face properties live on the sub-object's triangles, so parts painted
+			// differently (a painted copy of an object) cannot share one.
+			const surface =
+				part.paint || part.faceProperties
+					? `#${JSON.stringify(part.paint ?? null)}${JSON.stringify(part.faceProperties ?? null)}`
+					: '';
+			const key = `${part.mesh}#${part.sourceId ?? 'new'}${surface}`;
 			const existing = subs.get(key);
 			if (existing) {
 				partSub.set(part, existing);

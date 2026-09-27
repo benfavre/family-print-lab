@@ -696,6 +696,16 @@ describe('CliEngine against a fake Bambu Studio', () => {
 		expect((await e.call('project.sync', { projectId, project, presets })).errors).toEqual([]);
 		const stats = await e.call('slice', { projectId, plate: 1 });
 		expect(stats.warnings.map((w) => w.code)).toEqual(['CLI_PART_IGNORED', 'CLI_SETTINGS_IGNORED']);
+		// Variable layer heights alone are per-object settings too.
+		const layered = structuredClone(project);
+		layered.objects[0].parts = layered.objects[0].parts.slice(0, 1);
+		layered.objects[0].config = {};
+		layered.objects[0].layerHeightProfile = [0, 0.2, 10, 0.12];
+		await e.call('project.sync', { projectId, project: layered, presets });
+		expect((await e.call('slice', { projectId, plate: 1 })).warnings.map((w) => w.code)).toEqual([
+			'CLI_SETTINGS_IGNORED'
+		]);
+		await e.call('project.sync', { projectId, project, presets });
 		await expect(
 			e.call('export.gcode3mf', {
 				projectId,

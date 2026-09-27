@@ -12,8 +12,8 @@
 // error_string and per-plate total_predication and filaments[].total_used_g (record_exit_reson).
 //
 // Limits of this backend (the engine has none of them): modifiers, negative parts, support
-// painting, per-object settings and height ranges cannot be passed as STL, so they are left out with
-// a warning; every plate is sliced as plate 1 in bed coordinates.
+// painting, per-object settings, height ranges and layer height profiles cannot be passed as STL,
+// so they are left out with a warning; every plate is sliced as plate 1 in bed coordinates.
 import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -709,6 +709,7 @@ export class CliEngine implements SlicerEngine {
 			if (
 				Object.keys(object.config).length ||
 				object.heightRanges.length ||
+				object.layerHeightProfile?.length ||
 				object.parts.some((pt) => Object.keys(pt.config).length || pt.paint)
 			)
 				warnings.push({

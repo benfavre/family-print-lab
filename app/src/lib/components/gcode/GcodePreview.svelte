@@ -24,7 +24,8 @@
 		plate,
 		grams = null,
 		liveLayer = null,
-		compact = false
+		compact = false,
+		url = undefined
 	}: {
 		jobId: string;
 		/** The stored sliced file (a new file is a new preview). */
@@ -33,6 +34,8 @@
 		grams?: number | null;
 		liveLayer?: number | null;
 		compact?: boolean;
+		/** Where to load the preview from instead of the job's sliced file (the slicer workspace). */
+		url?: string;
 	} = $props();
 
 	const { lab } = useApp();
@@ -91,7 +94,7 @@
 		const abort = new AbortController();
 		status = { kind: 'loading' };
 		data = null;
-		loadPreview({ jobId, plate, file, signal: abort.signal }, (taskId) => {
+		loadPreview({ jobId, plate, file, signal: abort.signal, url }, (taskId) => {
 			if (!abort.signal.aborted) status = { kind: 'waiting', taskId };
 		}).then(
 			(d) => {

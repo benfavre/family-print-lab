@@ -27,7 +27,7 @@ test('Slicer projects: import a Bambu Studio project, look inside, download and 
 	await expect(row).toBeVisible();
 	await expect(row).toContainText('2 objects · 2 plates');
 
-	await row.getByRole('link').click();
+	await row.getByRole('link', { name: /synth-bambu-features/ }).click();
 	await expect(page.getByRole('heading', { name: 'synth-bambu-features' })).toBeVisible();
 	const plates = page.getByRole('region', { name: 'Plates' });
 	await expect(plates).toContainText('Plate 2: Second & last');
@@ -80,9 +80,10 @@ test('Slicer projects: start one from a model of the project', async ({ page }) 
 	await page.getByRole('button', { name: '＋ From models' }).click();
 	await page.getByLabel('Sorting bin').check();
 	await page.getByRole('button', { name: 'Start slicer project' }).click();
-	await expect(page).toHaveURL(/\/slicer-projects\/[\w-]+$/);
+	// A new slicer project opens in the slicer workspace (slicer-ui).
+	await expect(page).toHaveURL(/\/projects\/idea-02\/slicer\/[\w-]+$/);
 	await expect(page.getByRole('heading', { name: 'Sorting bin' })).toBeVisible();
-	await expect(page.getByRole('region', { name: 'Summary' })).toContainText(
-		'1 object (1 on the plates) · 1 plate · 12 triangles'
+	await expect(page.getByRole('region', { name: 'Objects on this plate' })).toContainText(
+		'Sorting bin'
 	);
 });

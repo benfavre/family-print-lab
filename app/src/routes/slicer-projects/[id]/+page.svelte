@@ -8,6 +8,7 @@
 	import { getSlicerProject, slicerFileUrl } from '$lib/client/slicer-3mf';
 	import PageHero from '$lib/components/PageHero.svelte';
 	import ProjectOverview from '$lib/components/slicer-3mf/ProjectOverview.svelte';
+	import { workspaceHref } from '$lib/client/slicer/api';
 	import type { SlicerProjectDetail } from '$lib/shared/slicer-3mf';
 
 	const { lab, ui } = useApp();
@@ -52,14 +53,15 @@
 		eyebrow={owner ? `SLICER PROJECT · ${owner.title.toUpperCase()}` : 'SLICER PROJECT'}
 		title={detail?.name ?? 'Slicer project'}
 		text={detail
-			? `Saved ${stamp(detail.updatedAt)}. Open it in Bambu Studio or OrcaSlicer to slice and print; everything below comes from the file.`
+			? `Saved ${stamp(detail.updatedAt)}. Slice it here, or open it in Bambu Studio or OrcaSlicer; everything below comes from the file.`
 			: ''}
 		note="Preview animation"
 		onrename={detail ? rename : undefined}
 	>
 		{#snippet actions()}
 			{#if detail}
-				<button class="primary" onclick={() => download(slicerFileUrl(id))}
+				<a class="primary button-link" href={workspaceHref(detail.projectId, id)}>Slice</a>
+				<button class="secondary" onclick={() => download(slicerFileUrl(id))}
 					>Open in Bambu Studio</button
 				>
 				{#if owner}<a class="secondary button-link" href={projectHref(owner.id)}>Project</a>{/if}

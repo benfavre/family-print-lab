@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { useApp } from '$lib/client/app.svelte';
-	import { slicerProjectHref } from '$lib/client/slicer-3mf';
+	import { workspaceHref } from '$lib/client/slicer/api';
 	import type { SlicerProjectSummary } from '$lib/shared/slicer-3mf';
 
 	let { projectId, oncreated }: { projectId: string; oncreated?: () => void } = $props();
@@ -36,7 +36,7 @@
 		chosen = [];
 		name = '';
 		oncreated?.();
-		await goto(slicerProjectHref(res.slicerProject.id));
+		await goto(workspaceHref(projectId, res.slicerProject.id));
 	}
 </script>
 

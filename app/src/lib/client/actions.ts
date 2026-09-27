@@ -11,6 +11,7 @@ import {
 } from '$lib/shared/domain';
 import type { AppContext, MenuItem } from './app.svelte';
 import { fileUrl, meshFormat, modelHref } from './models';
+import { openInSlicer } from './slicer/open';
 import type { ModelSummary } from '$lib/shared/domain';
 import { duration, weight } from './format';
 
@@ -367,6 +368,16 @@ export function modelMenu(app: AppContext, m: ModelSummary): MenuItem[] {
 						label: 'Queue a print…',
 						run: () =>
 							app.ui.openEditor('job', null, { projectId: m.projectId, modelVersionId: current.id })
+					},
+					{
+						label: 'Open in the slicer',
+						run: () =>
+							void openInSlicer(
+								app,
+								m.projectId,
+								[{ modelId: m.id, versionId: current.id }],
+								m.name
+							)
 					},
 					{
 						label: 'Download STL',
