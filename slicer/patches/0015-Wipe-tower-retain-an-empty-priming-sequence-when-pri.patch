@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Benjamin Favre <ben@webdesign29.net>
+Date: Sun, 27 Sep 2026 11:58:02 +0000
+Subject: [PATCH] Wipe tower: retain an empty priming sequence when priming is
+ disabled
+
+Why: Bambu intentionally disables priming generation, but G-code integration retains a reference to the priming sequence. Allocate an empty owned vector so that reference is valid without generating any extra priming moves.
+
+Files: src/libslic3r/Print.cpp. Upstreamable: yes; reproduced by strict sanitizer golden slices and multi-nozzle integration tests.
+
+Co-Authored-By: Codex <noreply@openai.com>
+---
+ src/libslic3r/Print.cpp | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/libslic3r/Print.cpp b/src/libslic3r/Print.cpp
+index dc4806b..2ec00ef 100644
+--- a/src/libslic3r/Print.cpp
++++ b/src/libslic3r/Print.cpp
+@@ -3752,7 +3752,8 @@ void Print::_make_wipe_tower()
+     // Set the extruder & material properties at the wipe tower object.
+     for (size_t i = 0; i < number_of_extruders; ++ i)
+         wipe_tower.set_extruder(i, m_config);
+-    // BBS: remove priming logic
++    // BBS: remove priming logic. Keep an empty owned sequence for G-code integration.
++    m_wipe_tower_data.priming = Slic3r::make_unique<std::vector<WipeTower::ToolChangeResult>>();
+     //m_wipe_tower_data.priming = Slic3r::make_unique<std::vector<WipeTower::ToolChangeResult>>(
+     //    wipe_tower.prime((float)this->skirt_first_layer_height(), m_wipe_tower_data.tool_ordering.all_extruders(), false));
+ 

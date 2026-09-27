@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Benjamin Favre <ben@webdesign29.net>
+Date: Sun, 27 Sep 2026 11:58:02 +0000
+Subject: [PATCH] Filaments: initialise machine candidate usage before copying
+
+Why: Machine filament candidates leave their inherited usage enum uninitialised. Moving them into candidate vectors reads an invalid enum. Value-initialise all fields and use Hybrid for machine candidates whose model usage is not yet assigned.
+
+Files: src/libslic3r/FilamentGroupUtils.cpp. Upstreamable: yes; reproduced by strict sanitizer golden slices and multi-nozzle integration tests.
+
+Co-Authored-By: Codex <noreply@openai.com>
+---
+ src/libslic3r/FilamentGroupUtils.cpp | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/libslic3r/FilamentGroupUtils.cpp b/src/libslic3r/FilamentGroupUtils.cpp
+index 9b5858d..4c1d66a 100644
+--- a/src/libslic3r/FilamentGroupUtils.cpp
++++ b/src/libslic3r/FilamentGroupUtils.cpp
+@@ -108,7 +108,8 @@ namespace FilamentGroupUtils
+         for (size_t idx = 0; idx < filament_configs.size(); ++idx) {
+             auto& arr = filament_configs[idx];
+             for (auto& item : arr) {
+-                MachineFilamentInfo temp;
++                MachineFilamentInfo temp{};
++                temp.usage_type = FilamentUsageType::Hybrid;
+                 std::string type;
+                 std::string color;
+                 std::string tray_name;

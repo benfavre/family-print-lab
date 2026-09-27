@@ -1,0 +1,61 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Benjamin Favre <ben@webdesign29.net>
+Date: Sun, 27 Sep 2026 11:58:02 +0000
+Subject: [PATCH] Placeholders: read nullable and plain vectors through shared
+ bases
+
+Why: G-code templates can index nullable filament settings or read plain vectors as scalars. The old sibling-type downcasts are undefined behaviour. Preserve the shared typed vector representation for both forms.
+
+Files: src/libslic3r/PlaceholderParser.cpp. Upstreamable: yes; reproduced by strict sanitizer golden slices and multi-nozzle integration tests.
+
+Co-Authored-By: Codex <noreply@openai.com>
+---
+ src/libslic3r/PlaceholderParser.cpp | 18 +++++++++---------
+ 1 file changed, 9 insertions(+), 9 deletions(-)
+
+diff --git a/src/libslic3r/PlaceholderParser.cpp b/src/libslic3r/PlaceholderParser.cpp
+index bc83e00..438dc8d 100644
+--- a/src/libslic3r/PlaceholderParser.cpp
++++ b/src/libslic3r/PlaceholderParser.cpp
+@@ -851,17 +851,17 @@ namespace client
+             if (opt.opt->is_vector()) {
+                 switch (opt.opt->type()) {
+                 case coFloats: {
+-                    const ConfigOptionFloatsNullable* opt_floats = static_cast<const ConfigOptionFloatsNullable *>(opt.opt);
++                    const ConfigOptionVector<double>* opt_floats = static_cast<const ConfigOptionVector<double> *>(opt.opt);
+                     if (opt_floats->size() == 1) {  // old version
+-                        output.set_d(static_cast<const ConfigOptionFloatsNullable *>(opt.opt)->get_at(0));
++                        output.set_d(opt_floats->get_at(0));
+                     }
+                     else {
+-                        output.set_d(static_cast<const ConfigOptionFloatsNullable *>(opt.opt)->get_at(ctx->get_extruder_id()));
++                        output.set_d(opt_floats->get_at(ctx->get_extruder_id()));
+                     }
+                     break;
+                 }
+                 case coFloatsOrPercents: {
+-                    const ConfigOptionFloatsOrPercentsNullable * opt_floats = static_cast<const ConfigOptionFloatsOrPercentsNullable *>(opt.opt);
++                    const ConfigOptionVector<FloatOrPercent> * opt_floats = static_cast<const ConfigOptionVector<FloatOrPercent> *>(opt.opt);
+                     size_t index = 0;  // old version only one value
+                     if (opt_floats->size() > 1) {
+                         index = ctx->get_extruder_id();
+@@ -970,14 +970,14 @@ namespace client
+                 ctx->throw_exception("Indexing an empty vector variable", opt.it_range);
+             size_t idx = (index < 0) ? 0 : (index >= int(vec->size())) ? 0 : size_t(index);
+             switch (opt.opt->type()) {
+-            case coFloats:   output.set_d(static_cast<const ConfigOptionFloats  *>(opt.opt)->values[idx]); break;
+-            case coInts:     output.set_i(static_cast<const ConfigOptionInts    *>(opt.opt)->values[idx]); break;
++            case coFloats:   output.set_d(static_cast<const ConfigOptionVector<double> *>(opt.opt)->values[idx]); break;
++            case coInts:     output.set_i(static_cast<const ConfigOptionVector<int> *>(opt.opt)->values[idx]); break;
+             case coStrings:  output.set_s(static_cast<const ConfigOptionStrings *>(opt.opt)->values[idx]); break;
+-            case coPercents: output.set_d(static_cast<const ConfigOptionPercents*>(opt.opt)->values[idx]); break;
++            case coPercents: output.set_d(static_cast<const ConfigOptionVector<double> *>(opt.opt)->values[idx]); break;
+             case coPoints:   output.set_s(to_string(static_cast<const ConfigOptionPoints  *>(opt.opt)->values[idx])); break;
+-            case coBools:    output.set_b(static_cast<const ConfigOptionBools   *>(opt.opt)->values[idx] != 0); break;
++            case coBools:    output.set_b(static_cast<const ConfigOptionVector<unsigned char> *>(opt.opt)->values[idx] != 0); break;
+             // BBS
+-            case coEnums:    output.set_i(static_cast<const ConfigOptionInts    *>(opt.opt)->values[idx]); break;
++            case coEnums:    output.set_i(static_cast<const ConfigOptionVector<int> *>(opt.opt)->values[idx]); break;
+             default:
+                 ctx->throw_exception("Unknown vector variable type", opt.it_range);
+             }

@@ -232,7 +232,11 @@ through untouched and never sees the phone key. The app applies a command only w
 2. the cloud said the Family plan is active;
 3. the MAC verifies;
 4. `at` is within 2 minutes of the computer's clock;
-5. `commandId` was not seen before (replay cache).
+5. `commandId` was not seen before. The app atomically claims it in its local SQLite database
+   before dispatch, so restarting the app cannot replay an accepted command. Claims remain until
+   `at + 2 minutes` has passed, including commands signed slightly ahead of the computer's clock.
+   A full cache (5,000 live claims), corrupt stored state or a storage failure refuses the command;
+   failed printer sends remain claimed too.
 
 Then it sends `print.pause`, `print.resume` or `print.stop` through the printer's own command layer
 (which still checks the printer's state and Developer Mode) and logs "Paused Bambu Lab P1S from the

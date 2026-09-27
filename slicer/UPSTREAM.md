@@ -11,7 +11,7 @@ new Bambu Studio release is a rebase of a handful of small patches, not a merge 
 
 | Upstream     | Tag            | Commit                                     | Patch queue                                                                                       |
 | ------------ | -------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 13, 12 patch(es), hash `627243b81a95466552b56a0a6d0206897f6128f6c6e9d603a480eb99f18a41c4` |
+| Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 14, 15 patch(es), hash `943e4e9b15dbfb855f4f09b40675bd30a7dfb6c97d30214e2bd731fc0d4ced95` |
 
 <!-- pin:end -->
 
@@ -180,7 +180,7 @@ changes are checked against the engine too). `upstream.sh test` runs ctest, then
 `PRINTLAB_SLICER_PATH` set to the build (protocol conformance and golden slices included), plus
 the TypeScript/native 3MF round trips with `PRINTLAB_PROJECT_CODEC` set to the built helper.
 
-The patch queue holds two build fixes, nine memory-safety fixes and a scheduler fix, all marked
+The patch queue holds two build fixes, twelve memory-safety fixes and a scheduler fix, all marked
 upstreamable:
 
 - 0001: the top-level `CMakeLists.txt` asked for OpenGL, GLEW and GLFW even with the GUI off, and
@@ -206,6 +206,9 @@ upstreamable:
 - 0010: convert integer boxes to the floating distance type before squaring distances.
 - 0011: capture the optional spiral processor as a pointer without dereferencing it for unused filters.
 - 0012: check extrusion entity types before filtering empty collections.
+- 0013: read nullable and plain placeholder vectors through common typed bases.
+- 0014: initialise machine filament candidate fields, including their usage enum.
+- 0015: retain an empty owned priming sequence when Bambu disables priming generation.
 
 Miniz uses its portable byte-load implementation (`MINIZ_USE_UNALIGNED_LOADS_AND_STORES=0`)
 in every engine build, so ZIP reads and writes retain alignment sanitizer checks.
@@ -240,8 +243,9 @@ in every engine build, so ZIP reads and writes retain alignment sanitizer checks
   Patch 0005 also fixes string-comparison/move-assignment and temporary ZIP-buffer leaks. After
   the fixes, Valgrind reports zero memory errors and zero definitely/indirectly lost bytes across
   three repeated slices and export. Small reachable/possibly-lost runtime allocations remain
-  (4,648 reachable and 4,160 possibly lost bytes in the final run, including TBB worker TLS). Full sanitizer validation and golden time/weight recording are
-  still in progress.
+  (1,880 reachable and 960 possibly lost bytes in the final run, including TBB worker TLS; no suppressions). Strict ASan/UBSan now passes all 10 native tests and 105 integration tests (one protocol-only skip).
+  Golden seconds/grams are recorded for X1C (728/2.5), P1S (667/2.2), A1 mini (775/2.2),
+  H2D (615/2.2) and X2D (600/2.1); release and strict sanitizer runs both verify them.
 - Strict sanitizer checks also exposed nullable configuration casts and the invalid read of nil byte
   `255` as a boolean; patch 0006 preserves the common vector representation. The facade restores
   the concrete printer-technology enum expected by upstream and returns raw G-code strings at the
@@ -269,18 +273,22 @@ in every engine build, so ZIP reads and writes retain alignment sanitizer checks
 - The current machine is Linux x64 (Ubuntu 24.04, GCC 13.3, 24 available CPU workers (`nproc`; 32 logical CPUs system-wide), 62 GiB RAM shared with
   other processes). The first complete dependency and release-engine build at `-j 24` took
   **1,239.93 seconds (20 minutes 40 seconds)**. The pinned source fetch took 22.48 seconds.
+  The broad instrumented rebuild at `-j 6` took 1,963.04 seconds (32 minutes 43 seconds); the final
+  three-source correction took another 395.31 seconds (6 minutes 35 seconds). Strict native and
+  integration validation completed in 52.48 seconds. The final release rebuild, reusing dependencies,
+  took 330.73 seconds (5 minutes 31 seconds) at `-j 24`.
 - Make, Ninja and Ninja Multi-Config dependency-target discovery and protocol builds are verified
   locally. Windows/macOS workflow/tool discovery and desktop bundle copying have been hardened,
   but neither OS has been run on this machine; those CI jobs remain nonblocking.
 
-On a bigger machine, from the repository root:
+For a future rebuild, from the repository root:
 
 ```
 slicer/scripts/upstream.sh fetch
 slicer/scripts/upstream.sh build -j 16
 slicer/scripts/upstream.sh test
-# once the time estimate is repeatable:
-GOLDEN_UPDATE=1 GOLDEN_REASON='time and weight recorded' slicer/scripts/upstream.sh test
+# Optional: rebaseline only after an intentional, reviewed estimate change.
+GOLDEN_UPDATE=1 GOLDEN_REASON='describe the intentional change' slicer/scripts/upstream.sh test
 ```
 
 ## Diagnostic builds

@@ -12,3 +12,6 @@
 0010-Geometry-square-box-distances-in-the-result-type.patch
 0011-G-code-capture-the-optional-spiral-processor-without.patch
 0012-Paths-check-entity-type-before-removing-empty-collec.patch
+0013-Placeholders-read-nullable-and-plain-vectors-through.patch
+0014-Filaments-initialise-machine-candidate-usage-before-.patch
+0015-Wipe-tower-retain-an-empty-priming-sequence-when-pri.patch

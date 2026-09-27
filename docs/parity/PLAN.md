@@ -174,7 +174,7 @@ So nothing falls between packages. "Out" means deliberately not in this programm
 | Studio device tab: nozzle type/diameter, H2C hotend rack                                             | maintenance (records, `system.set_accessories`), status (read-only rack info)        |
 | Studio: send to several printers, print queue                                                        | queue                                                                                |
 | Studio: slicing, plates, painting, modifiers, variable layer height, preview                         | slicer-engine, slicer-3mf, slicer-profiles, gcode-preview, slicer-ui                 |
-| Studio: cut, text/emboss, measure, simplify, mesh boolean, assembly view                             | Out for this programme (slicer-ui lists them as follow-ups; `Part.text` round-trips) |
+| Studio: cut, text/emboss, measure, simplify, mesh boolean, assembly view                             | slicer-ui: cut, mesh text, measure, simplify and boolean implemented; assembly view deferred |
 | Studio: calibration generators (Orca's menu)                                                         | slicer-calibration                                                                   |
 | Studio: MakerWorld integration                                                                       | model-import (metadata + manual download only)                                       |
 | Bambu cloud printing, TUTK/Agora remote video, non-Developer-Mode signing                            | Out (proprietary; our remote path is Print Lab Cloud with E2E sealing)               |
@@ -3239,7 +3239,9 @@ This is far more than one agent can finish; build it in milestones and stop at a
    per-object breakdown.
 3. Stretch: painting (supports, seam, colour with smart fill), variable layer height editor, lay on
    face.
-4. Follow-ups (report only): cut, text/emboss, measure, simplify, mesh boolean, assembly view.
+4. Continuation: cut, raised/engraved mesh text, measure, simplify and mesh boolean are implemented
+   with placement-preserving undo and geometry-metadata consent. Assembly view remains deferred;
+   see STATUS.md for single-part/copy restrictions.
 
 Pure logic (transform maths, selection, undo stack, settings grouping) lives in `client/slicer/*.ts` with
 unit tests; three.js code stays thin.
