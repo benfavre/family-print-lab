@@ -12,3 +12,4 @@ export * from './tables/plugs';
 export * from './tables/kids';
 export * from './tables/maintenance';
 export * from './tables/auth';
+export * from './tables/vision';
