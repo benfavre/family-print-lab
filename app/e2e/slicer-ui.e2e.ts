@@ -64,12 +64,29 @@ test('the slicer workspace: plates, objects, a modifier, plate settings, undo, a
 	// Plate settings.
 	await page.getByRole('region', { name: 'Plate 1' }).getByLabel('Bed').selectOption('Cool Plate');
 
+	// Variable layer height: adaptive layers for the cube, kept in the project file.
+	await objects.getByRole('option', { name: /Painted cube/ }).click();
+	// The file's cube has layer heights already: the section is open. Reset, then Adaptive.
+	await expect(panel.getByText('Variable layer height (set)')).toBeVisible();
+	await panel.getByRole('button', { name: 'Reset', exact: true }).click();
+	await expect(panel.getByText('Variable layer height (set)')).toHaveCount(0);
+	await panel.getByRole('button', { name: 'Adaptive', exact: true }).click();
+	await expect(panel.getByText('Variable layer height (set)')).toBeVisible();
+
 	// The project file holds it all (read back by the server's 3MF reader) once it has saved.
 	const saved = async () =>
 		(await (await page.request.get(`/api/slicer-projects/${id}`)).json()).project;
 	await expect
 		.poll(async () => (await saved()).plates[0].bedType, { timeout: 10_000 })
 		.toBe('Cool Plate');
+	await expect
+		.poll(
+			async () =>
+				(await saved()).objects.find((o: { name: string }) => o.name === 'Painted cube')
+					.layerHeightProfile?.length ?? 0,
+			{ timeout: 10_000 }
+		)
+		.toBeGreaterThanOrEqual(4);
 	const cube = (await saved()).objects.find((o: { name: string }) => o.name === 'Painted cube');
 	expect(cube.parts.map((p: { type: string }) => p.type)).toContain('modifier');
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import type { WorkspaceState } from '$lib/client/slicer/workspace.svelte';
 	import {
 		addHeightRange,
@@ -18,9 +19,10 @@
 	import { PART_TYPE_LABEL } from '$lib/client/slicer-3mf';
 	import type { ConfigValue, PartType } from '$lib/shared/slicer/project';
 	import SettingsEditor from './SettingsEditor.svelte';
+	import LayerHeightEditor from './LayerHeightEditor.svelte';
 
 	// The selected object (or part): name, position, rotation and scale, filament, its own settings,
-	// height ranges, parts and modifiers, and painting.
+	// height ranges, variable layer height, parts and modifiers, and painting.
 	let { ws }: { ws: WorkspaceState } = $props();
 	const project = $derived(ws.project);
 	const pick = $derived(ws.selection.items.length === 1 ? ws.selection.items[0] : null);
@@ -334,6 +336,14 @@
 				{#each heightRangeProblems(obj) as p (p)}<p class="hint warn">{p}</p>{/each}
 				<button class="mini" onclick={addRange}>+ Height range</button>
 			</details>
+
+			{#key obj.id}
+				<!-- Opened for an object that has layer heights; Reset does not fold it away. -->
+				<details open={untrack(() => !!obj.layerHeightProfile?.length)}>
+					<summary>Variable layer height{obj.layerHeightProfile?.length ? ' (set)' : ''}</summary>
+					<LayerHeightEditor {ws} {obj} />
+				</details>
+			{/key}
 
 			<details>
 				<summary>Parts and modifiers ({obj.parts.length})</summary>
