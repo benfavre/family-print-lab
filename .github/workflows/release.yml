@@ -4,18 +4,57 @@ name: Desktop release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      native-run-id:
+        description: Completed Slicer build run with all three native platforms passing
+        required: true
+        type: string
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   engine:
+    if: github.event_name == 'push'
     uses: ./.github/workflows/slicer-build.yml
     with:
       require-native: true
 
+  provenance:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      linux-x64: ${{ steps.verify.outputs.linux-x64 }}
+      darwin-arm64: ${{ steps.verify.outputs.darwin-arm64 }}
+      win32-x64: ${{ steps.verify.outputs.win32-x64 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: app/.nvmrc
+      - name: Native artifact provenance tests
+        run: node --test desktop/scripts/native-artifacts.test.mjs
+      - name: Verify native artifacts against the candidate source
+        id: verify
+        run: node desktop/scripts/native-artifacts.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NATIVE_RUN_ID: ${{ inputs.native-run-id }}
+
   build:
-    needs: engine
+    needs: [engine, provenance]
+    # One prerequisite is intentionally skipped: tags build engines, candidates verify old artifacts.
+    if: >-
+      ${{ !cancelled() && ((github.event_name == 'push' && needs.engine.result == 'success') ||
+      (github.event_name == 'workflow_dispatch' && needs.provenance.result == 'success')) }}
     strategy:
       fail-fast: false
       matrix:
@@ -29,10 +68,23 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Print Lab Slicer for this platform
+        if: github.event_name == 'push'
         uses: actions/download-artifact@v4
         with:
           name: printlab-slicer-${{ matrix.platform }}
+          path: slicer/dist/${{ matrix.platform }}
+      - name: Verified Print Lab Slicer candidate artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ needs.provenance.outputs[matrix.platform] }}
+          run-id: ${{ inputs.native-run-id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          merge-multiple: true
           path: slicer/dist/${{ matrix.platform }}
       # Artifacts do not keep the executable bit.
       - shell: bash
@@ -42,6 +94,7 @@ jobs:
           node-version-file: app/.nvmrc
       - uses: oven-sh/setup-bun@v2
       - name: Tag matches the desktop version
+        if: github.event_name == 'push'
         shell: bash
         run: test "v$(node -p "require('./desktop/package.json').version")" = "${GITHUB_REF_NAME}"
       - name: Desktop bundle tests
@@ -51,12 +104,20 @@ jobs:
       - run: bun install
         working-directory: desktop
       - run: bun run release
+        if: github.event_name == 'push'
         working-directory: desktop
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EP_DRAFT: 'true'
           PRINTLAB_REQUIRE_NATIVE_ENGINE: '1'
           # Unsigned for now: no Apple/Windows code-signing certificates yet.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Build candidate installers without publishing
+        if: github.event_name == 'workflow_dispatch'
+        run: bun run dist
+        working-directory: desktop
+        env:
+          PRINTLAB_REQUIRE_NATIVE_ENGINE: '1'
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: Linux display dependencies
         if: runner.os == 'Linux'
@@ -75,3 +136,16 @@ jobs:
         with:
           name: desktop-smoke-${{ matrix.platform }}
           path: desktop/release/smoke-*
+      - name: Keep verified candidate installers
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-candidate-${{ matrix.platform }}
+          path: |
+            desktop/release/*.AppImage
+            desktop/release/*.deb
+            desktop/release/*.exe
+            desktop/release/*.dmg
+            desktop/release/*.zip
+          if-no-files-found: error
+          retention-days: 7
