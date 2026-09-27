@@ -136,4 +136,13 @@ all 10 native tests and 105 integration tests, with one protocol-only skip. Rele
 both release and strict sanitizer builds. Valgrind reports zero errors and zero definite/indirect
 leaks without suppressions; 960 bytes possibly lost in runtime TLS and 1,880 reachable bytes remain.
 
-No physical printer, Windows/macOS runner or Cloud deployment has been used.
+No physical printer or Windows/macOS native runner was used for the local continuation checks.
+
+## Release deployment (2026-09-27)
+
+Print Lab Cloud 0.2.0 is deployed at `https://familyprintlab.app` from `d9eedfd`. Migration
+`0007_remote.sql` was applied before deployment. Existing production variables, secrets and resource
+bindings were preserved. Public pages and phone-key assets return 200; unauthenticated printer pages
+redirect to sign-in and the printer API returns 401. Worker version:
+`22c48d03-8919-4a5d-b885-91bca4922f49`. Cloud check, formatting and all 66 tests pass locally; its
+private GitHub Actions job cannot start until the account billing/spending restriction is resolved.
