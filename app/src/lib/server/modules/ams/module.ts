@@ -69,7 +69,16 @@ declare module '../../events' {
 		/** A tray link was made (spoolId) or dropped (null). */
 		'spool.linked': { printerId: string; tray: GlobalTray; spoolId: string | null };
 		/** A charge took a spool under 15 % or 100 g. */
-		'spool.low': { spoolId: string; name: string; remainingGrams: number; totalGrams: number };
+		'spool.low': {
+			spoolId: string;
+			name: string;
+			/** The spool's name again, for notifications ({{task}}). */
+			label: string;
+			/** What is left, 0–100. */
+			percent: number;
+			remainingGrams: number;
+			totalGrams: number;
+		};
 	}
 }
 
@@ -181,13 +190,17 @@ function createService(ctx: ModuleContext): AmsService & { stop(): void } {
 			const spool = store.spool(c.spoolId);
 			if (!spool) continue;
 			const before = spool.remainingGrams + c.grams;
-			if (isLow(spool.remainingGrams, spool.totalGrams) && !isLow(before, spool.totalGrams))
+			if (isLow(spool.remainingGrams, spool.totalGrams) && !isLow(before, spool.totalGrams)) {
+				const name = [spool.colorName, spool.material].filter(Boolean).join(' ');
 				ctx.bus.emit('spool.low', {
 					spoolId: spool.id,
-					name: [spool.colorName, spool.material].filter(Boolean).join(' '),
+					name,
+					label: name || 'A spool',
+					percent: spool.totalGrams > 0 ? (spool.remainingGrams / spool.totalGrams) * 100 : 0,
 					remainingGrams: spool.remainingGrams,
 					totalGrams: spool.totalGrams
 				});
+			}
 		}
 		pushUsage(result.charges);
 		return result;

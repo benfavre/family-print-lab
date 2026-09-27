@@ -132,6 +132,14 @@ export const NOTIFY_EVENTS: NotifyEventDef[] = [
 		module: 'maintenance'
 	},
 	{
+		name: 'spool.low',
+		label: 'Spool running low',
+		level: 'warning',
+		template: { title: '{{task}} is running low', body: 'About {{percent}} left.' },
+		channelDefault: true,
+		module: 'ams'
+	},
+	{
 		name: 'vision.alert',
 		label: 'AI check spotted a problem',
 		level: 'error',

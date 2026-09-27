@@ -8,7 +8,8 @@ import type {
 	NotificationList,
 	NotificationSettingsView
 } from '$lib/shared/notifications';
-import { hmsSeverity, type Lookups } from './messages';
+import { type Lookups } from './messages';
+import { hmsSeverity } from '$lib/shared/hms';
 import { LIVE_CHANNEL, Notifier, type DesktopBridge } from './notifier';
 import { applyInput, DEFAULT_SETTINGS, mergeChannel, settingsView } from './settings';
 import { readInput, storedSettings, testInput } from './validation';
@@ -82,7 +83,7 @@ export default defineModule({
 				} catch {
 					/* fall back to the code */
 				}
-				return { text: '', severity: hmsSeverity(code) };
+				return { text: '', severity: hmsSeverity(code.code ?? null) };
 			},
 			printError(code, printerId) {
 				try {
@@ -189,7 +190,7 @@ export function described(info: HmsInfo & { known?: boolean }): string {
 
 /** Keys of the packages present (for events that only some packages emit). */
 function moduleKeys(ctx: ModuleContext): string[] {
-	return ['queue', 'maintenance', 'ai-vision'].filter((k) => !!optional(ctx, k));
+	return ['queue', 'maintenance', 'ai-vision', 'ams'].filter((k) => !!optional(ctx, k));
 }
 
 /** Another package's service, which may be absent (its ModuleServices entry comes with it). */

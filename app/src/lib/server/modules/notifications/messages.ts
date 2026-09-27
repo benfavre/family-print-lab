@@ -2,9 +2,9 @@
 // for the templates, and the level, link and privacy flags that routing needs.
 import { stageName } from '$lib/shared/printers/stages';
 import type { HmsCode } from '$lib/shared/printers/status';
+import { displayCode, hmsKeyOf, hmsSeverity } from '$lib/shared/hms';
 import {
 	eventDef,
-	HMS_SEVERITIES,
 	type HmsSeverityName,
 	type NotifyLevel,
 	type Template,
@@ -57,16 +57,8 @@ export function render(template: string, vars: Partial<Record<TemplateVar, strin
 		.trim();
 }
 
-/** HMS code as Bambu shows it, e.g. 0700_0200_0002_0001. */
-export const hmsText = (h: HmsCode) =>
-	[(h.attr ?? 0) >>> 16, (h.attr ?? 0) & 0xffff, (h.code ?? 0) >>> 16, (h.code ?? 0) & 0xffff]
-		.map((n) => n.toString(16).toUpperCase().padStart(4, '0'))
-		.join('_');
-
-/** Severity from the code's high word (1 fatal, 2 serious, 3 common, 4 info; PLAN.md 8.5). */
-export function hmsSeverity(h: HmsCode): HmsSeverityName | 'unknown' {
-	return HMS_SEVERITIES[((h.code ?? 0) >>> 16) - 1] ?? 'unknown';
-}
+/** HMS code as Bambu shows it, e.g. 0700_0200_0002_0001 (decoded in shared/hms.ts, like the hms package). */
+export const hmsText = (h: HmsCode) => displayCode(hmsKeyOf(h));
 
 const PAUSE_WORDS: Record<string, string> = {
 	user: 'Paused by the user',
@@ -146,8 +138,8 @@ export function buildMessage(
 			const code = d.hms as HmsCode;
 			const info = printerId
 				? lookups.hms(code, printerId)
-				: { text: '', severity: hmsSeverity(code) };
-			severity = info.severity === 'unknown' ? hmsSeverity(code) : info.severity;
+				: { text: '', severity: hmsSeverity(code.code ?? null) };
+			severity = info.severity === 'unknown' ? hmsSeverity(code.code ?? null) : info.severity;
 			vars.error = info.text || `Alert ${hmsText(code)}`;
 			level =
 				severity === 'fatal' || severity === 'serious'
@@ -171,6 +163,10 @@ export function buildMessage(
 			link = '/family#requests';
 			break;
 		}
+		case 'spool.low':
+			link = '/filament';
+			dedupe = `spool:${str(d.spoolId)}`;
+			break;
 		default:
 			// Events from packages (queue, maintenance, AI checks): their common fields.
 			vars.error = str(d.reason) || str(d.error) || str(d.message);

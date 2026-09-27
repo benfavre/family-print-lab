@@ -1,7 +1,8 @@
 // Templates and the event → message rules; routing (per-event toggles, alert severity, quiet hours,
 // pictures).
 import { describe, expect, it } from 'vitest';
-import { buildMessage, hmsSeverity, hmsText, render, type Lookups, type Message } from './messages';
+import { buildMessage, hmsText, render, type Lookups, type Message } from './messages';
+import { hmsSeverity } from '$lib/shared/hms';
 import { inQuietHours, severeEnough, wants, wantsPicture } from './routing';
 import { storedChannel } from './validation';
 
@@ -123,8 +124,8 @@ describe('event messages', () => {
 		const fatal = build('hms.raised', { ...ref, hms: { attr: 0x03000100, code: 0x00010001 } })!;
 		expect(fatal).toMatchObject({ hmsSeverity: 'fatal', level: 'error' });
 		expect(fatal.body).toBe('Alert 0300_0100_0001_0001');
-		expect(hmsSeverity({ attr: 0, code: 0x00040001 })).toBe('info');
-		expect(hmsSeverity({ attr: 0, code: 0x00090001 })).toBe('unknown');
+		expect(hmsSeverity(0x00040001)).toBe('info');
+		expect(hmsSeverity(0x00090001)).toBe('unknown');
 		expect(hmsText({ attr: 0x0c000300, code: 0x00030008 })).toBe('0C00_0300_0003_0008');
 	});
 
@@ -163,7 +164,23 @@ describe('event messages', () => {
 			})
 		).toMatchObject({ title: 'Garage X2D: maintenance due', body: 'Lubricate the rods' });
 		expect(build('print.layer', { ...ref, layer: 3 })).toBeNull();
-		expect(build('spool.low', { printerId: 'p1' })).toBeNull();
+		// The AMS package's low spool names the spool, not the print, and links to the shelf.
+		expect(
+			build('spool.low', {
+				spoolId: 's1',
+				name: 'Red PLA',
+				label: 'Red PLA',
+				percent: 9.6,
+				remainingGrams: 96,
+				totalGrams: 1000
+			})
+		).toMatchObject({
+			level: 'warning',
+			title: 'Red PLA is running low',
+			body: 'About 10 % left.',
+			link: '/filament'
+		});
+		expect(build('spool.sync', { printerId: 'p1' })).toBeNull();
 	});
 });
 
