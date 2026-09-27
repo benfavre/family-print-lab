@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Benjamin Favre <ben@webdesign29.net>
+Date: Sun, 27 Sep 2026 09:38:48 +0000
+Subject: [PATCH] Infill: keep edge grid points alive through intersection
+ checks
+
+Why: EdgeGrid stores pointers into its input; the temporary vector was destroyed before has_intersecting_edges, causing use-after-free during ordinary cube slicing under Valgrind.
+
+Files: src/libslic3r/Fill/FillFloatingConcentric.cpp
+Upstreamable: yes
+
+Co-Authored-By: Codex <noreply@openai.com>
+---
+ src/libslic3r/Fill/FillFloatingConcentric.cpp | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/libslic3r/Fill/FillFloatingConcentric.cpp b/src/libslic3r/Fill/FillFloatingConcentric.cpp
+index 16875a7..0bb71ad 100644
+--- a/src/libslic3r/Fill/FillFloatingConcentric.cpp
++++ b/src/libslic3r/Fill/FillFloatingConcentric.cpp
+@@ -695,7 +695,9 @@ FloatingThickPolylines FillFloatingConcentric::resplit_order_loops(Point curr_po
+ 
+             EdgeGrid::Grid grid;
+             grid.set_bbox(bbox_line);
+-            grid.create({ polyline.points }, scaled<coord_t>(10.), !all_extrusions[idx]->is_closed);
++            // Grid retains pointers into the input points until the intersection check finishes.
++            const std::vector<Points> grid_paths{polyline.points};
++            grid.create(grid_paths, scaled<coord_t>(10.), !all_extrusions[idx]->is_closed);
+             if (grid.has_intersecting_edges())
+                 is_self_intersect = true;
+         }

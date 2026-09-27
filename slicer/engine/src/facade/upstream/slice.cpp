@@ -1,3 +1,6 @@
+// origin: BambuStudio src/BambuStudio.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
+// origin: BambuStudio src/slic3r/GUI/PartPlate.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
+// origin: BambuStudio src/slic3r/GUI/Plater.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
 // Slicing one plate the way BambuStudio.cpp does it per plate (~6880-7300 at the pin): the plate's
 // config over the project's, filament_map filled for the extruders, Print::apply, validate, process
 // with a status callback, export_gcode with a GCodeProcessorResult, then the G-code checks it reports.
@@ -11,6 +14,8 @@
 #include <boost/filesystem.hpp>
 
 #include "libslic3r/Exception.hpp"
+#include "libslic3r/Color.hpp"
+#include "libslic3r/FlushVolCalc.hpp"
 #include "libslic3r/Format/bbs_3mf.hpp"
 #include "libslic3r/ProjectTask.hpp"
 #include "upstream.hpp"
@@ -40,6 +45,94 @@ int layers_from_header(const std::string &gcode_file) {
 		if (at != std::string::npos) return std::atoi(line.c_str() + at + 19);
 	}
 	return 0;
+}
+
+// BambuStudio.cpp 3823–3920, with Plater.cpp get_min_flush_volumes: projects assembled from
+// presets have no correctly sized purge matrix yet. Keep a supplied matrix; otherwise use the
+// upstream colour/material calculator, nozzle volume and long-retraction rules for each nozzle.
+void prepare_flush_volumes(DynamicPrintConfig &config, int extruders) {
+	const auto *colours = config.option<ConfigOptionStrings>("filament_colour");
+	if (!colours || colours->values.size() < 2) return;
+	const size_t count = colours->values.size();
+	auto &matrix = config.option<ConfigOptionFloats>("flush_volumes_matrix", true)->values;
+	config.option<ConfigOptionFloats>("flush_multiplier", true)->values.resize(extruders, 1.0);
+	config.option<ConfigOptionFloats>("flush_multiplier_fast", true)->values.resize(extruders, 1.2);
+	if (matrix.size() == count * count * extruders) return;
+	std::vector<ColorRGBA> rgba(count);
+	for (size_t i = 0; i < count; ++i)
+		if (!decode_color(colours->values[i], rgba[i]))
+			throw EngineError(err::INVALID_CONFIG, "Choose a valid filament colour.", "", "filament_colour");
+	const auto *support = config.option<ConfigOptionBools>("filament_is_support");
+	const auto *ids = config.option<ConfigOptionStrings>("filament_ids");
+	const auto *volume = config.option<ConfigOptionFloatsNullable>("nozzle_volume");
+	const auto *level = config.option<ConfigOptionInt>("enable_long_retraction_when_cut");
+	const auto *machine_on = config.option<ConfigOptionBoolsNullable>("long_retractions_when_cut");
+	const auto *machine_length = config.option<ConfigOptionFloatsNullable>("retraction_distances_when_cut");
+	const auto *filament_on = config.option<ConfigOptionBoolsNullable>("filament_long_retractions_when_cut");
+	const auto *filament_length = config.option<ConfigOptionFloatsNullable>("filament_retraction_distances_when_cut");
+	const auto *datasets = config.option<ConfigOptionIntsNullable>("nozzle_flush_dataset");
+	const auto *types = config.option<ConfigOptionEnumsGeneric>("extruder_type");
+	const auto *volumes = config.option<ConfigOptionEnumsGeneric>("nozzle_volume_type");
+	matrix.assign(count * count * extruders, 0);
+	for (int nozzle = 0; nozzle < extruders; ++nozzle) {
+		int dataset_index = nozzle;
+		if (config.has("printer_extruder_variant") && config.has("printer_extruder_id") && types && volumes)
+			dataset_index = config.get_index_for_extruder(nozzle + 1, "printer_extruder_id",
+				ExtruderType(types->get_at(nozzle)), NozzleVolumeType(volumes->get_at(nozzle)), "printer_extruder_variant");
+		const int dataset = datasets && !datasets->values.empty() ? datasets->get_at(std::max(0, dataset_index)) : 0;
+		for (size_t from = 0; from < count; ++from) {
+			const double printer_length = machine_length ? machine_length->get_at(nozzle) : 18.;
+			int retract = level && level->value && machine_on && machine_on->get_at(nozzle) == 1 ? int(printer_length) : 0;
+			const auto active = filament_on ? filament_on->get_at(from) : 0;
+			if (active == 0) retract = 0;
+			else if (active == 1 && level && level->value == EnableFilament) {
+				const double length = filament_length ? filament_length->get_at(from) : 18.;
+				retract = int(std::isnan(length) ? printer_length : length);
+			}
+			int minimum = volume ? int(volume->get_at(nozzle)) : 0;
+			minimum -= PI * 1.75 * 1.75 / 4 * retract;
+			FlushVolCalculator calculator(minimum, g_max_flush_volume, dataset);
+			for (size_t to = 0; to < count; ++to) {
+				if (from == to) continue;
+				const auto &a = rgba[from], &b = rgba[to];
+				int amount = support && support->get_at(to) ? g_flush_volume_to_support : calculator.calc_flush_vol(
+					ids ? ids->get_at(from) : "", ids ? ids->get_at(to) : "",
+					a.a_uchar(), a.r_uchar(), a.g_uchar(), a.b_uchar(), b.a_uchar(), b.r_uchar(), b.g_uchar(), b.b_uchar());
+				if (support && support->get_at(from) && !support->get_at(to)) amount = std::max(g_min_flush_volume_from_support, amount);
+				matrix[nozzle * count * count + from * count + to] = amount;
+			}
+		}
+	}
+}
+
+// The CLI's auto-map input (6910–6944): four virtual AMS slots per extruder. These describe
+// slicing choices, not a connected printer; the app checks the physical trays when sending.
+void prepare_filament_grouping(Print &print, DynamicPrintConfig &config, int extruders) {
+	const auto *mode = config.option<ConfigOptionEnum<FilamentMapMode>>("filament_map_mode");
+	if (extruders < 2 || !mode || !is_auto_filament_map_mode(mode->value)) return;
+	const auto *colours = config.option<ConfigOptionStrings>("filament_colour");
+	const auto *types = config.option<ConfigOptionStrings>("filament_type");
+	const auto *support = config.option<ConfigOptionBools>("filament_is_support");
+	std::vector<std::vector<DynamicPrintConfig>> filaments(extruders);
+	int index = 0;
+	for (auto &slots : filaments) {
+		for (int slot = 0; slot < 4; ++slot, ++index) {
+			DynamicPrintConfig filament;
+			filament.set_key_value("filament_colour", new ConfigOptionStrings({
+				colours && !colours->values.empty() ? colours->values[index % colours->values.size()] : "#FFFFFFFF"}));
+			filament.set_key_value("filament_type", new ConfigOptionStrings({
+				types && !types->values.empty() ? types->values[index % types->values.size()] : "PLA"}));
+			filament.set_key_value("filament_is_support", new ConfigOptionBools({
+				support && !support->values.empty() ? bool(support->values[index % support->values.size()]) : false}));
+			filament.set_key_value("tray_name", new ConfigOptionStrings({"A1"}));
+			slots.push_back(std::move(filament));
+		}
+	}
+	config.option<ConfigOptionStrings>("extruder_ams_count", true)->values.assign(extruders, "1#0|4#1");
+	// CLI 3850–3856: GCode::do_export indexes the per-extruder matrices through these arrays.
+	config.option<ConfigOptionFloats>("flush_multiplier", true)->values.resize(extruders, 1.0);
+	config.option<ConfigOptionFloats>("flush_multiplier_fast", true)->values.resize(extruders, 1.2);
+	print.set_extruder_filament_info(filaments);
 }
 
 } // namespace
@@ -81,8 +174,15 @@ PlateStats UpstreamFacade::slice(const std::string &project_id, int plate_index,
 	volume_maps.resize(filament_count, volumes[0]);
 	for (int i = 0; i < filament_count; ++i) volume_maps[i] = volumes[std::clamp(maps[i], 1, extruders) - 1];
 	restore_enum_maps(config);
+	prepare_flush_volumes(config, extruders);
 
 	Print print;
+	// PartPlate::set_print supplies this before validation/export. Print's Eigen vector is
+	// otherwise uninitialised, and export_gcode uses it as the processor's XY offset. Our
+	// build_model already moves this plate into local coordinates, so its origin is zero.
+	print.set_plate_origin(Vec3d::Zero());
+	print.set_plate_index(plate_index - 1);
+	prepare_filament_grouping(print, config, extruders);
 	std::vector<SliceWarning> warnings;
 	print.set_status_callback([&](const PrintBase::SlicingStatus &s) {
 		if (s.flags & (PrintBase::SlicingStatus::UPDATE_PRINT_STEP_WARNINGS | PrintBase::SlicingStatus::UPDATE_PRINT_OBJECT_STEP_WARNINGS)) {
@@ -131,6 +231,14 @@ PlateStats UpstreamFacade::slice(const std::string &project_id, int plate_index,
 	result->gcode_file = (dir / ("plate_" + std::to_string(plate_index) + ".gcode")).string();
 	try {
 		print.process();
+		// BambuStudio.cpp 7095–7102: the grouping pass chooses the actual maps. Keep them with
+		// the sliced plate so export metadata agrees with the tool changes in its G-code.
+		if (is_auto_filament_map_mode(print.get_filament_map_mode())) {
+			config.option<ConfigOptionInts>("filament_map", true)->values = print.get_filament_maps();
+			config.option<ConfigOptionInts>("filament_volume_map", true)->values = print.get_filament_volume_maps();
+		}
+		if (print.get_filament_map_mode() != fmmNozzleManual)
+			config.option<ConfigOptionInts>("filament_nozzle_map", true)->values = print.get_filament_nozzle_maps();
 		progress({"gcode", 90, "Writing the G-code…"});
 		result->gcode_file = print.export_gcode(result->gcode_file, &result->gcode, nullptr);
 	} catch (const CanceledException &) {

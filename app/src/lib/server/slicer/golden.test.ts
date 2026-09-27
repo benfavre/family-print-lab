@@ -107,14 +107,21 @@ describe.runIf(!!BIN)('golden slices', () => {
 			.get('Metadata/slice_info.config')!
 			.toString('utf8');
 		const nozzles = info.match(/key="nozzle_diameters" value="([^"]*)"/)?.[1] ?? '';
-		const seconds = r.minutes * 60;
-		measured[c.name] = { seconds, grams: r.grams, nozzleDiameters: nozzles };
+		// Keep the engine's exported seconds, before the job UI rounds them to minutes. In
+		// particular, never bless NaN/Infinity or the INT_MIN sentinel from a broken estimate.
+		const seconds = Number(info.match(/key="prediction" value="([^"]*)"/)?.[1]);
+		expect(Number.isFinite(seconds)).toBe(true);
+		expect(seconds).toBeGreaterThan(0);
+		expect(seconds).toBeLessThan(86_400);
+		expect(Number.isFinite(r.grams)).toBe(true);
+		expect(r.grams).toBeGreaterThan(0);
 
 		expect(file.plates).toHaveLength(1);
 		expect(file.plates[0].layers).toBe(c.layers);
 		expect(file.plates[0].md5).toMatch(/^[0-9A-F]{32}$/);
 		expect(file.printerModelId).toBe(PRINTER_MODELS[c.model].code);
 		expect(file.slicer).toBe(`slicer ${tag}`);
+		measured[c.name] = { seconds, grams: r.grams, nozzleDiameters: nozzles };
 		if (process.env.GOLDEN_UPDATE === '1') return;
 		if (c.nozzleDiameters !== null) expect(nozzles).toBe(c.nozzleDiameters);
 		if (c.seconds !== null)

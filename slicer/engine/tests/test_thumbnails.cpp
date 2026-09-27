@@ -74,6 +74,8 @@ TEST("encodes a PNG with valid chunks") {
 	std::string png = encode_png(px, 4, 4);
 	CHECK(png.compare(0, 8, "\x89PNG\r\n\x1a\n") == 0);
 	CHECK(png.compare(12, 4, "IHDR") == 0);
+	CHECK(png.compare(24, 5, std::string("\x08\x06\x00\x00\x00", 5)) == 0);
+	CHECK(png.compare(29, 4, "\xa9\xf1\x9e\x7e") == 0); // CRC of the 4 × 4 RGBA IHDR
 	CHECK(png.find("IDAT") != std::string::npos);
 	CHECK(png.compare(png.size() - 8, 4, "IEND") == 0);
 }

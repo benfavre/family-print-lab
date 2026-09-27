@@ -134,6 +134,9 @@ std::unique_ptr<Model> UpstreamFacade::build_model(const ProjectState &state, in
 		for (const Part &part : o.parts) {
 			TriangleMesh mesh = this->mesh(p, part.mesh).mesh;
 			ModelVolume *v = mo->add_volume(std::move(mesh), volume_type(part.type), false);
+			// ModelVolume::get_extruders compares this cache timestamp before filling it. The
+			// pinned constructor leaves it uninitialised; a new annotation starts at timestamp 1.
+			v->mmuseg_ts = 0;
 			v->name = part.name;
 			v->set_transformation(to_transform3d(part.transform));
 			v->config.assign_config(to_config(part.config, scratch()));

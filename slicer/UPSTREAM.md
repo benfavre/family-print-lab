@@ -11,7 +11,7 @@ new Bambu Studio release is a rebase of a handful of small patches, not a merge 
 
 | Upstream | Tag | Commit | Patch queue |
 | --- | --- | --- | --- |
-| Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 2, 2 patch(es), hash `30f5377298ca31bd0bbd4cf7eb2e418ef171ca7e93484dcd62974a0aa479d17b` |
+| Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 4, 4 patch(es), hash `c95563f664097c4bca9458f704ff8d2d08330ca36efb11eab39b322dc515c99d` |
 
 <!-- pin:end -->
 
@@ -204,19 +204,34 @@ The patch queue holds two build fixes, both marked upstreamable, both proven by 
   `facade/upstream/link_shims.cpp` compiles nanosvg and gives the other two no-op bodies: the engine
   opens no network connection. Upstream's enum-list option defaults carry no keys (`restore_enum_maps`
   in `convert.cpp`), and `nozzle_volume_type` / `filament_volume_map` are set per plate as the CLI does.
-- Known problem: the time estimate (and, less, the filament weight) differs between identical runs,
-  often absurd (`prediction` of -2147483648 in `slice_info.config`, `M73 R-2147483648`): something in
-  the G-code processor's path reads memory the facade leaves unset. Layers, toolpaths and the file
-  itself are stable. Until it is found the golden `seconds` and `grams` stay null. A build with
-  `-fsanitize=address,undefined` (or valgrind, not installed on the development machine) is the next
-  step.
+- The non-deterministic time and filament estimates came from the facade leaving `Print::m_origin`
+  unset. `Print::export_gcode` passes that value to the G-code processor's XY offset. The facade now
+  follows `PartPlate::set_print`, setting a zero origin after translating the model to plate-local
+  coordinates, and sets the zero-based plate index. Three repeated cube slices now agree on time
+  and filament; the bounded, finite estimate assertions fail on the original build.
+- Valgrind also found an uninitialised volume paint-cache timestamp (initialised in our facade),
+  an incomplete PNG IHDR (fixed in our thumbnail encoder), and upstream memory errors. Queue patch
+  0003 keeps concentric-infill edge-grid points alive through intersection checks. Patch 0004
+  initialises G-code temperature/layer caches and skips an undefined wipe-tower bounding box.
+  Both patches are small and upstreamable. Full sanitizer and post-fix Valgrind validation is in
+  progress; golden time/weight recording follows those checks.
 - A re-configure used to rebuild all of libslic3r, because its version header carries the configure
   time; `upstream.sh build` now sets `SOURCE_DATE_EPOCH` to the pinned commit's time.
-- Not done yet: `project.open`/`project.save` (slicer-3mf's work), `preview.get`, `config.validate`
-  beyond upstream's own validation, multi-extruder filament grouping (the H2D/X2D auto map the CLI
-  does through its GUI plate list), and the wipe tower placeholder when arranging.
-- Windows and macOS builds are in `slicer-build.yml` but not verified; they may fail without
-  blocking a release.
+- Native `preview.get` writes the browser's PLPV format from `GCodeProcessorResult`. Its layers,
+  travel filtering, and per-object time/filament pass a TypeScript cross-decoder test. The workspace
+  already prefers this capability and displays the engine's object statistics. Upstream omits object
+  labels for single-instance/calibration prints; unavailable breakdown values remain null.
+- The H2D/X2D auto-map setup now supplies the CLI's virtual AMS slots and retains the selected maps
+  for export. Two-filament native tests pass for both printers. Wipe-tower arrangement reservation
+  is implemented with portable sizing tests; full native arrangement verification is pending.
+- Native `project.open`/`project.save` round-trip work is undergoing integration. `config.validate`
+  beyond upstream's own validation remains deferred.
+- The current machine is Linux x64 (Ubuntu 24.04, GCC 13.3, 24 logical CPUs, 62 GiB RAM shared with
+  other processes). The first complete dependency and release-engine build at `-j 24` took
+  **1,239.93 seconds (20 minutes 40 seconds)**. The pinned source fetch took 22.48 seconds.
+- Make, Ninja and Ninja Multi-Config dependency-target discovery and protocol builds are verified
+  locally. Windows/macOS workflow/tool discovery and desktop bundle copying have been hardened,
+  but neither OS has been run on this machine; those CI jobs remain nonblocking.
 
 On a bigger machine, from the repository root:
 
@@ -227,6 +242,20 @@ slicer/scripts/upstream.sh test
 # once the time estimate is repeatable:
 GOLDEN_UPDATE=1 GOLDEN_REASON='time and weight recorded' slicer/scripts/upstream.sh test
 ```
+
+## Diagnostic builds
+
+`upstream.sh build --sanitize -j N` builds the engine **and libslic3r** with address, undefined-behaviour
+and float-cast-overflow sanitizers. It reuses the release dependency prefix but keeps instrumented
+objects in `.build/engine-sanitize` and its bundle in `dist/sanitize/<platform>`. Run
+`UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 upstream.sh test --sanitize` for strict failure on UB.
+`--debug-symbols` similarly uses `.build/engine-debug` and `dist/debug/<platform>` for Valgrind or a
+debugger. `test --native-only` runs just ctest; `test --no-upstream` selects the protocol build.
+Normal desktop packaging always reads `dist/<platform>`, never the diagnostic bundles.
+
+For Valgrind, set `PRINTLAB_TEST_RESOURCES` to the pinned checkout's `resources/` and run
+`valgrind --track-origins=yes --error-limit=no --error-exitcode=99 .build/engine/tests/test_facade`
+from `slicer/`. Keep the full log: the initial cascade exceeded Valgrind's default 1,000-context limit.
 
 ## Calibration tests
 

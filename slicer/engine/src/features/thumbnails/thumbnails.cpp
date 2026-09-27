@@ -174,8 +174,8 @@ std::string encode_png(const std::vector<uint8_t> &rgba, int width, int height) 
 	std::string ihdr;
 	put32(ihdr, static_cast<uint32_t>(width));
 	put32(ihdr, static_cast<uint32_t>(height));
-	ihdr += "\x08\x06\x00\x00\x00"; // 8-bit, RGBA, deflate, adaptive filtering, no interlace
-	chunk(png, "IHDR", std::string(ihdr.data(), 13));
+	ihdr.append("\x08\x06\x00\x00\x00", 5); // 8-bit, RGBA, deflate, adaptive filtering, no interlace
+	chunk(png, "IHDR", ihdr);
 	std::string raw;
 	raw.reserve(static_cast<size_t>(height) * (width * 4 + 1));
 	for (int y = 0; y < height; ++y) {

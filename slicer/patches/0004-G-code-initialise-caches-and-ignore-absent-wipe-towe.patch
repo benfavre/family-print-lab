@@ -1,0 +1,104 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Benjamin Favre <ben@webdesign29.net>
+Date: Sun, 27 Sep 2026 09:39:14 +0000
+Subject: [PATCH] G-code: initialise caches and ignore absent wipe tower bounds
+
+Why: Valgrind on a single-filament cube reads uninitialised bed-temperature and layer caches, plus the undefined wipe tower bounding box. Initialise cache sentinels and only construct a tower exclusion polygon when its bounds exist.
+
+Files: src/libslic3r/GCodeWriter.hpp, src/libslic3r/GCode/RetractWhenCrossingPerimeters.hpp, src/libslic3r/GCode/TimelapsePosPicker.cpp
+Upstreamable: yes
+
+Co-Authored-By: Codex <noreply@openai.com>
+---
+ src/libslic3r/GCode.cpp                       |  3 +-
+ .../GCode/RetractWhenCrossingPerimeters.hpp   |  2 +-
+ src/libslic3r/GCode/TimelapsePosPicker.cpp    | 34 +++++++++++--------
+ src/libslic3r/GCodeWriter.hpp                 |  2 +-
+ 4 files changed, 22 insertions(+), 19 deletions(-)
+
+diff --git a/src/libslic3r/GCode.cpp b/src/libslic3r/GCode.cpp
+index ac30594..6f8625f 100644
+--- a/src/libslic3r/GCode.cpp
++++ b/src/libslic3r/GCode.cpp
+@@ -2874,8 +2874,7 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
+             return m_config.filament_vendor.values[idx] == "Bambu Lab";
+             }));
+ 
+-        float wipe_tower_center_pos_x= -1.f, wipe_tower_center_pos_y = -1.f;
+-        Vec2f stop_pos; // point of nozzle heating
++        Vec2f stop_pos(-1.f, -1.f); // point of nozzle heating; sentinel without a wipe tower
+         bool wipe_tower_center_pos_valid = false;
+         if (has_wipe_tower) {
+             auto bbx                = print.wipe_tower_data().bbx;
+diff --git a/src/libslic3r/GCode/RetractWhenCrossingPerimeters.hpp b/src/libslic3r/GCode/RetractWhenCrossingPerimeters.hpp
+index c93e8a7..c3642df 100644
+--- a/src/libslic3r/GCode/RetractWhenCrossingPerimeters.hpp
++++ b/src/libslic3r/GCode/RetractWhenCrossingPerimeters.hpp
+@@ -25,7 +25,7 @@ private:
+ 
+ private:
+     // Last object layer visited, for which a cache of internal islands was created.
+-    const Layer *m_layer;
++    const Layer *m_layer = nullptr;
+     // Search structure over internal islands.
+     BoundingBox                         m_internal_islands_bbox;
+     AABBTreeLines::LinesDistancer<Line> m_aabbtree_lines_distancer;
+diff --git a/src/libslic3r/GCode/TimelapsePosPicker.cpp b/src/libslic3r/GCode/TimelapsePosPicker.cpp
+index d9daa93..c29df91 100644
+--- a/src/libslic3r/GCode/TimelapsePosPicker.cpp
++++ b/src/libslic3r/GCode/TimelapsePosPicker.cpp
+@@ -87,22 +87,26 @@ namespace Slic3r {
+         for (size_t idx = 0; idx < config.bed_exclude_area.values.size(); ++idx)
+             bed_exclude_area.points.emplace_back(coord_t(scale_(config.bed_exclude_area.values[idx].x())), coord_t(scale_(config.bed_exclude_area.values[idx].y())));
+ 
+-        Point base_wp_pt = print->get_fake_wipe_tower().pos.cast<coord_t>();
+-        base_wp_pt = Point{ scale_(base_wp_pt.x()),scale_(base_wp_pt.y()) };
+-
+-        auto transform_wt_pt = [base_wp_pt](const Point& pt) -> Point {
+-            Point out =pt;
+-            out += base_wp_pt;
+-            return out;
++        Polygon wipe_tower_area;
++        const auto &wt_box = print->wipe_tower_data().bbx;
++        // A plate without a wipe tower has an undefined bounding box (uninitialised coordinates).
++        if (wt_box.defined) {
++            Point base_wp_pt = print->get_fake_wipe_tower().pos.cast<coord_t>();
++            base_wp_pt = Point{ scale_(base_wp_pt.x()),scale_(base_wp_pt.y()) };
++    
++            auto transform_wt_pt = [base_wp_pt](const Point& pt) -> Point {
++                Point out =pt;
++                out += base_wp_pt;
++                return out;
++                };
++            wipe_tower_area = Polygon{
++                {transform_wt_pt({scale_(wt_box.min.x()),scale_(wt_box.min.y())})},
++                {transform_wt_pt({scale_(wt_box.max.x()),scale_(wt_box.min.y())})},
++                {transform_wt_pt({scale_(wt_box.max.x()),scale_(wt_box.max.y())})},
++                {transform_wt_pt({scale_(wt_box.min.x()),scale_(wt_box.max.y())})}
+             };
+-        auto wt_box = print->wipe_tower_data().bbx;
+-        Polygon wipe_tower_area{
+-            {transform_wt_pt({scale_(wt_box.min.x()),scale_(wt_box.min.y())})},
+-            {transform_wt_pt({scale_(wt_box.max.x()),scale_(wt_box.min.y())})},
+-            {transform_wt_pt({scale_(wt_box.max.x()),scale_(wt_box.max.y())})},
+-            {transform_wt_pt({scale_(wt_box.min.x()),scale_(wt_box.max.y())})}
+-        };
+-        wipe_tower_area = expand_object_projection(wipe_tower_area, m_print_seq == PrintSequence::ByObject);
++            wipe_tower_area = expand_object_projection(wipe_tower_area, m_print_seq == PrintSequence::ByObject);
++        }
+ 
+         for (size_t idx = 0; idx < extruder_count; ++idx) {
+             ExPolygons printable_area = diff_ex(diff(m_bed_polygon, bed_exclude_area), { wipe_tower_area });
+diff --git a/src/libslic3r/GCodeWriter.hpp b/src/libslic3r/GCodeWriter.hpp
+index 4527e8c..192428a 100644
+--- a/src/libslic3r/GCodeWriter.hpp
++++ b/src/libslic3r/GCodeWriter.hpp
+@@ -29,7 +29,7 @@ public:
+         m_single_extruder_multi_material(false),
+         m_last_acceleration(0), m_max_acceleration(0),
+         m_last_jerk(0), m_max_jerk(0),
+-        /*m_last_bed_temperature(0), */m_last_bed_temperature_reached(true),
++        m_last_bed_temperature(-1), m_last_bed_temperature_reached(true),
+         m_lifted(0),
+         m_to_lift(0),
+         m_to_lift_type(LiftType::NormalLift)
