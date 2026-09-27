@@ -18,6 +18,8 @@
 	const waiting = $derived(runs.filter((r) => r.status === 'ready').length);
 	const done = $derived(runs.filter((r) => r.status === 'done').length);
 	const offline = $derived(!!o && o.tests.every((t) => !t.available));
+	// The slicer is there but the profiles are not: a different fix, so a different heading.
+	const noProfiles = $derived(!!o?.engine && /profiles/.test(o.tests[0]?.reason ?? ''));
 </script>
 
 <svelte:head><title>Calibration · Family Print Lab</title></svelte:head>
@@ -65,7 +67,9 @@
 		{#if data.error}<p class="load-error" role="alert">{data.error}</p>{/if}
 		{#if offline}
 			<section class="panel">
-				<h2 class="panel-title">Needs Print Lab Slicer</h2>
+				<h2 class="panel-title">
+					{noProfiles ? 'Needs the slicer profiles' : 'Needs Print Lab Slicer'}
+				</h2>
 				<p class="panel-empty">{o?.tests[0]?.reason}</p>
 				<a class="mini" href="{resolve('/integrations')}#slicer">See Integrations</a>
 			</section>
@@ -82,6 +86,8 @@
 			</div>
 		{:else if o}
 			<p class="panel-empty none">No tests yet. Start with flow rate, then pressure advance.</p>
+		{:else if !data.error}
+			<p class="panel-empty none">Loading…</p>
 		{/if}
 	</div>
 </div>

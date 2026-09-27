@@ -1,6 +1,11 @@
 <script lang="ts">
 	import { useApp } from '$lib/client/app.svelte';
-	import type { FlowRatioResult, KProfile, PrinterCalibInfo } from '$lib/shared/slicer-calibration';
+	import {
+		nozzleVolumeOf,
+		type FlowRatioResult,
+		type KProfile,
+		type PrinterCalibInfo
+	} from '$lib/shared/slicer-calibration';
 
 	// The printer's own calibration, as Bambu Studio's device tab offers it: the flow dynamics (K-value)
 	// profiles it keeps per filament and nozzle, picking one for a tray, and its automatic flow dynamics
@@ -16,11 +21,16 @@
 	let busy = $state(false);
 	let trays = $state<number[]>([]);
 	let draft = $state({ name: '', kValue: 0.02, filamentId: '' });
+	/** Dual-nozzle printers: whose nozzle size the profiles and results are for (0 right, 1 left). */
+	let extruder = $state(0);
 
 	const base = $derived(`/api/printers/${encodeURIComponent(printerId)}/calibration`);
 	const printer = $derived(lab.printerById(printerId));
 	const online = $derived(!!printer?.connected);
 	const printing = $derived(!!printer?.printing);
+	const dual = $derived((info?.nozzles.length ?? 0) > 1);
+	const side = (id: number) => (id === 1 ? 'Left' : 'Right');
+	const forNozzle = $derived(dual ? `extruderId=${extruder}` : '');
 	const trayName = (global: number | undefined) =>
 		info?.trays.find((t) => t.global === global)?.label ??
 		(global === undefined ? '' : `Tray ${global}`);
@@ -29,6 +39,7 @@
 		void printerId;
 		info = null;
 		profiles = null;
+		extruder = 0;
 		fetch(base)
 			.then(async (r) => {
 				const data = await r.json().catch(() => ({}));
@@ -50,7 +61,7 @@
 	}
 
 	async function loadProfiles() {
-		const list = await ask<KProfile[]>('GET', '/k-profiles');
+		const list = await ask<KProfile[]>('GET', `/k-profiles${forNozzle ? `?${forNozzle}` : ''}`);
 		if (list) profiles = list as unknown as KProfile[];
 	}
 	async function saveProfile(e: SubmitEvent) {
@@ -58,7 +69,7 @@
 		const list = await ask<KProfile[]>(
 			'POST',
 			'/k-profiles',
-			{ ...draft, nozzleVolume: info?.nozzleVolume ?? 'standard' },
+			{ ...draft, ...(dual ? { extruderId: extruder } : {}) },
 			'Profile saved on the printer.'
 		);
 		if (list) {
@@ -82,7 +93,7 @@
 				caliIdx: k.caliIdx,
 				filamentId: k.filamentId,
 				extruderId: k.extruderId,
-				nozzleVolume: info?.nozzleVolume ?? 'standard'
+				nozzleVolume: nozzleVolumeOf(k.nozzleId)
 			},
 			'Profile deleted.'
 		);
@@ -102,7 +113,7 @@
 	async function results(kind: 'pa' | 'flow') {
 		const r = await ask<{ pa?: KProfile[]; flow?: FlowRatioResult[] }>(
 			'GET',
-			`/results?kind=${kind}`
+			`/results?kind=${kind}${forNozzle ? `&${forNozzle}` : ''}`
 		);
 		if (r?.pa) paResults = r.pa;
 		if (r?.flow) flowResults = r.flow;
@@ -117,7 +128,9 @@
 				filamentId: k.filamentId,
 				settingId: k.settingId,
 				tray: k.trayId ?? null,
-				nozzleVolume: info?.nozzleVolume ?? 'standard'
+				extruderId: k.extruderId,
+				nozzleVolume: nozzleVolumeOf(k.nozzleId),
+				nCoef: k.nCoef
 			},
 			'Result saved as a profile.'
 		);
@@ -134,6 +147,22 @@
 		<div class="panel-head">
 			<h2>Flow dynamics profiles</h2>
 			{#if !info.pa}
+				{#if dual}
+					<select
+						class="nozzle"
+						aria-label="Nozzle"
+						bind:value={extruder}
+						onchange={() => {
+							profiles = null;
+							paResults = null;
+							flowResults = null;
+						}}
+					>
+						{#each info.nozzles as n (n.id)}
+							<option value={n.id}>{side(n.id)} nozzle · {n.diameter} mm</option>
+						{/each}
+					</select>
+				{/if}
 				<button class="mini" onclick={loadProfiles} disabled={busy || !online}
 					>{profiles ? 'Reload' : 'Load from the printer'}</button
 				>
@@ -143,14 +172,20 @@
 			<p class="panel-empty">{info.pa} Use the pressure advance tests on the Calibration page.</p>
 		{:else}
 			<p class="hint">
-				The pressure advance (K) values the printer keeps for each filament on its {info.nozzleDiameter}
-				mm nozzle.
+				The pressure advance (K) values the printer keeps for each filament on its {dual
+					? `${info.nozzles.find((n) => n.id === extruder)?.diameter ?? info.nozzleDiameter} mm nozzles`
+					: `${info.nozzleDiameter} mm nozzle`}.
 			</p>
 			{#if !online}<p class="hint">The printer is offline.</p>{/if}
 			{#if profiles}
 				{#if profiles.length}
 					<table>
-						<thead><tr><th>Name</th><th>K</th><th>Filament</th><th>Use for</th><th></th></tr></thead
+						<thead
+							><tr
+								><th>Name</th><th>K</th><th>Filament</th>{#if dual}<th>Nozzle</th>{/if}<th
+									>Use for</th
+								><th></th></tr
+							></thead
 						>
 						<tbody>
 							{#each profiles as k (`${k.filamentId}:${k.caliIdx}`)}
@@ -158,6 +193,7 @@
 									<td>{k.name}</td>
 									<td class="num">{k.kValue.toFixed(3)}</td>
 									<td>{k.filamentId}</td>
+									{#if dual}<td>{side(k.extruderId)}</td>{/if}
 									<td>
 										<select
 											aria-label="Use {k.name} for a tray"
@@ -169,7 +205,7 @@
 											}}
 										>
 											<option value="">Pick a tray…</option>
-											{#each info.trays.filter((t) => t.filamentId === k.filamentId) as t (t.global)}
+											{#each info.trays.filter((t) => t.filamentId === k.filamentId && (!dual || t.extruderId === k.extruderId)) as t (t.global)}
 												<option value={t.global}>{t.label}</option>
 											{/each}
 										</select>
@@ -299,6 +335,11 @@
 {/if}
 
 <style>
+	.nozzle {
+		font-size: 12.5px;
+		margin-left: auto;
+		margin-right: 8px;
+	}
 	table {
 		width: 100%;
 		border-collapse: collapse;

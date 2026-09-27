@@ -387,6 +387,27 @@ export function nozzleVolumeOf(id: string): NozzleVolume {
 	);
 }
 
+/**
+ * The flow type of a nozzle as the printer reports it (`device.nozzle.info[].type`, like "HS01"): the
+ * second letter, read with Bambu Studio's table (DeviceCore/DevNozzleSystem.cpp s_parse_nozzle_type,
+ * _str2_nozzle_flow_type: S, A and X standard; H and E high flow; U TPU high flow; B E3D high flow).
+ * Older names ("hardened_steel", "E3D": PrintConfig.hpp NozzleTypeStrToEumn, checked first there) and
+ * anything unknown are standard, Bambu Studio's default flow type.
+ */
+export function nozzleVolumeOfType(type: string | null | undefined): NozzleVolume {
+	if (!type || type.length < 4 || /^[a-z]/.test(type)) return 'standard';
+	const volume: Record<string, NozzleVolume> = {
+		S: 'standard',
+		A: 'standard',
+		X: 'standard',
+		H: 'high_flow',
+		E: 'high_flow',
+		U: 'tpu_high_flow',
+		B: 'e3d_high_flow'
+	};
+	return volume[type[1]] ?? 'standard';
+}
+
 /** One saved flow dynamics (K-value) profile on the printer. */
 export interface KProfile {
 	caliIdx: number;
@@ -477,10 +498,15 @@ export interface PrinterCalibInfo {
 	pa: string | null;
 	/** Why flow rate calibration is off (null: available). */
 	flow: string | null;
+	/** The main (right, or only) nozzle. */
 	nozzleDiameter: number;
 	nozzleVolume: NozzleVolume;
+	/** Every nozzle, by extruder id (0 main/right, 1 deputy/left). */
+	nozzles: { id: number; diameter: number; volume: NozzleVolume }[];
 	trays: {
 		global: number;
+		/** The extruder the tray feeds (its AMS unit's, or the external spool's own). */
+		extruderId: number;
 		label: string;
 		type: string;
 		color: string | null;

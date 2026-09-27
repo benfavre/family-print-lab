@@ -37,6 +37,8 @@ export interface PaStartFilament {
 	filamentId: string;
 	settingId: string;
 	nozzleVolume: NozzleVolume;
+	/** The nozzle this tray feeds, when it differs from the first (dual-nozzle printers). */
+	nozzleDiameter?: number;
 	maxVolumetricSpeed: number;
 }
 export interface PaStartParams {
@@ -54,6 +56,8 @@ export interface KProfileSet {
 	settingId: string;
 	name: string;
 	kValue: number;
+	/** An automatic calibration result's own n_coef (Bambu Studio saves those with is_auto_cali). */
+	nCoef?: number;
 }
 export interface FlowStartFilament {
 	tray: GlobalTray;
@@ -126,6 +130,7 @@ export default [
 						filamentId,
 						settingId,
 						nozzleVolume: volume,
+						nozzleDiameter: diameter.optional(),
 						maxVolumetricSpeed: z.number().positive().max(100)
 					})
 				)
@@ -133,6 +138,7 @@ export default [
 				.max(16)
 		}),
 		guard: (ctx) => paGuard(ctx) ?? busy(ctx),
+		// The top-level diameter is the first filament's; each filament names its own nozzle.
 		build: (p) => ({
 			command: 'extrusion_cali',
 			nozzle_diameter: nozzleDiameterText(p.nozzleDiameter),
@@ -145,8 +151,8 @@ export default [
 				setting_id: f.settingId,
 				nozzle_temp: f.nozzleTemp,
 				...amsSlotOf(f.tray),
-				nozzle_id: nozzleId(f.nozzleVolume, p.nozzleDiameter),
-				nozzle_diameter: nozzleDiameterText(p.nozzleDiameter),
+				nozzle_id: nozzleId(f.nozzleVolume, f.nozzleDiameter ?? p.nozzleDiameter),
+				nozzle_diameter: nozzleDiameterText(f.nozzleDiameter ?? p.nozzleDiameter),
 				max_volumetric_speed: f6(f.maxVolumetricSpeed)
 			}))
 		}),
@@ -200,7 +206,8 @@ export default [
 						filamentId,
 						settingId,
 						name: z.string().trim().min(1).max(40),
-						kValue: z.number().min(0).max(10)
+						kValue: z.number().min(0).max(10),
+						nCoef: z.number().min(0).max(10).optional()
 					})
 				)
 				.min(1)
@@ -222,8 +229,9 @@ export default [
 				setting_id: k.settingId,
 				name: k.name,
 				k_value: f6(k.kValue),
-				// Manual results: n_coef "0.0" (only automatic calibration sends its own).
-				n_coef: '0.0'
+				// Manual results send "0.0"; automatic results keep their own n_coef (CalibrationWizard.cpp
+				// ~1023 calls set_PA_calib_result with is_auto_cali for those).
+				n_coef: k.nCoef !== undefined ? f6(k.nCoef) : '0.0'
 			}))
 		}),
 		risk: 'confirm'

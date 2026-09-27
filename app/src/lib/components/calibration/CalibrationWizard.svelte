@@ -181,7 +181,9 @@
 						</div>
 						{#if !params.linear && params.pass === 2}
 							<p class="hint">
-								Save the pass 1 result first: pass 2 starts from the preset’s new flow ratio.
+								Save the pass 1 result first: pass 2 starts from the preset’s new flow ratio.{spool
+									? ''
+									: ' Without a spool, pick the “- calibrated” preset above.'}
 							</p>
 						{/if}
 					{:else}

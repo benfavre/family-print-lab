@@ -27,6 +27,8 @@
 	let custom = $state<number | null>(null);
 	let save = $state(true);
 	let busy = $state(false);
+	/** Added to the queue from this card (adding again would only move it to the end). */
+	let queued = $state(false);
 
 	const heightValue = $derived(
 		height !== null && height > 0 ? volumetricAtHeight(run.params, height) : null
@@ -50,7 +52,8 @@
 	async function enqueue() {
 		busy = true;
 		try {
-			await data.write('POST', `/runs/${run.id}/queue`, {}, 'Added to the print queue.');
+			const r = await data.write('POST', `/runs/${run.id}/queue`, {}, 'Added to the print queue.');
+			if (r) queued = true;
 		} finally {
 			busy = false;
 		}
@@ -121,9 +124,13 @@
 				>
 				<a class="mini" href={resolve('/projects/[id]', { id: job.projectId })}>Open the job</a>
 				{#if queue && job.status === 'Queued'}
-					<button class="mini primary-mini" onclick={enqueue} disabled={busy}
-						>Add to the print queue</button
-					>
+					{#if queued}
+						<span class="muted">In the print queue.</span>
+					{:else}
+						<button class="mini primary-mini" onclick={enqueue} disabled={busy}
+							>Add to the print queue</button
+						>
+					{/if}
 				{/if}
 			{:else}
 				<span class="muted">The job was deleted.</span>

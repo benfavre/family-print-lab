@@ -9,6 +9,7 @@ import {
 	nozzleDiameterText,
 	nozzleId,
 	nozzleVolumeOf,
+	nozzleVolumeOfType,
 	paCalibrationReason,
 	parseFlowResults,
 	parseKProfiles,
@@ -94,6 +95,19 @@ describe('the printer’s own calibration', () => {
 		expect(nozzleVolumeOf('HH00-0.4')).toBe('high_flow');
 		expect(nozzleVolumeOf('HB00-0.4')).toBe('e3d_high_flow');
 		expect(nozzleVolumeOf('xx')).toBe('standard');
+	});
+
+	it('reads the flow type of a reported nozzle like s_parse_nozzle_type', () => {
+		expect(nozzleVolumeOfType('HS01')).toBe('standard');
+		expect(nozzleVolumeOfType('HH01')).toBe('high_flow');
+		// E is high flow in the report (not E3D, which is B), and the first letter does not matter.
+		expect(nozzleVolumeOfType('HE01')).toBe('high_flow');
+		expect(nozzleVolumeOfType('SB00')).toBe('e3d_high_flow');
+		expect(nozzleVolumeOfType('HU05')).toBe('tpu_high_flow');
+		expect(nozzleVolumeOfType('HA00')).toBe('standard');
+		expect(nozzleVolumeOfType('hardened_steel')).toBe('standard');
+		expect(nozzleVolumeOfType('E3D')).toBe('standard');
+		expect(nozzleVolumeOfType(null)).toBe('standard');
 	});
 
 	it('gates on the feature bits, else the model', () => {

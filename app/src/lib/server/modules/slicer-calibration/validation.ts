@@ -38,8 +38,12 @@ export const calibEnqueueInput = z.strictObject({
 
 const volume = z.enum(['standard', 'high_flow', 'tpu_high_flow', 'e3d_high_flow']);
 
+const extruder = z.number().int().min(0).max(1);
+
 export const kProfileQuery = z.strictObject({
-	filamentId: z.string().max(40).optional()
+	filamentId: z.string().max(40).optional(),
+	/** Whose nozzle size to list (default: the main nozzle's). */
+	extruderId: extruder.optional()
 });
 
 export const kProfileSave = z.strictObject({
@@ -49,8 +53,12 @@ export const kProfileSave = z.strictObject({
 	settingId: z.string().max(80).default(''),
 	tray: z.number().int().min(0).max(255).nullable().default(null),
 	caliIdx: z.number().int().min(-1).nullable().default(null),
-	extruderId: z.number().int().min(0).max(1).default(0),
-	nozzleVolume: volume.default('standard')
+	/** Default: the extruder feeding `tray`, else a tray holding that filament. */
+	extruderId: extruder.optional(),
+	/** Default: that extruder's nozzle. */
+	nozzleVolume: volume.optional(),
+	/** An automatic result's n_coef, kept when it is saved as a profile. */
+	nCoef: z.number().min(0).max(10).optional()
 });
 
 export const kProfileSelect = z.strictObject({
@@ -62,8 +70,9 @@ export const kProfileSelect = z.strictObject({
 export const kProfileDelete = z.strictObject({
 	caliIdx: z.number().int().min(0),
 	filamentId: z.string().max(40),
-	extruderId: z.number().int().min(0).max(1).default(0),
-	nozzleVolume: volume.default('standard')
+	extruderId: extruder.default(0),
+	/** The profile's own (from its nozzle id); default: that extruder's nozzle. */
+	nozzleVolume: volume.optional()
 });
 
 export const printerCalibStart = z.strictObject({
@@ -71,7 +80,11 @@ export const printerCalibStart = z.strictObject({
 	trays: z.array(z.number().int().min(0).max(255)).min(1, 'Pick a tray.').max(16)
 });
 
-export const printerResultQuery = z.strictObject({ kind: z.enum(['pa', 'flow']) });
+export const printerResultQuery = z.strictObject({
+	kind: z.enum(['pa', 'flow']),
+	/** Whose nozzle size to ask for (default: the main nozzle's). */
+	extruderId: extruder.optional()
+});
 
 export const calibSettings = z.strictObject({
 	/** The family project calibration prints go into (created on first use). */

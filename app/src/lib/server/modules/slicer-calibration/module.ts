@@ -21,7 +21,7 @@ export default defineModule({
 	order: 130,
 	start(ctx) {
 		const module = ctx.module as (key: string) => unknown;
-		return new Calibration({
+		const calibration = new Calibration({
 			db: ctx.db,
 			lab: ctx.lab,
 			printers: ctx.printers,
@@ -38,5 +38,7 @@ export default defineModule({
 			changed: () => ctx.live.send('slicer-calibration:runs', {}),
 			workDir: ctx.dataDir
 		});
+		calibration.recover();
+		return calibration;
 	}
 });

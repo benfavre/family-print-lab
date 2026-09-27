@@ -12,6 +12,8 @@ import { EngineError, type SlicerEngine } from '../../slicer/engine-types';
 import { ERROR, type EngineInfo, type EngineMethods } from '$lib/shared/slicer/protocol';
 import { CALIB_KINDS, type CalibRun } from '$lib/shared/slicer-calibration';
 import type { Calibration } from './service';
+import { calibrationRuns } from '../../db/schema';
+import { PrinterRefused } from '../../printer/bambu';
 import * as overviewRoute from '../../../../routes/api/calibration/+server';
 import * as runsRoute from '../../../../routes/api/calibration/runs/+server';
 import * as resultRoute from '../../../../routes/api/calibration/runs/[id]/result/+server';
@@ -220,6 +222,35 @@ describe('calibration runs', () => {
 		expect(() => c.get(run.id)).toThrow(/no longer exists/);
 	});
 
+	it('stops slicing when a run is removed, and fails runs left slicing by a restart', async () => {
+		// An engine that never finishes calib.generate until it is stopped.
+		const slow = fakeEngine();
+		slow.call = ((_method: string, _params: unknown, o?: { signal?: AbortSignal }) =>
+			new Promise((_resolve, reject) =>
+				o?.signal?.addEventListener('abort', () =>
+					reject(new EngineError(ERROR.CANCELLED, 'Stopped.'))
+				)
+			)) as SlicerEngine['call'];
+		useEngine(slow);
+		const jobs = t.rt.lab.snapshot().jobs.length;
+		const run = await c.create({ kind: 'pa_tower', printerId });
+		c.remove(run.id);
+		await new Promise((r) => setTimeout(r, 20));
+		expect(t.rt.tasks.get(run.taskId!).status).toBe('cancelled');
+		expect(t.rt.lab.snapshot().jobs.length).toBe(jobs);
+
+		t.rt.db
+			.insert(calibrationRuns)
+			.values({ id: 'stuck', kind: 'vfa', printerId, params: {} })
+			.run();
+		c.recover();
+		expect(c.get('stuck')).toMatchObject({
+			status: 'failed',
+			error: expect.stringMatching(/restarted/)
+		});
+		c.remove('stuck');
+	});
+
 	it('answers on the API', async () => {
 		useEngine(fakeEngine());
 		const overview = await call(overviewRoute.GET);
@@ -271,12 +302,60 @@ describe('the printer’s own calibration (simulated H2D)', () => {
 		expect(viaRoute.body).toHaveLength(1);
 	});
 
+	it('knows which nozzle each tray feeds', () => {
+		const info = c.info(dualId);
+		// The simulated H2D: two standard 0.4 nozzles ("HS01"); AMS 0 feeds the left one (info 0x2103),
+		// AMS 1 the right (0x2003). Its external spools are empty, so they are not listed.
+		expect(info.nozzles).toEqual([
+			{ id: 0, diameter: 0.4, volume: 'standard' },
+			{ id: 1, diameter: 0.4, volume: 'standard' }
+		]);
+		const byTray = new Map(info.trays.map((x) => [x.global, x.extruderId]));
+		expect([0, 1, 2, 3].map((g) => byTray.get(g))).toEqual([1, 1, 1, 1]);
+		expect([4, 5, 6, 7].map((g) => byTray.get(g))).toEqual([0, 0, 0, 0]);
+	});
+
+	it('saves a result for the tray’s own extruder, with its n_coef', async () => {
+		const tray = c.info(dualId).trays.find((x) => x.filamentId && x.extruderId === 1)!;
+		const list = await c.saveKProfile(dualId, {
+			name: 'Left auto',
+			kValue: 0.03,
+			filamentId: tray.filamentId,
+			tray: tray.global,
+			nCoef: 1.2
+		});
+		const saved = list.find((k) => k.name === 'Left auto')!;
+		expect(saved).toMatchObject({ extruderId: 1, nCoef: 1.2, nozzleId: 'HS00-0.4' });
+		await c.deleteKProfile(dualId, {
+			caliIdx: saved.caliIdx,
+			filamentId: saved.filamentId,
+			extruderId: 1
+		});
+	});
+
+	it('puts the printer’s refusals in plain words', async () => {
+		const p = t.rt.printers.require(dualId);
+		const send = p.send;
+		p.send = async () => {
+			throw new PrinterRefused(409, 'nozzle_diameter is not matched');
+		};
+		try {
+			await expect(c.kProfiles(dualId, {})).rejects.toThrow(/does not match/);
+		} finally {
+			p.send = send;
+		}
+	});
+
 	it('runs flow dynamics and flow rate calibration and reads the results', async () => {
-		const tray = c.info(dualId).trays.find((x) => x.filamentId);
+		const tray = c.info(dualId).trays.find((x) => x.filamentId && x.extruderId === 1);
 		expect(tray).toBeDefined();
 		await c.startOnPrinter(dualId, { kind: 'pa', trays: [tray!.global] });
 		const pa = await c.resultsOnPrinter(dualId, { kind: 'pa' });
-		expect('pa' in pa && pa.pa[0]).toMatchObject({ kValue: 0.024, trayId: tray!.global });
+		expect('pa' in pa && pa.pa[0]).toMatchObject({
+			kValue: 0.024,
+			trayId: tray!.global,
+			extruderId: 1
+		});
 		await c.startOnPrinter(dualId, { kind: 'flow', trays: [tray!.global] });
 		const flow = await c.resultsOnPrinter(dualId, { kind: 'flow' });
 		expect('flow' in flow && flow.flow[0].flowRatio).toBeGreaterThan(0.9);

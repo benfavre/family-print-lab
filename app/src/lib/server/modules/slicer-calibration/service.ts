@@ -12,6 +12,7 @@ import type { DB } from '../../db';
 import { calibrationRuns, spools } from '../../db/schema';
 import type { Lab } from '../../lab';
 import type { PrinterManager } from '../../printer/manager';
+import { PrinterRefused } from '../../printer/bambu';
 import type { CommandName } from '../../printer/commands/registry';
 import type { PrintFiles } from '../../printing';
 import type { SettingsStore } from '../../module-settings';
@@ -28,7 +29,7 @@ import {
 	calibDefaults,
 	calibProblem,
 	flowCalibrationReason,
-	nozzleVolumeOf,
+	nozzleVolumeOfType,
 	paCalibrationReason,
 	parseFlowResults,
 	parseKProfiles,
@@ -40,12 +41,11 @@ import {
 	type CalibRun,
 	type FlowRatioResult,
 	type KProfile,
-	type NozzleVolume,
 	type PrinterCalibInfo
 } from '$lib/shared/slicer-calibration';
 import { ERROR, type Progress } from '$lib/shared/slicer/protocol';
 import type { ConfigMap, ConfigValue, PresetRef } from '$lib/shared/slicer/project';
-import type { PrinterTray } from '$lib/shared/printers/status';
+import { EXT_DEPUTY, type PrinterTray } from '$lib/shared/printers/status';
 import { capabilitiesFor } from '$lib/shared/printers/models';
 import {
 	calibEnqueueInput,
@@ -110,8 +110,29 @@ function toRun(r: Row): CalibRun {
 /** Plain words for the task list and the run from an engine's progress. */
 const stageText = (p: Progress) => p.message || `${p.stage[0].toUpperCase()}${p.stage.slice(1)}…`;
 
+/** Plain words for the reasons a printer gives when it refuses a calibration (DevCalib.cpp calib_fail_message). */
+const REFUSALS: Record<string, string> = {
+	'invalid nozzle_diameter': 'The printer cannot calibrate with this nozzle size.',
+	'nozzle_diameter is not supported': 'The printer cannot calibrate with this nozzle size.',
+	'nozzle_diameter is not matched':
+		'The nozzle size does not match the printer’s. Check the nozzle set on the printer.',
+	'invalid handle_flowrate_cali param': 'The printer did not accept the flow rate settings.',
+	'generate auto filament cali gcode failure': 'The printer could not make its calibration print.'
+};
+
 export class Calibration {
 	constructor(private d: CalibrationDeps) {}
+
+	/** Runs left slicing when the app stopped will never finish: marks them failed (on start). */
+	recover() {
+		const stuck = this.d.db
+			.select({ id: calibrationRuns.id })
+			.from(calibrationRuns)
+			.where(eq(calibrationRuns.status, 'slicing'))
+			.all();
+		for (const r of stuck)
+			this.update(r.id, { status: 'failed', error: 'Stopped when the app restarted. Try again.' });
+	}
 
 	// ---------- Tests ----------
 
@@ -173,7 +194,14 @@ export class Calibration {
 	}
 
 	remove(id: string) {
-		this.row(id);
+		const row = this.row(id);
+		// Still slicing: stop it, so no job turns up for a run that is gone.
+		if (row.status === 'slicing' && row.taskId)
+			try {
+				this.d.tasks.cancel(row.taskId);
+			} catch {
+				// The task is already gone.
+			}
 		this.d.db.delete(calibrationRuns).where(eq(calibrationRuns.id, id)).run();
 		this.d.changed?.();
 	}
@@ -323,6 +351,9 @@ export class Calibration {
 				{ signal: ctx.signal }
 			);
 			const data = fs.readFileSync(out);
+			// Removed while slicing: nothing to make a job for.
+			if (!this.d.db.select().from(calibrationRuns).where(eq(calibrationRuns.id, runId)).get())
+				return 'Removed.';
 			const minutes = Math.max(1, Math.round(stats.seconds / 60));
 			const grams = Math.round(stats.filaments.reduce((a, f) => a + f.grams, 0) * 10) / 10;
 			const jobId = this.d.lab.createJob({
@@ -452,21 +483,34 @@ export class Calibration {
 	info(printerId: string): PrinterCalibInfo {
 		const { p, status, snap } = this.printer(printerId);
 		const caps = status?.caps ?? capabilitiesFor(p.model.code, null);
-		const nozzle = snap?.nozzles[0];
-		const trays: PrinterTray[] = [
-			...(snap?.ams.flatMap((u) => u.trays) ?? []),
-			...(snap?.externalSpools ?? [])
+		const nozzles = (snap?.nozzles.length ? snap.nozzles : [null]).map((n, i) => ({
+			id: n?.id ?? i,
+			diameter: n?.diameter ?? 0.4,
+			volume: nozzleVolumeOfType(n?.type)
+		}));
+		const main = nozzles.find((n) => n.id === 0) ?? nozzles[0];
+		// The extruder each tray feeds: its AMS unit's (info bits 8–11), the external spools their own
+		// (Bambu Studio DevFilaSystem.cpp GetExtruderIdByAmsId: 255 main (0), 254 deputy (1)).
+		const trays: (PrinterTray & { extruderId: number })[] = [
+			...(snap?.ams.flatMap((u) => u.trays.map((t) => ({ ...t, extruderId: u.nozzle ?? 0 }))) ??
+				[]),
+			...(snap?.externalSpools ?? []).map((t) => ({
+				...t,
+				extruderId: t.global === EXT_DEPUTY ? 1 : 0
+			}))
 		];
 		return {
 			printerId,
 			pa: paCalibrationReason(caps, snap),
 			flow: flowCalibrationReason(caps, snap),
-			nozzleDiameter: nozzle?.diameter ?? 0.4,
-			nozzleVolume: this.volume(nozzle?.type ?? null),
+			nozzleDiameter: main.diameter,
+			nozzleVolume: main.volume,
+			nozzles,
 			trays: trays
 				.filter((t) => t.type)
 				.map((t) => ({
 					global: t.global,
+					extruderId: t.extruderId,
 					label: t.name || t.slot,
 					type: t.type,
 					color: t.color,
@@ -476,58 +520,90 @@ export class Calibration {
 		};
 	}
 
-	/** High-flow nozzles report codes like "HH01" (Bambu Studio's nozzle ids); anything else is standard. */
-	private volume(type: string | null): NozzleVolume {
-		return type && /^H[SHUB]\d/.test(type) ? nozzleVolumeOf(type) : 'standard';
+	/** The nozzle an extruder carries (the main one when there is no such extruder). */
+	private nozzleOf(info: PrinterCalibInfo, extruderId: number) {
+		return info.nozzles.find((n) => n.id === extruderId) ?? info.nozzles[0];
+	}
+
+	/** Sends a calibration command, with the printer's refusals in plain words. */
+	private async send(printerId: string, name: CommandName, params: Record<string, unknown>) {
+		const { p } = this.printer(printerId);
+		try {
+			return await p.send(name, params);
+		} catch (e) {
+			if (e instanceof PrinterRefused && REFUSALS[e.message])
+				throw new AppError(409, REFUSALS[e.message]);
+			throw e;
+		}
 	}
 
 	private async ask(printerId: string, name: CommandName, params: Record<string, unknown>) {
-		const { p } = this.printer(printerId);
-		const r = await p.send(name, params);
+		const r = await this.send(printerId, name, params);
 		if (!r.reply)
 			throw new AppError(504, 'The printer did not answer. Check that it is on and try again.');
 		return r.reply;
 	}
 
+	/**
+	 * The profiles for one nozzle size (the main nozzle's, or the given extruder's): Bambu Studio's
+	 * history dialog asks by diameter alone, without extruder or nozzle id (CaliHistoryDialog.cpp ~324).
+	 */
 	async kProfiles(printerId: string, input: unknown): Promise<KProfile[]> {
 		const o = parse(kProfileQuery, input ?? {});
 		const info = this.info(printerId);
 		const reply = await this.ask(printerId, 'print.extrusion_cali_get', {
-			nozzleDiameter: info.nozzleDiameter,
+			nozzleDiameter: this.nozzleOf(info, o.extruderId ?? 0).diameter,
 			...(o.filamentId ? { filamentId: o.filamentId } : {})
 		});
 		return parseKProfiles(reply);
 	}
 
+	/**
+	 * Saves a profile. The extruder defaults to the one feeding the tray (or a tray holding that
+	 * filament), the flow type and diameter to that extruder's nozzle, and the setting id to the
+	 * filament preset for that tray (Bambu Studio always sends the preset's setting_id).
+	 */
 	async saveKProfile(printerId: string, input: unknown) {
 		const o = parse(kProfileSave, input);
 		const info = this.info(printerId);
-		const { p } = this.printer(printerId);
-		await p.send('print.extrusion_cali_set', {
-			nozzleDiameter: info.nozzleDiameter,
-			profiles: [{ ...o, nozzleVolume: o.nozzleVolume ?? info.nozzleVolume }]
+		const tray =
+			info.trays.find((t) => t.global === o.tray) ??
+			info.trays.find((t) => t.filamentId === o.filamentId);
+		const extruderId = o.extruderId ?? tray?.extruderId ?? 0;
+		const nozzle = this.nozzleOf(info, extruderId);
+		const settingId =
+			o.settingId ||
+			(tray
+				? (this.d.profiles()?.lab.filamentForTray(printerId, tray.global)?.settingId ?? '')
+				: '');
+		await this.send(printerId, 'print.extrusion_cali_set', {
+			nozzleDiameter: nozzle.diameter,
+			profiles: [{ ...o, extruderId, settingId, nozzleVolume: o.nozzleVolume ?? nozzle.volume }]
 		});
-		return this.kProfiles(printerId, { filamentId: o.filamentId });
+		return this.kProfiles(printerId, { filamentId: o.filamentId, extruderId });
 	}
 
 	async selectKProfile(printerId: string, input: unknown) {
 		const o = parse(kProfileSelect, input);
-		const { p } = this.printer(printerId);
-		await p.send('print.extrusion_cali_sel', {
+		const info = this.info(printerId);
+		const tray = info.trays.find((t) => t.global === o.tray);
+		if (!tray) throw new AppError(400, 'That tray is empty.');
+		await this.send(printerId, 'print.extrusion_cali_sel', {
 			...o,
-			nozzleDiameter: this.info(printerId).nozzleDiameter
+			nozzleDiameter: this.nozzleOf(info, tray.extruderId).diameter
 		});
 		return { ok: true };
 	}
 
 	async deleteKProfile(printerId: string, input: unknown) {
 		const o = parse(kProfileDelete, input);
-		const { p } = this.printer(printerId);
-		await p.send('print.extrusion_cali_del', {
+		const nozzle = this.nozzleOf(this.info(printerId), o.extruderId);
+		await this.send(printerId, 'print.extrusion_cali_del', {
 			...o,
-			nozzleDiameter: this.info(printerId).nozzleDiameter
+			nozzleVolume: o.nozzleVolume ?? nozzle.volume,
+			nozzleDiameter: nozzle.diameter
 		});
-		return this.kProfiles(printerId, { filamentId: o.filamentId });
+		return this.kProfiles(printerId, { filamentId: o.filamentId, extruderId: o.extruderId });
 	}
 
 	/**
@@ -548,30 +624,39 @@ export class Calibration {
 				);
 			const summary = sp?.lab.filamentForTray(printerId, global) ?? null;
 			const config: ConfigMap = summary
-				? sp!.profiles.resolve({ kind: 'filament', name: summary.name, source: 'system' }).config
+				? sp!.profiles.resolve({
+						kind: 'filament',
+						name: summary.name,
+						source: summary.source,
+						...(summary.source === 'user' ? { userPresetId: summary.id } : {})
+					}).config
 				: {};
+			const nozzle = this.nozzleOf(info, tray.extruderId);
 			return {
 				tray: global,
-				extruderId: 0,
+				extruderId: tray.extruderId,
 				bedTemp: Math.round(num(config.hot_plate_temp ?? config.textured_plate_temp, 55)),
 				nozzleTemp: Math.round(num(config.nozzle_temperature, 220)),
 				filamentId: tray.filamentId,
 				settingId: summary?.settingId ?? '',
 				flowRatio: num(config.filament_flow_ratio, 0.98),
 				maxVolumetricSpeed: num(config.filament_max_volumetric_speed, 12),
-				nozzleVolume: info.nozzleVolume
+				nozzleVolume: nozzle.volume,
+				nozzleDiameter: nozzle.diameter
 			};
 		});
-		const { p } = this.printer(printerId);
+		// The top-level nozzle diameter is the first filament's (command_start_pa_calibration and
+		// command_start_flow_ratio_calibration both read calib_datas[0]).
+		const nozzleDiameter = filaments[0].nozzleDiameter;
 		if (o.kind === 'pa')
-			return p.send('print.extrusion_cali', {
-				nozzleDiameter: info.nozzleDiameter,
+			return this.send(printerId, 'print.extrusion_cali', {
+				nozzleDiameter,
 				mode: 0,
 				filaments: filaments.map(({ flowRatio: _flow, ...f }) => f)
 			});
-		return p.send('print.flowrate_cali', {
-			nozzleDiameter: info.nozzleDiameter,
-			filaments: filaments.map(({ nozzleVolume: _volume, ...f }) => f)
+		return this.send(printerId, 'print.flowrate_cali', {
+			nozzleDiameter,
+			filaments: filaments.map(({ nozzleVolume: _volume, nozzleDiameter: _diameter, ...f }) => f)
 		});
 	}
 
@@ -580,7 +665,8 @@ export class Calibration {
 		input: unknown
 	): Promise<{ pa: KProfile[] } | { flow: FlowRatioResult[] }> {
 		const o = parse(printerResultQuery, input);
-		const nozzleDiameter = this.info(printerId).nozzleDiameter;
+		const info = this.info(printerId);
+		const nozzleDiameter = this.nozzleOf(info, o.extruderId ?? 0).diameter;
 		if (o.kind === 'pa')
 			return {
 				pa: parseKProfiles(

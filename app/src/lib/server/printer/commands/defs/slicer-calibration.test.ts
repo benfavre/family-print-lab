@@ -67,6 +67,41 @@ describe('printer calibration commands', () => {
 		});
 	});
 
+	it('names each filament’s own nozzle on a dual-nozzle printer (per calib_datas[i])', () => {
+		const body = payload('print.extrusion_cali', {
+			nozzleDiameter: 0.4,
+			mode: 0,
+			filaments: [
+				{
+					tray: 0,
+					extruderId: 1,
+					bedTemp: 55,
+					nozzleTemp: 220,
+					filamentId: 'GFA00',
+					settingId: 'GFSA00',
+					nozzleVolume: 'standard',
+					maxVolumetricSpeed: 21
+				},
+				{
+					tray: 4,
+					extruderId: 0,
+					bedTemp: 55,
+					nozzleTemp: 220,
+					filamentId: 'GFA00',
+					settingId: 'GFSA00',
+					nozzleVolume: 'high_flow',
+					nozzleDiameter: 0.6,
+					maxVolumetricSpeed: 21
+				}
+			]
+		}) as { nozzle_diameter: string; filaments: Record<string, unknown>[] };
+		expect(body.nozzle_diameter).toBe('0.4');
+		expect(body.filaments.map((f) => [f.extruder_id, f.nozzle_id, f.nozzle_diameter])).toEqual([
+			[1, 'HS00-0.4', '0.4'],
+			[0, 'HH00-0.6', '0.6']
+		]);
+	});
+
 	it('asks for the K profiles like command_get_pa_calibration_tab and the result', () => {
 		expect(
 			payload('print.extrusion_cali_get', { nozzleDiameter: 0.6, filamentId: 'GFA00' })
@@ -151,6 +186,24 @@ describe('printer calibration commands', () => {
 			ams_id: 255,
 			slot_id: 0
 		});
+		// An automatic result keeps its n_coef (set_PA_calib_result with is_auto_cali).
+		const auto = payload('print.extrusion_cali_set', {
+			nozzleDiameter: 0.4,
+			profiles: [
+				{
+					tray: 1,
+					caliIdx: null,
+					extruderId: 0,
+					nozzleVolume: 'standard',
+					filamentId: 'GFA00',
+					settingId: 'GFSA00',
+					name: 'Auto',
+					kValue: 0.024,
+					nCoef: 1.4
+				}
+			]
+		}) as { filaments: Record<string, unknown>[] };
+		expect(auto.filaments[0]).toMatchObject({ k_value: '0.024000', n_coef: '1.400000' });
 		expect(
 			payload('print.extrusion_cali_sel', {
 				tray: 2,
