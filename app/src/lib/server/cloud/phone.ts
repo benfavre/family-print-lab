@@ -74,28 +74,6 @@ export function verifyControlMac(keys: PhoneKeys, c: ControlFields, mac: unknown
 	return timingSafeEqual(Buffer.from(controlMac(keys, c), 'hex'), Buffer.from(mac, 'hex'));
 }
 
-/**
- * Commands seen recently, so a relayed command cannot be applied twice. Entries older than the time
- * window are dropped: a command that old is refused by its time anyway.
- */
-export class ReplayCache {
-	private seen = new Map<string, number>();
-	constructor(
-		private windowMs = CONTROL_WINDOW * 2,
-		private max = 5000
-	) {}
-
-	/** False when the id was seen before; otherwise remembers it. */
-	remember(id: string, now = Date.now()) {
-		for (const [key, at] of this.seen)
-			if (at < now - this.windowMs || this.seen.size > this.max) this.seen.delete(key);
-			else break;
-		if (this.seen.has(id)) return false;
-		this.seen.set(id, now);
-		return true;
-	}
-}
-
 export function seal(keys: PhoneKeys, plain: Buffer, aad: string): Buffer {
 	const iv = randomBytes(12);
 	const cipher = createCipheriv('aes-256-gcm', keys.seal, iv);
