@@ -8,7 +8,7 @@ import net from 'node:net';
 import { MqttClient } from '../../printer/mqtt';
 import type { PrinterStatus } from '$lib/shared/printers/status';
 import type { StoredSettings } from './validation';
-import { haPrinter } from './export';
+import { haPrinter, scrub } from './export';
 
 type MqttSettings = StoredSettings['mqtt'];
 
@@ -22,6 +22,16 @@ export function parseBrokerUrl(url: string): { host: string; port: number; tls: 
 		port: u.port ? Number(u.port) : tls ? 8883 : 1883,
 		tls
 	};
+}
+
+/** Where a broker address points (protocol, host and port), to tell whether it changed. */
+export function brokerKey(url: string): string {
+	try {
+		const { host, port, tls } = parseBrokerUrl(url);
+		return `${tls ? 'mqtts' : 'mqtt'}://${host.toLowerCase()}:${port}`;
+	} catch {
+		return url;
+	}
 }
 
 /** The printer id as a discovery object id (letters, digits, _ and - only). */
@@ -179,6 +189,13 @@ export class MqttOutput {
 	private pending = new Map<string, NodeJS.Timeout>();
 	/** Printers whose discovery configs are out, with the name and model they carry. */
 	private announced = new Map<string, string>();
+	/**
+	 * Retained topics the lab has filled, by printer. Kept across reconnects and restarts so a removed
+	 * printer, a new topic prefix or discovery turned off leaves nothing stale on the broker.
+	 */
+	private retained = new Map<string, Set<string>>();
+	/** The settings of the current connection (a restart saves new ones before the old session ends). */
+	private s: MqttSettings | null = null;
 	private heartbeat?: NodeJS.Timeout;
 	state = 'off';
 
@@ -214,16 +231,23 @@ export class MqttOutput {
 			return;
 		}
 		this.client = c;
+		this.s = s;
 		this.setState('connecting');
 		let error = '';
 		c.on('connect', () => {
 			this.retry = 0;
 			this.setState('connected');
-			// A new session may be a new broker: say everything again.
+			// A new session may be a new broker: say everything again, then clear what is no longer
+			// said (another prefix, discovery off, printers removed meanwhile).
 			this.last.clear();
 			this.announced.clear();
+			const before = this.retained;
+			this.retained = new Map();
 			void this.publish(`${s.topicPrefix}/availability`, 'online', true);
 			this.publishAll(true);
+			const now = new Set([...this.retained.values()].flatMap((t) => [...t]));
+			for (const topics of before.values())
+				for (const topic of topics) if (!now.has(topic)) void this.publish(topic, '', true);
 		});
 		c.on('error', (e: Error) => (error = brokerError(e.message)));
 		c.on('close', () => {
@@ -245,11 +269,12 @@ export class MqttOutput {
 		for (const t of this.pending.values()) clearTimeout(t);
 		this.pending.clear();
 		const c = this.client;
+		const prefix = this.s?.topicPrefix;
 		this.client = null;
-		if (c?.connected) {
+		if (c?.connected && prefix) {
 			// Say goodbye so subscribers mark the lab unavailable, then disconnect.
 			void c
-				.publish(`${this.deps.settings().topicPrefix}/availability`, 'offline', {
+				.publish(`${prefix}/availability`, 'offline', {
 					qos: 1,
 					retain: true,
 					timeoutMs: 2000
@@ -268,44 +293,50 @@ export class MqttOutput {
 			.catch((e: Error) => this.deps.log(`MQTT publish to ${topic} failed: ${e.message}`));
 	}
 
+	/** A retained message for a printer, remembered so it can be cleared later. */
+	private publishRetained(printerId: string, topic: string, payload: unknown) {
+		const topics = this.retained.get(printerId) ?? new Set();
+		topics.add(topic);
+		this.retained.set(printerId, topics);
+		void this.publish(topic, payload, true);
+	}
+
 	/** Every printer's status now (on connect and every minute); discovery configs and removals too. */
 	private publishAll(force = false) {
-		const s = this.deps.settings();
+		const s = this.s;
+		if (!s) return;
 		const printers = this.deps.printers().filter((p) => p.id);
 		const ids = new Set(printers.map((p) => p.id!));
 		for (const p of printers) {
 			const who = { id: p.id!, name: p.name ?? '', model: p.modelName ?? null };
 			const said = JSON.stringify(who);
 			if (s.discovery && this.announced.get(p.id!) !== said) {
-				for (const m of discoveryMessages(s, who)) void this.publish(m.topic, m.payload, true);
+				for (const m of discoveryMessages(s, who)) this.publishRetained(p.id!, m.topic, m.payload);
 				this.announced.set(p.id!, said);
 			}
 			this.publishStatus(p, force);
 		}
 		// Printers removed since: clear their retained messages.
-		for (const id of [...this.last.keys(), ...this.announced.keys()])
-			if (!ids.has(id)) this.forget(id);
+		for (const id of [...this.retained.keys()]) if (!ids.has(id)) this.forget(id);
 	}
 
 	/** Clears a removed printer's retained status and discovery configs. */
 	private forget(id: string) {
-		const s = this.deps.settings();
-		void this.publish(statusTopic(s.topicPrefix, id), '', true);
-		if (this.announced.has(id))
-			for (const m of discoveryMessages(s, { id, name: '', model: null }))
-				void this.publish(m.topic, '', true);
+		for (const topic of this.retained.get(id) ?? []) void this.publish(topic, '', true);
+		this.retained.delete(id);
 		this.announced.delete(id);
 		this.last.delete(id);
 	}
 
 	private publishStatus(p: PrinterStatus, force = false) {
+		if (!this.s) return;
 		const payload = haPrinter(p, this.deps.power(p.id!));
 		const { updated_at: _, ...rest } = payload;
 		const key = JSON.stringify(rest);
 		const prev = this.last.get(p.id!);
 		if (!force && prev?.key === key) return;
 		this.last.set(p.id!, { key, at: Date.now() });
-		void this.publish(statusTopic(this.deps.settings().topicPrefix, p.id!), payload, true);
+		this.publishRetained(p.id!, statusTopic(this.s.topicPrefix, p.id!), payload);
 	}
 
 	/** A printer's status changed: publish it, at most once per throttle window. */
@@ -329,10 +360,12 @@ export class MqttOutput {
 		if (this.client?.connected) this.publishAll(true);
 	}
 
+	/** A lab event, without addresses or serials (a printer.offline error can name the printer's IP). */
 	event(name: string, data: unknown) {
+		if (!this.s || !this.client?.connected) return;
 		void this.publish(
-			`${this.deps.settings().topicPrefix}/events/${name}`,
-			{ event: name, ...(data as object) },
+			`${this.s.topicPrefix}/events/${name}`,
+			{ event: name, ...(scrub(data) as object) },
 			false
 		);
 	}

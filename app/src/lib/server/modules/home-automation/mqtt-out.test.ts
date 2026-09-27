@@ -213,6 +213,89 @@ describe('MQTT output', () => {
 		expect(broker.messages).toEqual([]);
 	});
 
+	it('clears what it no longer says after a new prefix or discovery off, and says goodbye on the old prefix', async () => {
+		const broker = await recordingBroker();
+		let settings = {
+			...DEFAULT_SETTINGS.mqtt,
+			enabled: true,
+			url: `mqtt://127.0.0.1:${broker.port}`,
+			username: 'u',
+			password: 'p',
+			discovery: true
+		};
+		const out = new MqttOutput({
+			settings: () => settings,
+			printers: () => [printer()],
+			power: () => null,
+			log: () => {}
+		});
+		cleanups.push(() => out.stop());
+		out.restart();
+		await until(() => broker.messages.some((m) => m.topic === 'printlab/p-1/status'));
+		const discovery = broker.messages
+			.filter((m) => m.topic.startsWith('homeassistant/'))
+			.map((m) => m.topic);
+		expect(discovery.length).toBeGreaterThan(5);
+
+		// Saved first, then restarted (as updateSettings does): the old session ends on its own prefix.
+		const from = broker.messages.length;
+		settings = { ...settings, topicPrefix: 'lab', discovery: false };
+		out.restart();
+		await until(() => broker.messages.some((m) => m.topic === 'lab/p-1/status'));
+		await new Promise((r) => setTimeout(r, 50));
+		const after = broker.messages.slice(from);
+		expect(after).toContainEqual({
+			topic: 'printlab/availability',
+			payload: 'offline',
+			retain: true,
+			qos: 1
+		});
+		expect(after.some((m) => m.topic === 'lab/availability' && m.payload === 'offline')).toBe(
+			false
+		);
+		const cleared = new Set(after.filter((m) => m.payload === '' && m.retain).map((m) => m.topic));
+		expect(cleared.has('printlab/p-1/status')).toBe(true);
+		for (const topic of discovery) expect(cleared.has(topic)).toBe(true);
+		expect(cleared.has('lab/p-1/status')).toBe(false);
+	});
+
+	it('events leave out addresses and serials', async () => {
+		const broker = await recordingBroker();
+		const out = new MqttOutput({
+			settings: () => ({
+				...DEFAULT_SETTINGS.mqtt,
+				enabled: true,
+				url: `mqtt://127.0.0.1:${broker.port}`,
+				username: 'u',
+				password: 'p'
+			}),
+			printers: () => [],
+			power: () => null,
+			log: () => {}
+		});
+		cleanups.push(() => out.stop());
+		out.restart();
+		await until(() => out.state === 'connected');
+		out.event('printer.offline', {
+			printerId: 'p-1',
+			printerName: 'Kitchen P1S',
+			error: 'connect EHOSTUNREACH 192.168.1.50:8883',
+			serial: '01P00A000000000',
+			at: '2026-09-27T12:00:00.000Z'
+		});
+		await until(() => broker.messages.some((m) => m.topic === 'printlab/events/printer.offline'));
+		const ev = JSON.parse(
+			broker.messages.find((m) => m.topic === 'printlab/events/printer.offline')!.payload
+		);
+		expect(ev).toEqual({
+			event: 'printer.offline',
+			printerId: 'p-1',
+			printerName: 'Kitchen P1S',
+			error: 'connect EHOSTUNREACH …',
+			at: '2026-09-27T12:00:00.000Z'
+		});
+	});
+
 	it('gets QoS 1 acknowledgements from the simulator broker', async () => {
 		const sim = createSimulator({ log: () => {} });
 		const port = await sim.listen(0, '127.0.0.1');

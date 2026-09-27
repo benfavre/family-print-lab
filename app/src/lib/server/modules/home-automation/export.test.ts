@@ -1,7 +1,7 @@
 // The metrics text is valid Prometheus exposition format, and the tokens and address checks hold.
 import { describe, expect, it } from 'vitest';
 import { emptySnapshot, type PrinterStatus } from '$lib/shared/printers/status';
-import { haPrinter, renderMetrics } from './export';
+import { haPrinter, renderMetrics, scrub } from './export';
 import { allowed, bearer, hashToken, isLoopback, newToken, tokenMatches } from './access';
 
 const printers: PrinterStatus[] = [
@@ -103,6 +103,28 @@ describe('metrics', () => {
 	});
 });
 
+describe('scrub', () => {
+	it('drops private keys at any depth and blanks IP addresses, not times', () => {
+		expect(
+			scrub({
+				printerName: 'X2D',
+				host: '192.168.1.5',
+				accessCode: '1234',
+				nested: [{ ip: '10.0.0.1', note: 'reached [fe80::1]:8883 and 10.0.0.9' }],
+				at: '2026-09-27T12:00:00.000Z',
+				error: 'Printer stopped responding at 12:30:00.'
+			})
+		).toEqual({
+			printerName: 'X2D',
+			nested: [{ note: 'reached … and …' }],
+			at: '2026-09-27T12:00:00.000Z',
+			error: 'Printer stopped responding at 12:30:00.'
+		});
+		expect(scrub(null)).toBeNull();
+		expect(scrub(3)).toBe(3);
+	});
+});
+
 describe('access', () => {
 	it('tokens are random, stored as SHA-256 and compared by hash', () => {
 		const a = newToken();
@@ -125,25 +147,38 @@ describe('access', () => {
 		const req = (
 			from: string | Error,
 			headers: Record<string, string> = {},
-			locals: object = {}
+			locals: object = {},
+			url = 'http://127.0.0.1:5173/metrics'
 		) => ({
 			getClientAddress: () => {
 				if (from instanceof Error) throw from;
 				return from;
 			},
-			request: new Request('http://x/metrics', { headers }),
+			request: new Request(url, { headers }),
+			url: new URL(url),
 			locals
 		});
 		const { token, hash } = newToken();
 		expect(allowed(req('127.0.0.1'), null)).toBe(true);
+		expect(allowed(req('::1', {}, {}, 'http://localhost:5173/metrics'), null)).toBe(true);
+		// A proxy on this computer serving a LAN name is not "this computer".
+		expect(allowed(req('127.0.0.1', {}, {}, 'http://printlab.lan/metrics'), null)).toBe(false);
+		expect(
+			allowed(
+				req('127.0.0.1', { authorization: `Bearer ${token}` }, {}, 'http://printlab.lan/metrics'),
+				hash
+			)
+		).toBe(true);
 		expect(
 			allowed(req('10.0.0.2', { 'x-forwarded-for': '127.0.0.1', host: 'localhost' }), hash)
 		).toBe(false);
 		expect(allowed(req('10.0.0.2', { authorization: `Bearer ${token}` }), hash)).toBe(true);
 		expect(allowed(req(new Error('no address')), hash)).toBe(false);
-		// A lan-auth session counts; a kid-mode browser does not.
-		expect(allowed(req('10.0.0.2', {}, { session: { id: 's' } }), null)).toBe(true);
-		expect(allowed(req('10.0.0.2', {}, { session: { id: 's' }, kid: { id: 'k' } }), null)).toBe(
+		// A lan-auth session (locals.auth.session) counts; a kid-mode browser does not.
+		const session = { auth: { local: false, session: { id: 's' } } };
+		expect(allowed(req('10.0.0.2', {}, session), null)).toBe(true);
+		expect(allowed(req('10.0.0.2', {}, { ...session, kid: { id: 'k' } }), null)).toBe(false);
+		expect(allowed(req('10.0.0.2', {}, { auth: { local: false, session: null } }), null)).toBe(
 			false
 		);
 	});

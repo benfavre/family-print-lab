@@ -52,8 +52,19 @@ function mergeConfig(stored: PlugConfig, input: PlugConfigInput, kind: PlugKind)
 	};
 	for (const k of Object.keys(out) as (keyof PlugConfig)[])
 		if (!keep[kind].includes(k)) delete out[k];
+	// A saved secret only goes to the address it was saved for: pointing the plug somewhere else
+	// needs it typed again, or anyone who can edit the plug could send it to their own server.
+	if (stored.url && out.url && origin(stored.url) !== origin(out.url))
+		for (const k of ['password', 'token'] as const)
+			if (out[k] && out[k] === stored[k] && !input[k])
+				throw new AppError(
+					400,
+					`The address changed, so enter the ${k === 'token' ? 'access token' : 'password'} again. A saved one only goes to the address it was saved for.`
+				);
 	return out;
 }
+
+const origin = (url: string) => (URL.canParse(url) ? new URL(url).origin : url);
 
 /** What a kind needs before it can work, in plain words. */
 export function missing(kind: PlugKind, c: PlugConfig): string | null {

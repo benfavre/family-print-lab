@@ -22,6 +22,7 @@ import {
 	GET as getSettings
 } from '../../../../routes/api/ha/settings/+server';
 import { POST as makeToken } from '../../../../routes/api/ha/token/+server';
+import { POST as mqttTest } from '../../../../routes/api/ha/mqtt-test/+server';
 import { GET as metrics } from '../../../../routes/metrics/+server';
 
 let t: TestLab;
@@ -252,5 +253,30 @@ describe('home automation with a simulated printer on a fake plug', () => {
 		const view = await call(getSettings as Handler, '/api/ha/settings');
 		expect(JSON.stringify(view.body)).not.toContain(token);
 		expect(view.body).toMatchObject({ token: { hasToken: true } });
+	});
+
+	it('keeps the broker password write-only and only for the broker it was saved for', async () => {
+		const patch = (mqtt: Record<string, unknown>) =>
+			call(patchSettings as Handler, '/api/ha/settings', { method: 'PATCH', body: { mqtt } });
+		const saved = await patch({ url: 'mqtt://127.0.0.1:1', username: 'u', password: 's3cret' });
+		expect(saved.status).toBe(200);
+		expect(JSON.stringify(saved.body)).not.toContain('s3cret');
+		expect(saved.body.settings).toMatchObject({ mqtt: { hasPassword: true } });
+		// Another broker without the password typed again: refused, for saving and for testing.
+		const moved = await patch({ url: 'mqtt://attacker.example:1883' });
+		expect(moved.status).toBe(400);
+		expect(moved.body.error).toMatch(/enter its password again/);
+		const probe = await call(mqttTest as Handler, '/api/ha/mqtt-test', {
+			method: 'POST',
+			body: { url: 'mqtt://attacker.example:1883' }
+		});
+		expect(probe.status).toBe(400);
+		const ha = t.rt.module('home-automation')!;
+		expect(ha.settings().mqtt).toMatchObject({ url: 'mqtt://127.0.0.1:1', password: 's3cret' });
+		// Other fields keep it; clearing the address drops it.
+		expect((await patch({ username: 'v' })).status).toBe(200);
+		expect(ha.settings().mqtt.password).toBe('s3cret');
+		expect((await patch({ url: '' })).status).toBe(200);
+		expect(ha.settings().mqtt).toMatchObject({ url: '', password: '', enabled: false });
 	});
 });

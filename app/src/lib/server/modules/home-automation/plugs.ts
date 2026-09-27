@@ -13,6 +13,8 @@ export interface PlugClient {
 export class PlugError extends Error {}
 
 const TIMEOUT_MS = 5000;
+/** A device's own words, shortened: they end up in the UI and the log. */
+const quote = (v: unknown) => String(v).replace(/\s+/g, ' ').slice(0, 80);
 const base = (url: string | undefined) => {
 	if (!url) throw new PlugError('The plug has no address yet.');
 	return url.replace(/\/+$/, '');
@@ -76,7 +78,7 @@ export function tasmota(c: PlugConfig): PlugClient {
 		// URLSearchParams writes spaces as +; Tasmota's examples use %20.
 		const url = `${base(c.url)}/cm?${q.toString().replace(/\+/g, '%20')}`;
 		const body = await jsonOf(await request(url, { signal }, what), what);
-		if (body.WARNING) throw new PlugError(`${what}: ${String(body.WARNING)}`);
+		if (body.WARNING) throw new PlugError(`${what}: ${quote(body.WARNING)}`);
 		const state = body.POWER ?? body.POWER1;
 		if (state !== 'ON' && state !== 'OFF') throw new PlugError(`${what} did not say its state.`);
 		return state === 'ON';
@@ -227,7 +229,7 @@ export function homeAssistant(c: PlugConfig): PlugClient {
 			const body = await jsonOf(res, what);
 			if (body.state === 'on') return true;
 			if (body.state === 'off') return false;
-			throw new PlugError(`Home Assistant says the plug is ${String(body.state ?? 'unknown')}.`);
+			throw new PlugError(`Home Assistant says the plug is ${quote(body.state ?? 'unknown')}.`);
 		}
 	};
 }

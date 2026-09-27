@@ -37,9 +37,16 @@ export function offBlocker(
 export type OffDecision =
 	{ action: 'off' } | { action: 'wait'; reason: string } | { action: 'cancel'; reason: string };
 
+/** How long a lined-up print keeps the power on after the cool-down (PLAN: "due within 15 min"). */
+export const QUEUE_GRACE_MS = 15 * 60_000;
+
 /**
  * After a print ended: switch off now, wait, or give up. `queueDue`: the queue has something for this
- * printer (it may start soon). Gives up after `maxWaitMs` so a printer left on by hand is left alone.
+ * printer. QueueService has no due time, so a lined-up print keeps the power on for 15 minutes after
+ * the cool-down; one still waiting then (for a plate check, quiet hours…) is not due soon, and the
+ * plug can switch the printer on again for it (`autoOn`). Without auto power-on the queue could not
+ * wake it, so the power stays on while anything is lined up. Gives up after `maxWaitMs` so a printer
+ * left on by hand is left alone.
  */
 export function offDecision(
 	o: {
@@ -50,6 +57,7 @@ export function offDecision(
 		lastSeen: string | null;
 		offBelowNozzle: number;
 		queueDue: boolean;
+		autoOn?: boolean;
 		maxWaitMs?: number;
 	},
 	now = Date.now()
@@ -58,8 +66,10 @@ export function offDecision(
 		return { action: 'cancel', reason: 'Another print started.' };
 	if (now - o.endedAt > (o.maxWaitMs ?? 6 * 3600_000))
 		return { action: 'cancel', reason: 'Waited too long; the plug stays on.' };
-	if (o.queueDue) return { action: 'wait', reason: 'Another print is lined up.' };
-	const left = o.endedAt + o.cooldownMinutes * 60_000 - now;
+	const cooled = o.endedAt + o.cooldownMinutes * 60_000;
+	if (o.queueDue && (!o.autoOn || now < cooled + QUEUE_GRACE_MS))
+		return { action: 'wait', reason: 'Another print is lined up.' };
+	const left = cooled - now;
 	if (left > 0)
 		return { action: 'wait', reason: `Cooling down (${Math.ceil(left / 60_000)} min).` };
 	if (!o.connected) return { action: 'wait', reason: 'Waiting to hear from the printer.' };
@@ -108,6 +118,25 @@ const sleep = (ms: number, signal?: AbortSignal) =>
 		signal?.addEventListener('abort', done, { once: true });
 	});
 
+/**
+ * Makes a printer's connection try again now instead of after its back-off. stop() ends the current
+ * socket, whose close handler runs a tick later; start() before that would leave the old handler
+ * scheduling a second connection (it sees the printer started again), so wait for the close first.
+ */
+export async function reconnectNow(printer: BambuPrinter, closeWaitMs = 500): Promise<void> {
+	printer.stop();
+	await new Promise<void>((resolve) => {
+		const timer = setTimeout(done, closeWaitMs);
+		function done() {
+			clearTimeout(timer);
+			printer.off('update', done);
+			resolve();
+		}
+		printer.once('update', done);
+	});
+	printer.start();
+}
+
 export class PowerController {
 	private states = new Map<string, PowerState>();
 	private pendingOff = new Map<string, { endedAt: number; timer: NodeJS.Timeout }>();
@@ -130,11 +159,16 @@ export class PowerController {
 		change: Partial<PowerState>,
 		what?: Parameters<PowerDeps['changed']>[1]
 	) {
-		const next = { ...this.state(printerId), ...change, printerId };
-		if (change.on !== undefined) next.at = new Date().toISOString();
+		const prev = this.state(printerId);
+		const next = { ...prev, ...change, printerId };
+		if (change.on !== undefined && (change.on !== prev.on || what))
+			next.at = new Date().toISOString();
 		this.states.set(printerId, next);
 		this.deps.changed(next, what);
 	}
+
+	/** The note a failed read left, so a later good read clears it but nothing else. */
+	private readErrors = new Map<string, string>();
 
 	/** Reads a plug's relay (null for webhooks); errors are kept as the note. */
 	async read(printerId: string, signal?: AbortSignal): Promise<boolean | null> {
@@ -142,10 +176,18 @@ export class PowerController {
 		if (!plug) return null;
 		try {
 			const on = await this.client(plug).read(signal);
-			this.update(printerId, { on, note: '' });
+			// "Switching off later…" or "Waiting for the printer…" stay; only a stale read error goes.
+			const stale = this.readErrors.get(printerId);
+			this.readErrors.delete(printerId);
+			const change: Partial<PowerState> = { on };
+			if (stale !== undefined && this.state(printerId).note === stale) change.note = '';
+			if (on !== this.state(printerId).on || change.note !== undefined)
+				this.update(printerId, change);
 			return on;
 		} catch (error) {
-			this.update(printerId, { note: (error as Error).message });
+			const note = (error as Error).message;
+			this.readErrors.set(printerId, note);
+			this.update(printerId, { note });
 			throw error;
 		}
 	}
@@ -156,16 +198,24 @@ export class PowerController {
 	 */
 	async ensureOn(printerId: string, opts: { signal?: AbortSignal } = {}): Promise<void> {
 		const plug = this.deps.plugFor(printerId);
-		const printer = this.deps.printer(printerId);
-		if (!plug?.autoOn || !printer || printer.connected) return;
+		const first = this.deps.printer(printerId);
+		if (!plug?.autoOn || !first || first.connected) return;
 		this.cancelOff(printerId);
 		const since = Date.now();
 		await this.switch(printerId, true, 'print', opts.signal);
 		this.update(printerId, { note: 'Waiting for the printer to start…' });
 		const deadline = since + this.t.onlineTimeoutMs;
 		let retried = since;
-		while (!this.online(printer, since)) {
-			if (opts.signal?.aborted) throw new Error('Stopped');
+		const stopped = () => {
+			this.update(printerId, { note: '' });
+			return new Error('Stopped');
+		};
+		for (;;) {
+			// Looked up each time: a Settings change replaces the printer's connection.
+			const printer = this.deps.printer(printerId);
+			if (!printer) throw new Error('The printer was removed.');
+			if (this.online(printer, since)) break;
+			if (opts.signal?.aborted) throw stopped();
 			if (Date.now() >= deadline) {
 				const ms = this.t.onlineTimeoutMs;
 				const limit =
@@ -180,8 +230,7 @@ export class PowerController {
 			// should not wait for that.
 			if (!printer.connected && Date.now() - retried >= this.t.retryMs) {
 				retried = Date.now();
-				printer.stop();
-				printer.start();
+				await reconnectNow(printer);
 			}
 			await sleep(this.t.pollMs, opts.signal);
 		}
@@ -269,7 +318,8 @@ export class PowerController {
 				snapshot: printer.snapshot,
 				lastSeen: printer.lastSeen,
 				offBelowNozzle: plug.offBelowNozzle,
-				queueDue: this.deps.queueDue(printerId)
+				queueDue: this.deps.queueDue(printerId),
+				autoOn: plug.autoOn
 			});
 			if (d.action === 'cancel') {
 				this.deps.log(`auto power-off for ${printerId} dropped: ${d.reason}`);

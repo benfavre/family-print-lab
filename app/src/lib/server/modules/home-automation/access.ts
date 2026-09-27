@@ -1,6 +1,8 @@
 // Who may read /api/ha/printers and /metrics: this computer (by socket address, never a header that a
 // client can set), a request carrying the Home Assistant token, or a logged-in session when the
 // lan-auth package is present. The token is shown once and only its SHA-256 hash is stored.
+// "This computer" also needs a local host name, as lan-auth's rule does: a reverse proxy on this
+// computer forwarding for a LAN name connects from 127.0.0.1 but serves other devices.
 import crypto from 'node:crypto';
 
 export function newToken(): { token: string; hash: string } {
@@ -32,9 +34,13 @@ export function bearer(header: string | null): string | null {
 	return m ? m[1] : null;
 }
 
+/** Host names that name this computer (the Host header only narrows access here, never grants it). */
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
+
 export interface AccessRequest {
 	getClientAddress(): string;
 	request: Request;
+	url: URL;
 	locals: object;
 }
 
@@ -52,17 +58,22 @@ function clientAddress(event: AccessRequest): string | null {
 }
 
 /**
- * A logged-in session from the lan-auth package (not merged yet: it is expected to set
- * `locals.session`); a kid-mode browser never counts.
+ * A logged-in session from the lan-auth package (its auth handle sets `locals.auth.session`); a
+ * kid-mode browser never counts.
  */
 function hasSession(locals: object): boolean {
-	const l = locals as { session?: unknown; kid?: unknown };
-	return !!l.session && !l.kid;
+	const l = locals as { auth?: { session?: unknown } | null; kid?: unknown };
+	return !!l.auth?.session && !l.kid;
+}
+
+/** From this computer: a loopback socket address and a local host name. */
+export function isLocal(event: AccessRequest): boolean {
+	return isLoopback(clientAddress(event)) && LOCAL_HOSTS.has(event.url.hostname.toLowerCase());
 }
 
 export function allowed(event: AccessRequest, tokenHash: string | null): boolean {
 	return (
-		isLoopback(clientAddress(event)) ||
+		isLocal(event) ||
 		tokenMatches(bearer(event.request.headers.get('authorization')), tokenHash) ||
 		hasSession(event.locals)
 	);

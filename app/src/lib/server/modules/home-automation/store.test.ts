@@ -92,4 +92,44 @@ describe('PlugStore', () => {
 		db.delete(printers).run();
 		expect(s.list()).toEqual([]);
 	});
+
+	it('keeps a saved secret only for the address it was saved for', () => {
+		const { s } = store();
+		const plug = s.create({
+			printerId: 'p1',
+			kind: 'homeassistant',
+			config: { url: 'http://ha.local:8123', entityId: 'switch.p', token: 'long-lived' }
+		});
+		// Pointing it at another server without typing the token again would send the token there.
+		expect(() =>
+			s.update(plug.id, { version: 1, config: { url: 'http://evil.example:8123' } })
+		).toThrow(/address changed, so enter the access token again/);
+		expect(s.get(plug.id)!.config).toMatchObject({
+			url: 'http://ha.local:8123',
+			token: 'long-lived'
+		});
+		// Same server, other spelling of the path: kept.
+		const same = s.update(plug.id, { version: 1, config: { url: 'http://ha.local:8123/' } });
+		expect(same.config.token).toBe('long-lived');
+		// A new address with the token typed again is fine.
+		const moved = s.update(plug.id, {
+			version: 2,
+			config: { url: 'http://192.168.1.9:8123', token: 'again' }
+		});
+		expect(moved.config).toMatchObject({ url: 'http://192.168.1.9:8123', token: 'again' });
+		const tas = s.update(plug.id, {
+			version: 3,
+			kind: 'tasmota',
+			config: { url: 'http://192.168.1.30', password: 'pw' }
+		});
+		expect(() =>
+			s.update(plug.id, { version: tas.version, config: { url: 'http://192.168.1.31' } })
+		).toThrow(/enter the password again/);
+		// Dropping the password on purpose is always allowed.
+		const cleared = s.update(plug.id, {
+			version: tas.version,
+			config: { url: 'http://192.168.1.31', password: null }
+		});
+		expect(cleared.config).toEqual({ url: 'http://192.168.1.31' });
+	});
 });

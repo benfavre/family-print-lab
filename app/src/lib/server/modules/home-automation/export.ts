@@ -40,6 +40,29 @@ export function haPrinter(p: PrinterStatus, power: boolean | null = null): HaPri
 	};
 }
 
+/** Keys that never leave the lab, whatever event carries them. */
+const PRIVATE_KEY =
+	/^(serial|sn|dev_?id|access_?code|host|hostname|ip|address|url|password|token|secret)$/i;
+const IPV4 = /\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b/g;
+/** IPv6 literals: hex groups with at least two colons and either "::" or a hex letter (not a time). */
+const IPV6 = /(?<![\w:])\[?(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}(?:\](?::\d+)?)?(?![\w:])/gi;
+
+/**
+ * Event data for home automation: private keys dropped and IP addresses blanked in text (a
+ * connection error can quote the printer's address).
+ */
+export function scrub(value: unknown, depth = 0): unknown {
+	if (typeof value === 'string')
+		return value.replace(IPV4, '…').replace(IPV6, (m) => (/::|[a-f]/i.test(m) ? '…' : m));
+	if (depth > 6 || value === null || typeof value !== 'object') return value;
+	if (Array.isArray(value)) return value.map((v) => scrub(v, depth + 1));
+	return Object.fromEntries(
+		Object.entries(value)
+			.filter(([k]) => !PRIVATE_KEY.test(k))
+			.map(([k, v]) => [k, scrub(v, depth + 1)])
+	);
+}
+
 // ---- Prometheus text exposition format 0.0.4 ----
 // https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format
 

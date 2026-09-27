@@ -5,12 +5,12 @@ import { count } from 'drizzle-orm';
 import { defineModule, type ModuleContext } from '../../modules';
 import type { PowerService, QueueService } from '../contracts';
 import { jobs } from '../../db/schema';
-import { parse } from '../../validation';
+import { AppError, parse } from '../../validation';
 import { JOB_STATUSES, type JobStatus } from '$lib/shared/domain';
 import type { HaPrinter, HomeAutomationView, PowerState } from '$lib/shared/home-automation';
 import { PlugStore } from './store';
 import { PowerController, type PowerTimings } from './power';
-import { MqttOutput, testBroker } from './mqtt-out';
+import { brokerKey, MqttOutput, testBroker } from './mqtt-out';
 import { haPrinter, renderMetrics } from './export';
 import { newToken } from './access';
 import {
@@ -159,17 +159,26 @@ function start(ctx: ModuleContext): HomeAutomation {
 		};
 	};
 
-	/** The saved MQTT settings with an input over them; a missing or empty password keeps the saved one. */
+	/**
+	 * The saved MQTT settings with an input over them; a missing or empty password keeps the saved one,
+	 * but only for the broker it was saved for (so it cannot be sent to another server).
+	 */
 	const mergeMqtt = (input: unknown): StoredSettings['mqtt'] => {
 		const saved = store.get().mqtt;
 		const v = parse(mqttInput, input ?? {});
 		const { password, ...rest } = v;
 		const defined = Object.fromEntries(Object.entries(rest).filter(([, x]) => x !== undefined));
-		return {
-			...saved,
-			...defined,
-			password: password === null ? '' : password ? password : saved.password
-		};
+		const next = { ...saved, ...defined };
+		let kept = password === null ? '' : password ? password : saved.password;
+		if (!password && kept) {
+			if (!next.url) kept = '';
+			else if (brokerKey(next.url) !== brokerKey(saved.url))
+				throw new AppError(
+					400,
+					'The broker address changed, so enter its password again. A saved password only goes to the broker it was saved for.'
+				);
+		}
+		return { ...next, password: kept };
 	};
 
 	const service: HomeAutomation = {
@@ -209,7 +218,8 @@ function start(ctx: ModuleContext): HomeAutomation {
 		haPrinters: () =>
 			ctx.printers
 				.statuses()
-				.map((p) => haPrinter(p, plugs.forPrinter(p.id ?? '') ? power.state(p.id ?? '').on : null)),
+				.filter((p) => p.id)
+				.map((p) => haPrinter(p, plugs.forPrinter(p.id!) ? power.state(p.id!).on : null)),
 		metrics() {
 			const counts = Object.fromEntries(JOB_STATUSES.map((s) => [s, 0])) as Record<
 				JobStatus,
@@ -222,7 +232,7 @@ function start(ctx: ModuleContext): HomeAutomation {
 				.all())
 				counts[row.status] = row.n;
 			return renderMetrics({
-				printers: ctx.printers.statuses(),
+				printers: ctx.printers.statuses().filter((p) => p.id),
 				jobs: counts,
 				power: Object.fromEntries(
 					plugs.list().map((p) => [p.printerId, power.state(p.printerId).on])

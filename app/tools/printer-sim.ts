@@ -204,7 +204,13 @@ Commands on stdin act on the first printer (or "use N" to pick another): start [
 			const base = Number(opt('plugs', '8300'));
 			for (const [i, p] of fleet.printers.entries()) {
 				const plug = attachPlug(p.sim, { bootMs: 3000 });
-				await createFakePlug({ plug, port: base + i });
+				// A busy port only costs the fake plug, never the simulator.
+				try {
+					await createFakePlug({ plug, port: base + i });
+				} catch (error) {
+					console.log(`[sim] No fake plug on :${base + i}: ${(error as Error).message}`);
+					continue;
+				}
 				console.log(
 					`[sim] ${p.sim.sim.name} is on a fake smart plug at http://127.0.0.1:${base + i} (Tasmota, Shelly, Home Assistant or webhooks /on and /off)`
 				);

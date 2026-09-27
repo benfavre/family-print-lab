@@ -1,9 +1,10 @@
 // Power rules: never cut power while printing or while the nozzle is hot, wait for the cool-down and
 // the queue, and the wake-up hook's waiting, time limit and stop signal.
+import { EventEmitter } from 'node:events';
 import { describe, expect, it } from 'vitest';
 import { emptySnapshot } from '$lib/shared/printers/status';
 import type { BambuPrinter } from '../../printer/bambu';
-import { offBlocker, offDecision, PowerController } from './power';
+import { offBlocker, offDecision, PowerController, reconnectNow } from './power';
 import type { Plug } from './store';
 
 const NOW = Date.parse('2026-09-27T12:00:00Z');
@@ -84,7 +85,24 @@ describe('offDecision after a print', () => {
 			{ snapshot: emptySnapshot({ gcodeState: 'RUNNING' }) },
 			{ action: 'cancel' }
 		],
-		['waited six hours', { endedAt: NOW - 7 * 3600_000, snapshot: idle(90) }, { action: 'cancel' }]
+		['waited six hours', { endedAt: NOW - 7 * 3600_000, snapshot: idle(90) }, { action: 'cancel' }],
+		// A lined-up print that has not started 15 min after the cool-down is not due soon: the plug
+		// can wake the printer for it later. Without auto power-on the power has to stay on.
+		[
+			'queue still waiting 5 min after the cool-down',
+			{ queueDue: true, autoOn: true, endedAt: NOW - 15 * 60_000 },
+			{ action: 'wait', reason: 'Another print is lined up.' }
+		],
+		[
+			'queue still waiting 16 min after the cool-down',
+			{ queueDue: true, autoOn: true, endedAt: NOW - 26 * 60_000 },
+			{ action: 'off' }
+		],
+		[
+			'queue waiting, no auto power-on',
+			{ queueDue: true, autoOn: false, endedAt: NOW - 3 * 3600_000 },
+			{ action: 'wait', reason: 'Another print is lined up.' }
+		]
 	])('%s', (_, over, expected) => {
 		expect(offDecision({ ...base, ...over }, NOW)).toMatchObject(expected);
 	});
@@ -92,17 +110,25 @@ describe('offDecision after a print', () => {
 
 /** A connection stand-in: connects `bootMs` after start() once the plug is on. */
 function fakePrinter() {
-	const p = {
+	const p = Object.assign(new EventEmitter(), {
 		name: 'Test X2D',
 		connected: false,
 		lastSeen: null as string | null,
 		snapshot: idle(25),
 		powered: false,
 		starts: 0,
+		calls: [] as string[],
 		stop() {
-			p.connected = false;
+			p.calls.push('stop');
+			// Like BambuPrinter: the socket closes a tick later, and the close says so with 'update'.
+			setImmediate(() => {
+				p.connected = false;
+				p.calls.push('closed');
+				p.emit('update');
+			});
 		},
 		start() {
+			p.calls.push('start');
 			p.starts++;
 			if (p.powered)
 				setTimeout(() => {
@@ -110,7 +136,7 @@ function fakePrinter() {
 					p.lastSeen = new Date().toISOString();
 				}, 20);
 		}
-	};
+	});
 	return p;
 }
 
@@ -180,6 +206,52 @@ describe('PowerController', () => {
 		const stop = new AbortController();
 		setTimeout(() => stop.abort(), 50);
 		await expect(power.ensureOn('p1', { signal: stop.signal })).rejects.toThrow('Stopped');
+		expect(power.state('p1').note).toBe('');
+	});
+
+	it('retries the connection only after the old socket has closed', async () => {
+		const printer = fakePrinter();
+		await reconnectNow(printer as unknown as BambuPrinter);
+		// start() before the close would let the old close handler schedule a second connection.
+		expect(printer.calls).toEqual(['stop', 'closed', 'start']);
+		// Nothing to close (between tries): it starts after a short wait anyway.
+		const quiet = fakePrinter();
+		quiet.stop = () => void quiet.calls.push('stop');
+		await reconnectNow(quiet as unknown as BambuPrinter, 30);
+		expect(quiet.calls).toEqual(['stop', 'start']);
+	});
+
+	it('reading the plug keeps a pending note, and clears only its own errors', async () => {
+		const { power, printer } = controller({ plug: { autoOff: true, cooldownMinutes: 60 } });
+		printer.connected = true;
+		printer.powered = true;
+		printer.lastSeen = new Date().toISOString();
+		power.printEnded('p1');
+		await new Promise((r) => setTimeout(r, 10));
+		expect(power.state('p1').note).toMatch(/Switching off later: Cooling down/);
+		expect(await power.read('p1')).toBe(true);
+		expect(power.state('p1').note).toMatch(/Switching off later/);
+		// A read that finds nothing new is not a change.
+		const at = power.state('p1').at;
+		await new Promise((r) => setTimeout(r, 5));
+		await power.read('p1');
+		expect(power.state('p1').at).toBe(at);
+		power.stop();
+
+		const broken = controller();
+		let fail = true;
+		(broken.power as unknown as { deps: { client: () => unknown } }).deps.client = () => ({
+			set: async () => {},
+			read: async () => {
+				if (fail) throw new Error('The plug refused the connection.');
+				return false;
+			}
+		});
+		await expect(broken.power.read('p1')).rejects.toThrow(/refused/);
+		expect(broken.power.state('p1').note).toMatch(/refused/);
+		fail = false;
+		expect(await broken.power.read('p1')).toBe(false);
+		expect(broken.power.state('p1')).toMatchObject({ on: false, note: '' });
 	});
 
 	it('refuses to switch off by hand while printing or hot', async () => {
