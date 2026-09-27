@@ -137,14 +137,15 @@ describe('reading what the command line wrote', () => {
 						id: 1,
 						total_predication: 1234.6,
 						warning_message: '',
-						filaments: [{ id: 0, filament_id: 'GFA00', total_used_g: 4.256 }]
+						// Only what the plate uses: here filament 2 alone.
+						filaments: [{ id: 2, filament_id: 'GFA00', total_used_g: 4.256 }]
 					}
 				]
 			})
 		).toEqual({
 			ok: true,
 			error: 'Success.',
-			plates: [{ id: 1, seconds: 1235, grams: [4.26], warning: '' }]
+			plates: [{ id: 1, seconds: 1235, grams: new Map([[2, 4.26]]), warning: '' }]
 		});
 		expect(parseResult({ return_code: -50, error_string: 'Nothing to be sliced' })).toMatchObject({
 			ok: false,
@@ -553,6 +554,31 @@ describe('CliEngine against a fake Bambu Studio', () => {
 		expect(instances).toHaveLength(1);
 		expect(instances[0]).toMatchObject({ objectId: 'o2', plate: 2 });
 		near(instances[0].transform, [1, 0, 0, 0, 1, 0, 0, 0, 1, 307.2 + 50, 90, 0]);
+	});
+
+	it('prints each object with its filament and counts what each filament used', async () => {
+		const e = open();
+		const selection = {
+			...selectionOf({
+				machine: 'Bambu Lab P1S 0.4 nozzle',
+				process: '0.20mm Standard @BBL P1S',
+				filament: 'Bambu PLA Basic @BBL P1S'
+			}),
+			filaments: ['Bambu PLA Basic @BBL P1S', 'Bambu PETG HF @BBL P1S'].map((name) => ({
+				kind: 'filament' as const,
+				name,
+				source: 'system' as const
+			}))
+		};
+		const presets = await e.call('profiles.resolve', { selection });
+		const { projectId, project } = await boxes(e, [{ plate: 1, x: 50, y: 50 }]);
+		project.objects[0].parts[0].filament = 2;
+		await e.call('project.sync', { projectId, project, presets });
+		const before = install.runs().length;
+		const stats = await e.call('slice', { projectId, plate: 1 });
+		expect(install.runs().slice(before)[0].args.join(' ')).toContain('--load-filament-ids 2');
+		// Only filament 2 is used: its weight is under its number, not the first one's.
+		expect(stats.filaments).toEqual([{ index: 2, grams: 4.25, meters: expect.any(Number) }]);
 	});
 
 	it('says so when the plate cannot take everything it arranges', async () => {

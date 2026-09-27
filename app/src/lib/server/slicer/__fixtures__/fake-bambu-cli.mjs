@@ -159,7 +159,9 @@ ${objects.map((o, i) => `  <item objectid="${i + 1}" transform="${o.instance.joi
 	if (opts.slice !== undefined) {
 		const layers = Math.max(1, Math.round(top / Number(proc.layer_height ?? '0.2')));
 		const seconds = 600 + layers * 6;
-		const used = filaments.map((_, i) => (i === 0 ? 4.25 : 0));
+		// 4.25 g per object, on the filament --load-filament-ids gives it (1 when not given).
+		const ids = (opts['load-filament-ids'] ?? '').split(',').filter(Boolean).map(Number);
+		const used = filaments.map((_, f) => objects.filter((_, i) => (ids[i] ?? 1) === f + 1).length * 4.25);
 		const gcode = [
 			'; HEADER_BLOCK_START',
 			'; BambuStudio 02.08.02.61',
@@ -184,10 +186,12 @@ ${objects.map((o, i) => `  <item objectid="${i + 1}" transform="${o.instance.joi
     <metadata key="weight" value="${used.reduce((a, g) => a + g, 0)}"/>
     <metadata key="support_used" value="${proc.enable_support === '1'}"/>
 ${filaments
-	.map(
-		(f, i) =>
-			`    <filament id="${i + 1}" type="${[].concat(f.filament_type ?? 'PLA')[0]}" color="${[].concat(f.filament_colour ?? '#FFFFFF')[0]}" used_m="${(used[i] / 3).toFixed(2)}" used_g="${used[i]}"/>`
+	.map((f, i) =>
+		used[i] > 0
+			? `    <filament id="${i + 1}" type="${[].concat(f.filament_type ?? 'PLA')[0]}" color="${[].concat(f.filament_colour ?? '#FFFFFF')[0]}" used_m="${(used[i] / 3).toFixed(2)}" used_g="${used[i]}"/>`
+			: ''
 	)
+	.filter(Boolean)
 	.join('\n')}
   </plate>
 </config>`;
@@ -201,7 +205,10 @@ ${filaments
 			total_predication: seconds,
 			main_predication: seconds - 60,
 			warning_message: '',
-			filaments: filaments.map((f, i) => ({ id: i, filament_id: f.filament_id ?? '', total_used_g: used[i] }))
+			// Only the filaments used, numbered from 1 (BambuStudio.cpp record_exit_reson).
+			filaments: filaments
+				.map((f, i) => ({ id: i + 1, filament_id: f.filament_id ?? '', total_used_g: used[i] }))
+				.filter((f) => f.total_used_g > 0)
 		});
 	}
 	fs.writeFileSync(path.join(out, opts['export-3mf']), zip(entries));

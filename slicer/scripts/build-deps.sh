@@ -77,7 +77,12 @@ if ! command -v m4 >/dev/null; then
 	if [ ! -x "$TOOLS/bin/m4" ]; then
 		say "m4 is missing; building it into ${TOOLS}"
 		mkdir -p "$TOOLS/src"
-		curl -fsSL https://ftp.gnu.org/gnu/m4/m4-1.4.19.tar.xz | tar -xJ -C "$TOOLS/src"
+		# Checked against the GNU release's sha256 before anything in it runs.
+		curl -fsSL https://ftp.gnu.org/gnu/m4/m4-1.4.19.tar.xz -o "$TOOLS/src/m4.tar.xz"
+		local_sum="$( (command -v sha256sum >/dev/null && sha256sum "$TOOLS/src/m4.tar.xz" || shasum -a 256 "$TOOLS/src/m4.tar.xz") | cut -d' ' -f1)"
+		[ "$local_sum" = 63aede5c6d33b6d9b13511cd0be2cac046f2e70fd0a07aa9573a04a82783af96 ] ||
+			die "the m4 download does not match its checksum."
+		tar -xJ -C "$TOOLS/src" -f "$TOOLS/src/m4.tar.xz"
 		(cd "$TOOLS/src/m4-1.4.19" && ./configure --prefix="$TOOLS" >/dev/null && make -j "$JOBS" >/dev/null && make install >/dev/null)
 	fi
 	export PATH="$TOOLS/bin:$PATH"

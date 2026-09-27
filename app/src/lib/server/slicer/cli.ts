@@ -111,7 +111,8 @@ export function cliArgs(r: CliRun): string[] {
 export interface CliResult {
 	ok: boolean;
 	error: string;
-	plates: { id: number; seconds: number; grams: number[]; warning: string }[];
+	/** grams: by 1-based filament number, for the filaments the plate uses. */
+	plates: { id: number; seconds: number; grams: Map<number, number>; warning: string }[];
 }
 
 /** result.json as the CLI writes it (BambuStudio.cpp record_exit_reson). */
@@ -132,7 +133,13 @@ export function parseResult(json: unknown): CliResult {
 		plates: (r.sliced_plates ?? []).map((p, i) => ({
 			id: p.id || i + 1,
 			seconds: Math.round(p.total_predication ?? 0),
-			grams: (p.filaments ?? []).map((f) => Math.round((f.total_used_g ?? 0) * 100) / 100),
+			// Only the filaments used, each with its 1-based number (BambuStudio.cpp: filament_info.id = extruder + 1).
+			grams: new Map(
+				(p.filaments ?? []).map((f, j) => [
+					f.id || j + 1,
+					Math.round((f.total_used_g ?? 0) * 100) / 100
+				])
+			),
 			warning: p.warning_message ?? ''
 		}))
 	};
@@ -623,7 +630,7 @@ export class CliEngine implements SlicerEngine {
 				layers: read?.layers ?? 0,
 				filaments: (read?.filaments ?? []).map((f, i) => ({
 					index: f.id || i + 1,
-					grams: plate?.grams[i] ?? f.grams,
+					grams: plate?.grams.get(f.id || i + 1) ?? f.grams,
 					meters: f.meters
 				})),
 				objects: [],
