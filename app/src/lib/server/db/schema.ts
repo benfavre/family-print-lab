@@ -8,3 +8,4 @@ export * from './tables/slicer-projects';
 export * from './tables/imports';
 export * from './tables/presets';
 export * from './tables/queue';
+export * from './tables/plugs';

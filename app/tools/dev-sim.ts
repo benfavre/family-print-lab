@@ -66,6 +66,9 @@ const children = [
 			String(port),
 			'--ftp-port',
 			String(ftpPort),
+			// Each printer on a fake smart plug (Integrations → Home automation: http://127.0.0.1:8300…).
+			'--plugs',
+			'8300',
 			...simArgs
 		],
 		{ stdio: 'inherit' }

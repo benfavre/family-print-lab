@@ -4,6 +4,7 @@
 import http from 'node:http';
 import readline from 'node:readline';
 import { createFleet, type Fleet } from '../src/lib/server/printer/sim/fleet';
+import { attachPlug, createFakePlug } from '../src/lib/server/printer/sim/features/power';
 import { MODEL_CODES, isModelCode, type ModelCode } from '../src/lib/shared/printers/models';
 
 // ---------- Control page ----------
@@ -158,7 +159,7 @@ function controlServer(fleet: Fleet) {
 			return i >= 0 ? args[i + 1] : fallback;
 		};
 	if (args.includes('--help')) {
-		console.log(`Usage: bun run sim -- [--fleet N6,C12,N1] [--port 1883] [--ftp-port 8990] [--control 8766] [--ssdp 2021] [--serial SIM-X2D-0001] [--code 12345678] [--speed 20] [--auto] [--fail-rate 0.15]
+		console.log(`Usage: bun run sim -- [--fleet N6,C12,N1] [--port 1883] [--ftp-port 8990] [--control 8766] [--ssdp 2021] [--serial SIM-X2D-0001] [--code 12345678] [--speed 20] [--auto] [--fail-rate 0.15] [--plugs 8300]
 Models: ${MODEL_CODES.join(', ')}
 Commands on stdin act on the first printer (or "use N" to pick another): start [name] [minutes] [tray] · pause · resume · finish · fail · stop · alert · speed N · auto on|off · status · use N`);
 		process.exit(0);
@@ -198,6 +199,23 @@ Commands on stdin act on the first printer (or "use N" to pick another): start [
 			console.log(
 				`[sim] ${p.sim.model.name} on 127.0.0.1:${p.port} · serial ${p.sim.serial} · access code ${p.sim.accessCode} · files on :${p.ftpPort} · speed ×${p.sim.sim.speed}`
 			);
+		// --plugs <port>: each printer on a fake smart plug (sim/features/power.ts) at port, port+1…
+		if (args.includes('--plugs')) {
+			const base = Number(opt('plugs', '8300'));
+			for (const [i, p] of fleet.printers.entries()) {
+				const plug = attachPlug(p.sim, { bootMs: 3000 });
+				// A busy port only costs the fake plug, never the simulator.
+				try {
+					await createFakePlug({ plug, port: base + i });
+				} catch (error) {
+					console.log(`[sim] No fake plug on :${base + i}: ${(error as Error).message}`);
+					continue;
+				}
+				console.log(
+					`[sim] ${p.sim.sim.name} is on a fake smart plug at http://127.0.0.1:${base + i} (Tasmota, Shelly, Home Assistant or webhooks /on and /off)`
+				);
+			}
+		}
 		console.log(`[sim] Control page: http://127.0.0.1:${controlPort}  (or type "help")`);
 		let current = 0;
 		const rl = readline.createInterface({ input: process.stdin });

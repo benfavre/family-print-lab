@@ -92,6 +92,13 @@
       "when": 1790400720000,
       "tag": "0010_queue",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1790400780000,
+      "tag": "0019_home_automation",
+      "breakpoints": true
     }
   ]
 }
