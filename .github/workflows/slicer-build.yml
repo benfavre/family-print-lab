@@ -8,8 +8,9 @@ name: Slicer build
 on:
   push:
     # Tags build this workflow through release.yml; do not duplicate its native builds.
-    branches: ['**']
-    paths: ['slicer/**', '!slicer/**/*.md', '.github/workflows/slicer-build.yml']
+    branches: ["**"]
+    paths:
+      ["slicer/**", "!slicer/**/*.md", ".github/workflows/slicer-build.yml"]
   workflow_dispatch:
     inputs:
       platform:
@@ -63,6 +64,19 @@ jobs:
             macOS) brew install cmake m4 autoconf automake libtool texinfo ;;
             Windows) choco install pkgconfiglite --version=0.28 --yes --no-progress ;;
           esac
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: app/.nvmrc
+      - uses: oven-sh/setup-bun@v2
+      - name: App test dependencies
+        run: bun install
+        working-directory: app
+      - name: Windows CLI and engine fixture preflight
+        if: runner.os == 'Windows'
+        working-directory: app
+        run: >-
+          bunx vitest --run src/lib/server/slicer/cli.test.ts
+          src/lib/server/slicer/engine.test.ts src/lib/server/slicer/locate.test.ts
       - name: Dependency target discovery and build option tests
         run: |
           bash slicer/tests/build.test.sh
@@ -102,7 +116,8 @@ jobs:
             # Upstream honours PKG_CONFIG_EXECUTABLE. Select the native Chocolatey executable
             # explicitly so Strawberry's extensionless Perl wrapper cannot shadow it.
             pkg_config="$(bash slicer/scripts/windows-pkg-config.sh "$(command -v pkg-config.exe)")"
-            export PKG_CONFIG_EXECUTABLE="$(cygpath -m "$pkg_config")"
+            PKG_CONFIG_EXECUTABLE="$(cygpath -m "$pkg_config")"
+            export PKG_CONFIG_EXECUTABLE
           fi
           slicer/scripts/upstream.sh build -j 4
       - name: Check completed dependencies
@@ -121,14 +136,8 @@ jobs:
         with:
           path: slicer/.build/deps/usr/local
           key: ${{ steps.key.outputs.key }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: app/.nvmrc
-      - uses: oven-sh/setup-bun@v2
       - name: Engine tests, conformance and golden slices
-        run: |
-          (cd app && bun install)
-          slicer/scripts/upstream.sh test
+        run: slicer/scripts/upstream.sh test
       - uses: actions/upload-artifact@v4
         with:
           name: printlab-slicer-${{ matrix.platform }}
