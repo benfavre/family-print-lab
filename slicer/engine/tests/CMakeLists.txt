@@ -6,6 +6,11 @@ function(printlab_test name)
 endfunction()
 
 printlab_test(test_json printlab_rpc)
+# Compile the older-macOS fallback on every host, even when its standard library has to_chars.
+add_executable(test_json_portable test_json.cpp ../src/rpc/json.cpp)
+target_include_directories(test_json_portable PRIVATE ../src)
+target_compile_definitions(test_json_portable PRIVATE PRINTLAB_JSON_FORCE_PORTABLE)
+add_test(NAME test_json_portable COMMAND test_json_portable)
 printlab_test(test_rpc printlab_rpc printlab_facade)
 printlab_test(test_thumbnails printlab_features)
 printlab_test(test_calib printlab_features)

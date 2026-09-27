@@ -5,12 +5,33 @@
 #include <cstdio>
 #include <cstdlib>
 #include <limits>
+#include <locale>
+#include <sstream>
 
 namespace printlab {
 
 namespace {
 
 const Json NULL_JSON;
+
+// Floating to_chars only arrived in Apple's libc++ with macOS 13.3. Keep older desktop systems
+// working without depending on the process locale or truncating a double to six decimal places.
+// Pick the first precision which reads back exactly; max_digits10 always preserves a finite value.
+[[maybe_unused]] std::string portable_number(double value) {
+	std::string result;
+	for (int precision = 1; precision <= std::numeric_limits<double>::max_digits10; ++precision) {
+		std::ostringstream out;
+		out.imbue(std::locale::classic());
+		out.precision(precision);
+		out << value;
+		result = out.str();
+		std::istringstream in(result);
+		in.imbue(std::locale::classic());
+		double round_trip = 0;
+		if ((in >> round_trip) && round_trip == value) break;
+	}
+	return result;
+}
 
 struct Parser {
 	const std::string &s;
@@ -315,9 +336,16 @@ void Json::dump_to(std::string &out) const {
 			out += buf;
 			break;
 		}
-		// Shortest round-trip form, independent of the locale (libc++ and libstdc++ both have it).
+		// Apple marks this overload explicitly unavailable for deployment targets below 13.3,
+		// so even a runtime __builtin_available guard cannot make it compile for older macOS.
+#if !defined(PRINTLAB_JSON_FORCE_PORTABLE) && \
+    (!defined(__APPLE__) || (defined(__ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__) && \
+                            __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ >= 130300))
 		auto r = std::to_chars(buf, buf + sizeof buf, num_);
 		out.append(buf, r.ptr);
+#else
+		out += portable_number(num_);
+#endif
 		break;
 	}
 	case Type::String: escape(out, str_); break;

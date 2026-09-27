@@ -1,5 +1,8 @@
 #include "check.hpp"
 #include "rpc/json.hpp"
+#include <cmath>
+#include <limits>
+#include <locale>
 
 using printlab::Json;
 
@@ -28,6 +31,27 @@ TEST("writes numbers without a locale or float noise") {
 	CHECK_EQ(Json(0.2).dump(), std::string("0.2"));
 	CHECK_EQ(Json(600).dump(), std::string("600"));
 	CHECK_EQ(Json(-1.25).dump(), std::string("-1.25"));
+}
+
+TEST("round-trips difficult doubles under a decimal-comma C++ locale") {
+	struct Comma : std::numpunct<char> {
+		char do_decimal_point() const override { return ','; }
+	};
+	struct RestoreLocale {
+		std::locale previous = std::locale();
+		~RestoreLocale() { std::locale::global(previous); }
+	} restore;
+	std::locale::global(std::locale(std::locale::classic(), new Comma));
+	for (double value : {0.2, -1.25, std::nextafter(1.0, 2.0), 1e-100, -1e100,
+	                     std::numeric_limits<double>::min(), std::numeric_limits<double>::max(),
+	                     std::numeric_limits<double>::denorm_min()}) {
+		const std::string encoded = Json(value).dump();
+		CHECK(encoded.find(',') == std::string::npos);
+		CHECK_EQ(Json::parse(encoded).as_number(), value);
+	}
+	CHECK_EQ(Json(0.2).dump(), std::string("0.2"));
+	CHECK_EQ(Json(std::numeric_limits<double>::infinity()).dump(), std::string("null"));
+	CHECK_EQ(Json(std::numeric_limits<double>::quiet_NaN()).dump(), std::string("null"));
 }
 
 TEST("refuses what is not exactly one JSON value") {
