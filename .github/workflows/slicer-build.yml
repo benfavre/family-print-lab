@@ -71,7 +71,14 @@ jobs:
         run: |
           if [ -d slicer/.build/deps/usr/local/lib ]; then echo "${{ steps.key.outputs.key }}" > slicer/.build/deps/.stamp; fi
       - name: Build the engine
-        run: slicer/scripts/upstream.sh build -j 4
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            # OpenSSL calls plain perl; Git Bash's trimmed Perl lacks required core modules.
+            # Use the native Strawberry Perl supplied by the windows-2022 runner image.
+            export PATH="/c/Strawberry/perl/bin:$PATH"
+            perl -MIPC::Cmd -MLocale::Maketext::Simple -e 'die "Native Windows Perl is required\n" unless $^O eq "MSWin32";'
+          fi
+          slicer/scripts/upstream.sh build -j 4
       - uses: actions/setup-node@v4
         with:
           node-version-file: app/.nvmrc
