@@ -72,7 +72,7 @@ test('Notifications: add an ntfy channel, test it, and hear about a failed print
 		await expect(bell).toHaveAccessibleName(/unread/, { timeout: 15_000 });
 		await expect.poll(() => received.some((r) => r.title === 'e2e_rocket failed')).toBe(true);
 		await bell.click();
-		const tray = page.getByRole('region', { name: 'Notifications' });
+		const tray = page.getByRole('region', { name: 'Latest notifications' });
 		await expect(tray).toContainText('e2e_rocket failed');
 		await tray.getByRole('button', { name: 'Mark all read' }).click();
 		await expect(tray).toContainText('All read');

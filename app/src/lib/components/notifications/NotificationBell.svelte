@@ -122,7 +122,7 @@
 	</button>
 
 	{#if open}
-		<div class="tray" role="region" aria-label="Notifications">
+		<div class="tray" role="region" aria-label="Latest notifications">
 			<header>
 				<strong>Notifications</strong>
 				<span class="sub">{unread ? `${unread} unread` : 'All read'}</span>
