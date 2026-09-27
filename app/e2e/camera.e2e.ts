@@ -27,6 +27,12 @@ test('the printer page shows the live camera, and the Media page lists timelapse
 	const snap = await page.request.get(`/api/printers/${x2d.id}/camera/snapshot.jpg`);
 	expect(snap.status()).toBe(200);
 	expect(snap.headers()['content-type']).toBe('image/jpeg');
+	const saved = page.waitForEvent('download');
+	await panel.getByRole('button', { name: 'Save a snapshot' }).click();
+	expect((await saved).suggestedFilename()).toMatch(/\.jpg$/);
+
+	// The simulated X2D reports camera recording on (its ipcam_record), as the switch shows.
+	await expect(panel.getByLabel('Record the camera during prints')).toBeChecked();
 
 	// Timelapse switch: sends ipcam_timelapse and follows the printer's report.
 	const timelapse = panel.getByLabel('Record a timelapse of every print');

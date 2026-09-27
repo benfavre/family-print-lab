@@ -11,6 +11,8 @@
 	const { lab, ui } = useApp();
 	const id = $derived(printer.id ?? '');
 	let camera = $state<CameraState | null>(null);
+	/** Why the camera state could not be read (app server gone, camera support not running). */
+	let failure = $state<string | null>(null);
 	let watching = $state(true);
 	let hidden = $state(false);
 	let attempt = $state(0);
@@ -30,8 +32,11 @@
 		const r = await fetch(`/api/printers/${encodeURIComponent(id)}/camera`).catch(() => null);
 		if (!r?.ok) {
 			camera = null;
+			const data = r ? await r.json().catch(() => ({})) : {};
+			failure = data.error ?? 'Could not reach the app server. Is it still running?';
 			return;
 		}
+		failure = null;
 		camera = await r.json();
 	}
 
@@ -159,7 +164,7 @@
 			{/if}
 		</div>
 	{:else}
-		<p class="panel-empty">Checking the camera…</p>
+		<p class="panel-empty">{failure ?? 'Checking the camera…'}</p>
 	{/if}
 	{#if printer.connected && printer.caps?.timelapse && typeof s?.camera.timelapse === 'boolean'}
 		<label class="switch"

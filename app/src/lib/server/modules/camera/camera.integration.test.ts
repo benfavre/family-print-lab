@@ -15,6 +15,8 @@ import {
 	PUT as putSettings
 } from '../../../../routes/api/camera/settings/+server';
 import type { CameraState, MediaListing } from '$lib/shared/camera';
+import { kidAccess } from '$lib/server/kid/session';
+import cameraModule from './module';
 
 let t: TestLab;
 const holder = globalThis as Record<symbol, unknown>;
@@ -217,5 +219,17 @@ describe('camera on the simulated fleet', () => {
 			})
 		);
 		expect(bad.status).toBe(400);
+	});
+
+	it('lets kid mode watch the camera but not browse or download files', () => {
+		const reads = cameraModule.kidReads ?? [];
+		const allow = (path: string, method = 'GET') => kidAccess(method, path, null, reads);
+		expect(allow('/api/printers/p1/camera')).toBe('allow');
+		expect(allow('/api/printers/p1/camera/stream')).toBe('allow');
+		expect(allow('/api/printers/p1/camera/snapshot.jpg')).toBe('allow');
+		expect(allow('/api/printers/p1/files')).toBe('refuse');
+		expect(allow('/api/printers/p1/files/download')).toBe('refuse');
+		expect(allow('/api/camera/settings', 'PUT')).toBe('refuse');
+		expect(allow('/api/printers/p1/camera/stream/x')).toBe('refuse');
 	});
 });
