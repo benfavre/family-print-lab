@@ -63,7 +63,7 @@ export const NOTIFY_EVENTS: NotifyEventDef[] = [
 		name: 'print.cancelled',
 		label: 'Print cancelled',
 		level: 'warning',
-		template: { title: '{{task}} was cancelled', body: '{{printer}} stopped at {{percent}}.' },
+		template: { title: '{{task}} was cancelled', body: '{{printer}} stopped printing {{job}}.' },
 		channelDefault: false
 	},
 	{

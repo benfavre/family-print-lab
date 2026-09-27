@@ -6,7 +6,7 @@ import type { DB } from '../../db';
 import type { LivePublisher } from '../../modules';
 import type { SettingsStore } from '../../module-settings';
 import type { CameraService, NotifyService } from '../contracts';
-import type { DeliveryResult, NotificationItem } from '$lib/shared/notifications';
+import { eventDef, type DeliveryResult, type NotificationItem } from '$lib/shared/notifications';
 import { buildMessage, type Lookups, type Message } from './messages';
 import { toggleName, wants, wantsPicture } from './routing';
 import { NotificationStore } from './store';
@@ -67,6 +67,7 @@ export class Notifier implements NotifyService {
 			this.offline.delete(printerId);
 			return;
 		}
+		if (!eventDef(name)) return;
 		const message = buildMessage({ name, data }, this.o.lookups, this.o.settings.get().templates);
 		if (!message) return;
 		if (name === 'printer.offline') {
