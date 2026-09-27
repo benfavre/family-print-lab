@@ -14,6 +14,7 @@
 	} from '$lib/shared/gcode-preview';
 	import type { PreviewData } from '$lib/shared/slicer/preview';
 	import { weight } from '$lib/client/format';
+	import { useApp } from '$lib/client/app.svelte';
 
 	// A sliced plate's toolpaths: layer range and in-layer scrubber, colour by feature, filament or
 	// speed, legend toggles, time per layer. `liveLayer` (1-based): the layer the printer is on now.
@@ -34,13 +35,18 @@
 		compact?: boolean;
 	} = $props();
 
+	const { lab } = useApp();
 	let host: HTMLDivElement;
 	let viewer = $state<GcodeViewer | null>(null);
 	let failed = $state(false);
 	let data = $state.raw<PreviewData | null>(null);
-	let status = $state<{ kind: 'loading' | 'waiting' | 'error' | 'ready'; message?: string }>({
-		kind: 'loading'
-	});
+	let status = $state<{
+		kind: 'loading' | 'waiting' | 'error' | 'ready';
+		message?: string;
+		taskId?: string;
+	}>({ kind: 'loading' });
+	/** Bumped by "Try again". */
+	let attempt = $state(0);
 	let mode = $state<ColourMode>('feature');
 	let hidden = $state<number[]>([]);
 	let from = $state(0);
@@ -55,6 +61,12 @@
 	const used = $derived(data ? featuresUsed(data) : []);
 	const speeds = $derived(data ? speedRange(data) : [0, 0]);
 	const travel = $derived(data?.header.features.indexOf('Travel') ?? 1);
+	/** Nothing is printed on the plate (only travel, if anything): say so over the empty stage. */
+	const empty = $derived(!!data && used.every((f) => f.code === travel || f.name === 'Wipe'));
+	/** The background task reading a big plate, for its progress. */
+	const task = $derived(
+		status.kind === 'waiting' ? lab.tasks.find((t) => t.id === status.taskId) : undefined
+	);
 	const views: [GcodeView, string][] = [
 		['iso', 'Iso'],
 		['top', 'Top'],
@@ -75,11 +87,12 @@
 
 	// Load (again) whenever the file or plate changes.
 	$effect(() => {
+		void attempt;
 		const abort = new AbortController();
 		status = { kind: 'loading' };
 		data = null;
-		loadPreview({ jobId, plate, file, signal: abort.signal }, () => {
-			status = { kind: 'waiting' };
+		loadPreview({ jobId, plate, file, signal: abort.signal }, (taskId) => {
+			if (!abort.signal.aborted) status = { kind: 'waiting', taskId };
 		}).then(
 			(d) => {
 				if (abort.signal.aborted) return;
@@ -109,7 +122,7 @@
 	// Follow the printer's layer while printing (until someone moves the slider).
 	$effect(() => {
 		if (!data || !liveLayer || liveLayer === followed) return;
-		if (followed !== null && to !== followed - 1) return;
+		if (followed !== null && to !== Math.min(followed - 1, last)) return;
 		followed = liveLayer;
 		showTop(Math.min(liveLayer - 1, last));
 	});
@@ -136,13 +149,18 @@
 			<p class="gp-msg"><span class="spinner"></span>Loading the toolpaths…</p>
 		{:else if status.kind === 'waiting'}
 			<p class="gp-msg">
-				<span class="spinner"></span>Reading the toolpaths of this big plate. You can close this and
-				come back.
+				<span class="spinner"></span>{task?.stage ?? 'Reading the toolpaths…'} This is a big plate: you
+				can close this and come back.
 			</p>
 		{:else if status.kind === 'error'}
-			<p class="gp-msg bad">{status.message}</p>
+			<div class="gp-msg bad">
+				<p>{status.message}</p>
+				<button type="button" class="mini" onclick={() => attempt++}>Try again</button>
+			</div>
+		{:else if empty}
+			<p class="gp-msg quiet">This plate has no printed moves to show.</p>
 		{/if}
-		{#if data}
+		{#if data?.header.segments}
 			<div class="gp-bar top">
 				<div class="seg" role="group" aria-label="Camera view">
 					{#each views as [v, label] (v)}
@@ -154,7 +172,7 @@
 		{/if}
 	</div>
 
-	{#if data && top}
+	{#if data?.header.segments && top}
 		<div class="gp-controls">
 			<label class="gp-slider">
 				<span
@@ -322,7 +340,14 @@
 		font-size: 13px;
 	}
 	.gp-msg.bad {
+		flex-direction: column;
 		color: var(--err-text);
+	}
+	.gp-msg p {
+		margin: 0;
+	}
+	.gp-msg.quiet {
+		pointer-events: none;
 	}
 	.gp-bar {
 		position: absolute;

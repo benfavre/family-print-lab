@@ -196,7 +196,7 @@ export class GcodeViewer {
 
 	/** A 10 mm grid under the toolpaths, a little larger than them. */
 	private buildGrid() {
-		this.grid.clear();
+		this.clearGrid();
 		const b = this.box;
 		const x0 = Math.floor(b.min.x / 10) * 10 - 10,
 			x1 = Math.ceil(b.max.x / 10) * 10 + 10;
@@ -213,6 +213,14 @@ export class GcodeViewer {
 				new THREE.LineBasicMaterial({ color: 0x8090a8, transparent: true, opacity: 0.18 })
 			)
 		);
+	}
+
+	private clearGrid() {
+		for (const child of this.grid.children as THREE.LineSegments[]) {
+			child.geometry.dispose();
+			(child.material as THREE.Material).dispose();
+		}
+		this.grid.clear();
 	}
 
 	private clear() {
@@ -247,7 +255,9 @@ export class GcodeViewer {
 		cancelAnimationFrame(this.frame);
 		this.observer.disconnect();
 		this.clear();
-		this.grid.clear();
+		this.clearGrid();
+		this.nozzle.geometry.dispose();
+		(this.nozzle.material as THREE.Material).dispose();
 		this.controls.dispose();
 		this.lineMaterial.dispose();
 		this.solidMaterial.dispose();

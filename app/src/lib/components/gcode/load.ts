@@ -9,17 +9,17 @@ export async function loadPreview(
 	pollMs = 1500
 ): Promise<PreviewData> {
 	const url = `/api/jobs/${o.jobId}/sliced/preview?plate=${o.plate}&f=${encodeURIComponent(o.file)}`;
+	let task: string | null = null;
 	for (;;) {
 		const res = await fetch(url, { signal: o.signal });
 		if (res.status === 202) {
-			onWaiting(((await res.json()) as PreviewPending).taskId);
-			await new Promise<void>((resolve, reject) => {
-				const timer = setTimeout(resolve, pollMs);
-				o.signal.addEventListener('abort', () => {
-					clearTimeout(timer);
-					reject(new DOMException('Stopped', 'AbortError'));
-				});
-			});
+			const { taskId } = (await res.json()) as PreviewPending;
+			// A new task means the last one was stopped (a failure answers 422): asking again would only
+			// start it over, so leave that to the person.
+			if (task && taskId !== task) throw new Error('Reading the toolpaths was stopped.');
+			task = taskId;
+			onWaiting(taskId);
+			await wait(pollMs, o.signal);
 			continue;
 		}
 		if (!res.ok) {
@@ -28,4 +28,19 @@ export async function loadPreview(
 		}
 		return decodePreview(await res.arrayBuffer());
 	}
+}
+
+function wait(ms: number, signal: AbortSignal) {
+	return new Promise<void>((resolve, reject) => {
+		const stop = () => {
+			clearTimeout(timer);
+			reject(new DOMException('Stopped', 'AbortError'));
+		};
+		const timer = setTimeout(() => {
+			signal.removeEventListener('abort', stop);
+			resolve();
+		}, ms);
+		if (signal.aborted) stop();
+		else signal.addEventListener('abort', stop, { once: true });
+	});
 }
