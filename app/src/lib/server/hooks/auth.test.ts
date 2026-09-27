@@ -1,12 +1,14 @@
 // The auth handle over a test lab with the lan-auth module: who gets through, the login page and
 // form, the setup page, kid PIN logins and the kid-mode interplay, CSRF, and live streams closing.
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
 import type { Cookies, RequestEvent } from '@sveltejs/kit';
 import { startTestLab, type TestLab } from '../testing/harness';
 import { ParentPin } from '../kid/pin';
 import { KID_COOKIE } from '../kid/session';
 import { SESSION_COOKIE } from '../modules/lan-auth/sessions';
 import type { LanAuth } from '../modules/lan-auth/service';
+import { isSecure } from '../modules/lan-auth/http';
 import { auth } from './auth';
 import { crossSiteGuard, kidGuard } from './index';
 import { GET as loginGet, POST as loginPost } from '../../../routes/login/+server';
@@ -164,14 +166,17 @@ describe('the login page and form', () => {
 		};
 	};
 
-	it('shows the form (no scripts, strict CSP), then logs in and goes back where it was', async () => {
+	it('shows the form (one hashed script, strict CSP), then logs in and goes back where it was', async () => {
 		await setPassword();
 		const page = event('http://printlab.local/login?next=/jobs', { ip: '192.168.1.20' });
 		page.ev.locals.auth = { local: false, session: null, ip: '192.168.1.20', userAgent: '' };
 		const res = await loginGet(page.ev);
 		const html = await res.text();
 		expect(html).toMatch(/name="secret"/);
-		expect(html).not.toMatch(/<script/);
+		expect(html.match(/<script/g)).toHaveLength(1);
+		const script = html.match(/<script>([\s\S]*)<\/script>/)![1];
+		const hash = createHash('sha256').update(script).digest('base64');
+		expect(res.headers.get('content-security-policy')).toContain(`script-src 'sha256-${hash}'`);
 		expect(res.headers.get('content-security-policy')).toMatch(/default-src 'none'/);
 
 		const wrong = event('http://printlab.local/login', form({ secret: 'nope', next: '/jobs' }));
@@ -334,5 +339,21 @@ describe('CSRF and logging out', () => {
 		expect((await reader.read()).done).toBe(true);
 		expect(cancelled).toBe(true);
 		expect(service.sessions.find(token)).toBeNull();
+	});
+});
+
+describe('the Secure cookie flag', () => {
+	const ev = (url: string, origin?: string) => ({
+		url: new URL(url),
+		request: new Request(url, { headers: origin ? { origin } : {} })
+	});
+	it('follows the scheme the browser used, not adapter-node’s https guess', () => {
+		expect(isSecure(ev('https://printlab.local/login', 'http://printlab.local'), {})).toBe(false);
+		expect(isSecure(ev('https://printlab.local/login', 'https://printlab.local'), {})).toBe(true);
+		expect(isSecure(ev('https://printlab.local/'), {})).toBe(false);
+		expect(isSecure(ev('https://printlab.local/'), { ORIGIN: 'https://printlab.local' })).toBe(
+			true
+		);
+		expect(isSecure(ev('http://localhost/'), { PROTOCOL_HEADER: 'x-forwarded-proto' })).toBe(false);
 	});
 });

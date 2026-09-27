@@ -42,4 +42,17 @@ export function authContext(event: Pick<RequestEvent, 'locals'>): AuthContext {
 	return event.locals.auth ?? { local: false, session: null, ip: '', userAgent: '' };
 }
 
-export const isSecure = (event: Pick<RequestEvent, 'url'>) => event.url.protocol === 'https:';
+/**
+ * Whether the browser reached the app over HTTPS, for the cookies' Secure flag. adapter-node assumes
+ * https unless ORIGIN or PROTOCOL_HEADER says otherwise, and a Secure cookie on plain http to a LAN
+ * name is dropped by the browser, so trust the scheme of the Origin the browser sent when there is
+ * one, else the URL only when the server was told its protocol.
+ */
+export function isSecure(
+	event: Pick<RequestEvent, 'url' | 'request'>,
+	env: Record<string, string | undefined> = process.env
+): boolean {
+	const origin = event.request.headers.get('origin');
+	if (origin && origin !== 'null') return origin.startsWith('https:');
+	return event.url.protocol === 'https:' && !!(env.ORIGIN || env.PROTOCOL_HEADER);
+}

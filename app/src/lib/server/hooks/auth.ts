@@ -10,7 +10,7 @@ import { KID_COOKIE, setKidCookie } from '../kid/session';
 import { authDecision, isLocalRequest } from '../modules/lan-auth/decide';
 import { PAGE_CSP, setupPage } from '../modules/lan-auth/page';
 import { SESSION_COOKIE } from '../modules/lan-auth/sessions';
-import { setSessionCookie } from '../modules/lan-auth/http';
+import { isSecure, setSessionCookie } from '../modules/lan-auth/http';
 import type { AuthContext } from '../modules/lan-auth/service';
 
 declare global {
@@ -50,7 +50,7 @@ export const auth: Handle = async ({ event, resolve }) => {
 	const ip = clientAddress(event);
 	const local = isLocalRequest(ip, event.url.hostname);
 	const found = service?.sessions.find(event.cookies.get(SESSION_COOKIE), { ip }) ?? null;
-	const secure = event.url.protocol === 'https:';
+	const secure = isSecure(event);
 	if (found?.touched) setSessionCookie(event.cookies, event.cookies.get(SESSION_COOKIE)!, secure);
 	event.locals.auth = {
 		local,

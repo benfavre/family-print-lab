@@ -1,6 +1,9 @@
-// The login and "set a password first" pages. They are plain server-rendered HTML with a normal form
-// POST (no script): the app's root layout loads the whole workspace for every page, so these must not
-// go through it before someone has logged in.
+// The login and "set a password first" pages, plain server-rendered HTML: the app's root layout loads
+// the whole workspace for every page, so these must not go through it before someone has logged in.
+// The form sends JSON to /api/auth/login from one small inline script (allowed by its hash). A plain
+// form post is the fallback, but SvelteKit refuses form posts whose Origin differs from the URL it
+// works out, and adapter-node assumes https unless ORIGIN is set, so it only works with ORIGIN.
+import { createHash } from 'node:crypto';
 import type { AuthMode } from '$lib/shared/lan-auth';
 
 const esc = (s: string) =>
@@ -35,9 +38,30 @@ li{margin-bottom:6px}
 .brand{margin:0 0 18px;font-size:13px;font-weight:600;letter-spacing:.02em;color:var(--muted)}
 `;
 
-/** No scripts at all; styles inline; the form posts to this app only. */
-export const PAGE_CSP =
-	"default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
+const SCRIPT = `document.querySelector('form').addEventListener('submit', async (e) => {
+	e.preventDefault();
+	const form = e.currentTarget, error = form.querySelector('.error'), button = form.querySelector('button');
+	button.disabled = true;
+	try {
+		const res = await fetch('/api/auth/login', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ secret: form.secret.value, next: form.next.value })
+		});
+		const data = await res.json().catch(() => ({}));
+		if (res.ok) return location.assign(data.next || '/');
+		error.textContent = data.error || 'Could not log in. Try again.';
+	} catch {
+		error.textContent = 'Could not reach Print Lab. Is the computer on?';
+	}
+	error.hidden = false;
+	form.secret.select();
+	button.disabled = false;
+});`;
+const SCRIPT_HASH = createHash('sha256').update(SCRIPT).digest('base64');
+
+/** Only this page's own script; styles inline; requests and the form go to this app only. */
+export const PAGE_CSP = `default-src 'none'; script-src 'sha256-${SCRIPT_HASH}'; connect-src 'self'; style-src 'unsafe-inline'; font-src 'self'; img-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`;
 
 function shell(title: string, body: string) {
 	return `<!doctype html>
@@ -46,7 +70,7 @@ function shell(title: string, body: string) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<!-- With the app-wide no-referrer policy a form post sends "Origin: null", which the same-host check refuses. -->
+<!-- With the app-wide no-referrer policy a form post sends "Origin: null", which crossSiteGuard refuses. -->
 <meta name="referrer" content="same-origin">
 <title>${esc(title)} · Family Print Lab</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -69,9 +93,10 @@ export function loginPage(o: { mode: AuthMode; next: string; error?: string }): 
 <input type="hidden" name="next" value="${esc(safeNext(o.next))}">
 <label>${pins ? 'Password or PIN' : 'Password'}
 <input type="password" name="secret" autocomplete="current-password" required autofocus maxlength="200"></label>
-${o.error ? `<p class="error" role="alert">${esc(o.error)}</p>` : ''}
+<p class="error" role="alert"${o.error ? '' : ' hidden'}>${esc(o.error ?? '')}</p>
 <button>Log in</button>
-</form>`
+</form>
+<script>${SCRIPT}</script>`
 	);
 }
 
