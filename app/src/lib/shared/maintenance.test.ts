@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dueInfo, dueLabel, intervalLabel, nozzleTypeLabel } from './maintenance';
+import { accessoryRefusal, dueInfo, dueLabel, intervalLabel, nozzleTypeLabel } from './maintenance';
 
 const day = 86_400_000;
 const created = '2026-01-01T00:00:00.000Z';
@@ -77,5 +77,19 @@ describe('nozzle types', () => {
 		expect(nozzleTypeLabel('N/A')).toBe('Unknown');
 		expect(nozzleTypeLabel(null)).toBe('Unknown');
 		expect(nozzleTypeLabel('ZZ99')).toBe('ZZ99');
+	});
+});
+
+describe('which printers take system.set_accessories', () => {
+	const one = { nozzles: 1, short: 'P1S' };
+	it('single-nozzle printers that name the nozzle in the old report fields', () => {
+		expect(accessoryRefusal(one, 'stainless_steel')).toBeNull();
+		expect(accessoryRefusal(one, 'hardened_steel')).toBeNull();
+		// Nothing reported yet: the command itself checks again when the report arrives.
+		expect(accessoryRefusal(one, null)).toBeNull();
+	});
+	it('not printers that report device.nozzle.info type codes, nor dual-nozzle ones', () => {
+		expect(accessoryRefusal({ nozzles: 1, short: 'P2S' }, 'HS01')).toMatch(/P2S reads its nozzles/);
+		expect(accessoryRefusal({ nozzles: 2, short: 'H2D' }, 'stainless_steel')).toMatch(/H2D/);
 	});
 });

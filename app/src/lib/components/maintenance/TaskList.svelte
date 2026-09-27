@@ -21,6 +21,7 @@
 	let draft = $state<Draft>(blank());
 	let adding = $state(false);
 	let fresh = $state<Draft>(blank());
+	let saving = $state(false);
 
 	const num = (v: number | null | undefined) =>
 		typeof v === 'number' && Number.isFinite(v) ? v : null;
@@ -42,13 +43,25 @@
 	}
 	async function save(e: SubmitEvent, t: MaintenanceTaskView) {
 		e.preventDefault();
-		if (await data.write('PATCH', `/tasks/${t.id}`, body(draft), 'Task saved.')) editing = null;
+		if (saving) return;
+		saving = true;
+		try {
+			if (await data.write('PATCH', `/tasks/${t.id}`, body(draft), 'Task saved.')) editing = null;
+		} finally {
+			saving = false;
+		}
 	}
 	async function add(e: SubmitEvent) {
 		e.preventDefault();
-		if (await data.write('POST', '/tasks', body(fresh), 'Task added.')) {
-			fresh = blank();
-			adding = false;
+		if (saving) return;
+		saving = true;
+		try {
+			if (await data.write('POST', '/tasks', body(fresh), 'Task added.')) {
+				fresh = blank();
+				adding = false;
+			}
+		} finally {
+			saving = false;
 		}
 	}
 	async function remove(t: MaintenanceTaskView) {
@@ -103,7 +116,7 @@
 		<form class="task-form" onsubmit={add}>
 			{@render fields(fresh)}
 			<p class="hint">Leave both empty for a task you do when needed.</p>
-			<button class="mini primary-mini" type="submit">Add task</button>
+			<button class="mini primary-mini" type="submit" disabled={saving}>Add task</button>
 		</form>
 	{/if}
 	{#if !tasks.length}
@@ -116,7 +129,7 @@
 						<form class="task-form" onsubmit={(e) => save(e, t)}>
 							{@render fields(draft)}
 							<div class="row">
-								<button class="mini primary-mini" type="submit">Save</button>
+								<button class="mini primary-mini" type="submit" disabled={saving}>Save</button>
 								<button class="mini" type="button" onclick={() => (editing = null)}>Cancel</button>
 							</div>
 						</form>
@@ -145,7 +158,11 @@
 						</div>
 						{#if t.notes}<p class="notes">{t.notes}</p>{/if}
 						<div class="row">
-							<button class="mini primary-mini" onclick={() => data.done(t.id)}>✓ Done</button>
+							<button
+								class="mini primary-mini"
+								onclick={() => data.done(t.id)}
+								disabled={data.pending.includes(t.id)}>✓ Done</button
+							>
 							<button class="mini" onclick={() => edit(t)}>Edit</button>
 							<button class="mini danger-mini" onclick={() => remove(t)}>Remove</button>
 						</div>

@@ -1,7 +1,9 @@
 <script lang="ts">
 	import {
+		ACCESSORY_DIAMETERS,
 		ACCESSORY_NOZZLE_TYPES,
 		NOZZLE_DIAMETERS,
+		isAccessoryNozzleType,
 		nozzleTypeLabel,
 		type AccessoryNozzleType
 	} from '$lib/shared/maintenance';
@@ -15,36 +17,44 @@
 	const rack = $derived(data.overview?.rack ?? null);
 	const canSet = $derived(!!data.overview?.canSetNozzle);
 	const busy = $derived(!!printer.printing);
+	const online = $derived(!!printer.connected);
 
 	let open = $state(false);
 	let diameter = $state<number>(0.4);
 	let type = $state<AccessoryNozzleType | ''>('');
 	let note = $state('');
 	let send = $state(true);
+	let saving = $state(false);
+	// The printer is told only type and size pairs Bambu Studio offered (ACCESSORY_DIAMETERS).
+	const pairOk = $derived(!!type && ACCESSORY_DIAMETERS[type].includes(diameter));
+	const canSend = $derived(canSet && online && !busy && pairOk);
+	const sending = $derived(canSend && send);
 
 	function start() {
 		const first = nozzles[0];
 		diameter = (NOZZLE_DIAMETERS as readonly number[]).includes(first?.diameter ?? 0)
 			? first!.diameter!
 			: 0.4;
-		type = (ACCESSORY_NOZZLE_TYPES as readonly string[]).includes(first?.type ?? '')
-			? (first!.type as AccessoryNozzleType)
-			: '';
+		type = isAccessoryNozzleType(first?.type) ? first.type : '';
 		note = '';
-		send = canSet && !busy;
+		send = true;
 		open = true;
 	}
 	async function save(e: SubmitEvent) {
 		e.preventDefault();
-		const ok = await data.write(
-			'POST',
-			'/nozzle',
-			{ diameter, type: type || null, note, send: canSet && send && !!type },
-			canSet && send && type
-				? 'Nozzle change logged and sent to the printer.'
-				: 'Nozzle change logged.'
-		);
-		if (ok) open = false;
+		if (saving) return;
+		saving = true;
+		try {
+			const ok = await data.write(
+				'POST',
+				'/nozzle',
+				{ diameter, type: type || null, note, send: sending },
+				sending ? 'Nozzle change logged and sent to the printer.' : 'Nozzle change logged.'
+			);
+			if (ok) open = false;
+		} finally {
+			saving = false;
+		}
 	}
 	const side = (id: number) => (nozzles.length > 1 ? (id === 0 ? 'Right' : 'Left') : 'Nozzle');
 </script>
@@ -104,12 +114,28 @@
 			<label class="field">Note<input bind:value={note} maxlength="500" /></label>
 			{#if canSet}
 				<label class="toggle"
-					><input type="checkbox" bind:checked={send} disabled={busy || !type} /> Tell the printer too</label
+					><input
+						type="checkbox"
+						checked={sending}
+						disabled={!canSend}
+						onchange={(e) => (send = e.currentTarget.checked)}
+					/> Tell the printer too</label
 				>
-				{#if busy}<p class="hint">You can tell the printer once the print is over.</p>{/if}
+				{#if !online}
+					<p class="hint">The printer is offline, so this only goes in the log.</p>
+				{:else if busy}
+					<p class="hint">You can tell the printer once the print is over.</p>
+				{:else if !type}
+					<p class="hint">Choose the type to tell the printer.</p>
+				{:else if !pairOk}
+					<p class="hint">
+						{nozzleTypeLabel(type)} nozzles come in {ACCESSORY_DIAMETERS[type].join(', ')} mm, so this
+						only goes in the log.
+					</p>
+				{/if}
 			{/if}
 			<div class="row">
-				<button class="mini primary-mini" type="submit">Log the change</button>
+				<button class="mini primary-mini" type="submit" disabled={saving}>Log the change</button>
 				<button class="mini" type="button" onclick={() => (open = false)}>Cancel</button>
 			</div>
 		</form>

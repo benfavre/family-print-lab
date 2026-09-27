@@ -6,7 +6,11 @@ import type { MaintenanceOverview } from '$lib/shared/maintenance';
 export class MaintenanceData {
 	overview = $state<MaintenanceOverview | null>(null);
 	error = $state('');
+	/** Tasks with a Done on its way (so a second tap does not log it twice). */
+	pending = $state<string[]>([]);
 	private loading: Promise<void> | null = null;
+	/** A change arrived during a load: load once more after it. */
+	private stale = false;
 
 	constructor(
 		private lab: LabStore,
@@ -18,7 +22,11 @@ export class MaintenanceData {
 	}
 
 	load(): Promise<void> {
-		return (this.loading ??= (async () => {
+		if (this.loading) {
+			this.stale = true;
+			return this.loading;
+		}
+		return (this.loading = (async () => {
 			const id = this.printerId();
 			try {
 				const res = await fetch(this.base);
@@ -34,6 +42,10 @@ export class MaintenanceData {
 				this.error = 'Could not reach the app server. Is it still running?';
 			} finally {
 				this.loading = null;
+				if (this.stale) {
+					this.stale = false;
+					void this.load();
+				}
 			}
 		})());
 	}
@@ -58,7 +70,13 @@ export class MaintenanceData {
 		return res;
 	}
 
-	done(taskId: string, note = '') {
-		return this.write('POST', `/tasks/${taskId}/done`, { note }, 'Marked as done.');
+	async done(taskId: string, note = '') {
+		if (this.pending.includes(taskId)) return null;
+		this.pending = [...this.pending, taskId];
+		try {
+			return await this.write('POST', `/tasks/${taskId}/done`, { note }, 'Marked as done.');
+		} finally {
+			this.pending = this.pending.filter((id) => id !== taskId);
+		}
 	}
 }

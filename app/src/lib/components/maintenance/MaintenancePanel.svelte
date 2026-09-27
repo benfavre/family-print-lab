@@ -33,14 +33,20 @@
 	{:else if !o}
 		<p class="panel-empty">Loading…</p>
 	{:else if !shown.length}
-		<p class="panel-empty">Nothing due. {o.tasks.length} tasks tracked.</p>
+		<p class="panel-empty">
+			Nothing due. {o.tasks.length}
+			{o.tasks.length === 1 ? 'task' : 'tasks'} tracked.
+		</p>
 	{:else}
 		<ul class="due-list">
 			{#each shown as t (t.id)}
 				<li class:overdue={t.due.state === 'due'}>
 					<span><b>{t.label}</b><small>{dueLabel(t.due)}</small></span>
-					<button class="mini" onclick={() => data.done(t.id)} aria-label="Mark {t.label} done"
-						>✓ Done</button
+					<button
+						class="mini"
+						onclick={() => data.done(t.id)}
+						disabled={data.pending.includes(t.id)}
+						aria-label="Mark {t.label} done">✓ Done</button
 					>
 				</li>
 			{/each}

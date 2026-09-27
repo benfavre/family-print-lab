@@ -203,3 +203,30 @@ export const ACCESSORY_NOZZLE_TYPES = ['stainless_steel', 'hardened_steel'] as c
 export type AccessoryNozzleType = (typeof ACCESSORY_NOZZLE_TYPES)[number];
 /** Bambu nozzle sizes (Bambu Studio DeviceCore/DevDefs.h NozzleDiameterType: 0.2, 0.4, 0.6, 0.8 mm). */
 export const NOZZLE_DIAMETERS = [0.2, 0.4, 0.6, 0.8] as const;
+/**
+ * The sizes Bambu Studio offered per type when it sent system.set_accessories (v02.00.00.95
+ * PrintOptionsDialog.cpp PrinterPartsDialog: nozzle_stainless_diameter_map, nozzle_hard_diameter_map).
+ */
+export const ACCESSORY_DIAMETERS: Record<AccessoryNozzleType, readonly number[]> = {
+	stainless_steel: [0.2, 0.4],
+	hardened_steel: [0.4, 0.6, 0.8]
+};
+
+/**
+ * Why a printer does not take system.set_accessories, or null when it does. Bambu Studio v01.10 to
+ * v02.00 (DeviceManager.cpp MachineObject::command_set_printer_nozzle, called from PrinterPartsDialog)
+ * sent it only to single-nozzle printers on the old report format, which name the nozzle
+ * 'stainless_steel' / 'hardened_steel'. Printers that report device.nozzle.info (a type code like
+ * 'HS01') got print.set_nozzle instead (command_set_printer_nozzle2), and v02.08 sends neither.
+ */
+export function accessoryRefusal(
+	model: { nozzles: number; short: string },
+	nozzleType: string | null | undefined
+): string | null {
+	if (model.nozzles !== 1 || (nozzleType && !isAccessoryNozzleType(nozzleType)))
+		return `The ${model.short} reads its nozzles itself.`;
+	return null;
+}
+
+export const isAccessoryNozzleType = (t: unknown): t is AccessoryNozzleType =>
+	(ACCESSORY_NOZZLE_TYPES as readonly unknown[]).includes(t);

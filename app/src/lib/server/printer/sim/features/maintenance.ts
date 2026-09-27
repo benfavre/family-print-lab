@@ -1,7 +1,8 @@
 // Maintenance on the simulated printer: system.set_accessories updates the nozzle it reports (the
-// fields OpenBambuAPI mqtt.md documents: nozzle_diameter, nozzle_type), and control-page buttons
-// offer or withdraw a firmware update (upgrade_state.new_version_state 1 with an "ota" entry in
-// new_ver_list, as Bambu Studio DeviceCore/DevUpgrade.cpp reads it) and wear the nozzle.
+// fields OpenBambuAPI mqtt.md documents: nozzle_diameter, nozzle_type) on old-format single-nozzle
+// printers, and control-page buttons offer or withdraw a firmware update
+// (upgrade_state.new_version_state 1 with an "ota" entry in new_ver_list, as Bambu Studio
+// DeviceCore/DevUpgrade.cpp reads it) and wear the nozzle (printers that report device.nozzle.info).
 import type { Json, SimFeature, SimPrinter } from '../core';
 
 const DIAMETERS = [0.2, 0.4, 0.6, 0.8];
@@ -17,17 +18,15 @@ export const maintenance: SimFeature = {
 		if (topic !== 'system' || msg.command !== 'set_accessories') return undefined;
 		if (msg.accessory_type !== 'nozzle')
 			return { result: 'failed', reason: 'unsupported accessory' };
-		if (sim.model.nozzles !== 1) return { result: 'failed', reason: 'not supported' };
+		// Only the printers Bambu Studio sent it to: one nozzle, reported in the old string fields
+		// (printers with device.nozzle.info took print.set_nozzle; see accessoryRefusal).
+		if (sim.model.nozzles !== 1 || extruderNozzles(sim).length)
+			return { result: 'failed', reason: 'not supported' };
 		const diameter = Number(msg.nozzle_diameter);
 		if (!DIAMETERS.includes(diameter) || !TYPES.includes(msg.nozzle_type))
 			return { result: 'failed', reason: 'invalid nozzle' };
-		// Older printers report the string fields; newer ones device.nozzle.info[0] (with a type code).
 		sim.state.nozzle_diameter = String(diameter);
 		sim.state.nozzle_type = msg.nozzle_type;
-		for (const n of extruderNozzles(sim)) {
-			n.diameter = diameter;
-			n.type = msg.nozzle_type;
-		}
 		sim.log(`nozzle set to ${diameter} mm ${msg.nozzle_type.replace('_', ' ')}`);
 		return { result: 'success' };
 	},

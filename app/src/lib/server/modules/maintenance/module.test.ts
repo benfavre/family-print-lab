@@ -161,6 +161,28 @@ describe('the maintenance module', () => {
 		await until(() => t.rt.printers.get(info.id)?.snapshot?.upgrade.available === false);
 	});
 
+	it('only logs nozzle changes on single-nozzle printers that report device.nozzle.info', async () => {
+		const t = await lab({ fleet: ['N7'] });
+		const { info, sim } = t.printer('N7');
+		await until(() => !!t.rt.printers.get(info.id)?.snapshot?.nozzles[0]?.type);
+		const overview = (await call(overviewRoute, { id: info.id })).body as MaintenanceOverview;
+		expect(overview.canSetNozzle).toBe(false);
+		const refused = await call(nozzleRoute, { id: info.id }, 'POST', {
+			diameter: 0.4,
+			type: 'hardened_steel',
+			send: true
+		});
+		expect(refused).toMatchObject({ status: 409 });
+		const logged = await call(nozzleRoute, { id: info.id }, 'POST', {
+			diameter: 0.4,
+			type: 'hardened_steel'
+		});
+		expect(logged.status).toBe(200);
+		expect((logged.body.overview as MaintenanceOverview).log[0].kind).toBe('nozzle');
+		// Nothing reached the simulated printer.
+		expect(sim.state.device.nozzle.info[0].type).toBe('HS01');
+	});
+
 	it('shows the H2C hotend rack', async () => {
 		const t = await lab({ fleet: ['O1C2'] });
 		const { info } = t.printer('O1C2');

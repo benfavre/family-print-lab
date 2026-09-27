@@ -5,7 +5,11 @@ import { commandDef } from '$lib/server/printer/commands/registry';
 import { defineModule } from '$lib/server/modules';
 import { AppError, parse } from '$lib/server/validation';
 import { PRINTER_MODELS } from '$lib/shared/printers/models';
-import type { MaintenanceLogEntry, MaintenanceOverview } from '$lib/shared/maintenance';
+import {
+	accessoryRefusal,
+	type MaintenanceLogEntry,
+	type MaintenanceOverview
+} from '$lib/shared/maintenance';
 import { RELEASE_NOTES } from './defaults';
 import { parseRack } from './rack';
 import { MaintenanceStore } from './store';
@@ -148,19 +152,19 @@ export default defineModule({
 							? parseRack(printer.rawReport().pushall)
 							: null,
 					releaseNotes: RELEASE_NOTES[model.code] ?? null,
-					canSetNozzle: model.nozzles === 1 && !!commandDef('system.set_accessories')
+					canSetNozzle:
+						!!commandDef('system.set_accessories') &&
+						accessoryRefusal(model, printer.snapshot?.nozzles[0]?.type) === null
 				};
 			},
 			async changeNozzle(printerId, input) {
 				const data = parse(nozzleChangeInput, input);
 				if (data.send) {
 					if (!data.type) throw new AppError(400, 'Choose the nozzle type to tell the printer.');
-					await ctx.printers
-						.require(printerId)
-						.send('system.set_accessories', {
-							nozzleDiameter: data.diameter,
-							nozzleType: data.type
-						});
+					await ctx.printers.require(printerId).send('system.set_accessories', {
+						nozzleDiameter: data.diameter,
+						nozzleType: data.type
+					});
 				}
 				const entry = store.logNozzleChange(printerId, data);
 				changed(printerId);
