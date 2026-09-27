@@ -1,16 +1,18 @@
 // Facet painting in the workspace: which triangles a brush, a smart fill or an edge-bounded fill
-// reaches, and the part's sparse PaintData updated with whole-triangle states (the codec is
-// shared/slicer/paint.ts, a port of upstream's TriangleSelector serialisation). Bambu Studio can also
-// split triangles under a small brush; here a touched triangle is painted whole, and triangles that
-// were split elsewhere keep their strings until painted over.
+// reaches, and the part's sparse native facet trees. A small brush subdivides annotation facets;
+// the original mesh, triangle ids and unrelated painting kinds stay unchanged.
 import {
 	decodePaint,
+	encodePaint,
 	paintStates,
 	paintTriangle,
 	PAINT_NONE,
-	type PaintState
+	type PaintState,
+	type PaintNode
 } from '$lib/shared/slicer/paint';
 import type { Part, PaintData } from '$lib/shared/slicer/project';
+import { distanceSquared, facetAt, sphereTest, splitFacet, type Facet } from './paint-geometry';
+import type { Vec3 } from './matrix';
 
 export type PaintKind = keyof PaintData;
 /** Brush (a sphere), fill (the connected area painted alike) and smart fill (fill that stops at edges). */
@@ -76,7 +78,7 @@ function normal(positions: Float32Array, t: number): [number, number, number] {
 	return [n[0] / len, n[1] / len, n[2] / len];
 }
 
-/** Triangles whose middle lies within `radius` of a point (the mesh's own coordinates), plus the hit one. */
+/** Triangles touching the brush sphere (the mesh's own coordinates), plus the hit one. */
 export function brushTriangles(
 	positions: Float32Array,
 	hit: number,
@@ -84,14 +86,83 @@ export function brushTriangles(
 	radius: number
 ): number[] {
 	const out = new Set<number>([hit]);
-	const r2 = radius * radius;
+	const touches = sphereTest(point, radius);
 	for (let t = 0; t < positions.length / 9; t++) {
-		const cx = (positions[t * 9] + positions[t * 9 + 3] + positions[t * 9 + 6]) / 3 - point[0];
-		const cy = (positions[t * 9 + 1] + positions[t * 9 + 4] + positions[t * 9 + 7]) / 3 - point[1];
-		const cz = (positions[t * 9 + 2] + positions[t * 9 + 5] + positions[t * 9 + 8]) / 3 - point[2];
-		if (cx * cx + cy * cy + cz * cz <= r2) out.add(t);
+		if (touches(facetAt(positions, t))) out.add(t);
 	}
 	return [...out];
+}
+
+/**
+ * Sphere painting follows TriangleSelector::select_triangle_recursive/split_triangle:
+ * fully covered facets become one leaf; boundary facets split on sides above min(radius/5, 0.2).
+ * Source and native child order are documented in paint-geometry.ts. Small boundary leaves keep
+ * their previous state, as upstream does; this keeps painting inside the brush sphere.
+ */
+export function paintSphere(
+	part: Pick<Part, 'paint'>,
+	kind: PaintKind,
+	positions: Float32Array,
+	point: Vec3,
+	radius: number,
+	state: PaintState
+): PaintData | undefined {
+	if (!Number.isFinite(radius) || radius <= 0 || !point.every(Number.isFinite)) return part.paint;
+	const touches = sphereTest(point, radius);
+	const limit = Math.min(radius / 5, 0.2) ** 2;
+	const r2 = radius * radius;
+	const update = (facet: Facet, node: PaintNode, depth: number): PaintNode => {
+		if (!touches(facet)) return node;
+		if (facet.every((v) => distanceSquared(v, point) <= r2)) return { state };
+		if (!('split' in node) && node.state === state) return node;
+		if (depth >= 32) return node;
+		let divided = node;
+		if (!('split' in divided)) {
+			// Side i is opposite vertex i; with two splits, special names the uncut side.
+			const sides = [
+				distanceSquared(facet[1], facet[2]),
+				distanceSquared(facet[2], facet[0]),
+				distanceSquared(facet[0], facet[1])
+			];
+			const cut = sides.flatMap((length, i) => (length > limit ? [i] : []));
+			if (!cut.length) return node;
+			const split = cut.length as 1 | 2 | 3;
+			const special = (
+				split === 3 ? 0 : split === 2 ? sides.findIndex((length) => length <= limit) : cut[0]
+			) as 0 | 1 | 2;
+			const previous = divided.state;
+			divided = {
+				split,
+				special,
+				children: Array.from({ length: split + 1 }, () => ({ state: previous }))
+			};
+		}
+		const facets = splitFacet(facet, divided.split, divided.special);
+		const children = divided.children.map((child, i) => update(facets[i], child, depth + 1));
+		const first = children[0];
+		if (
+			!('split' in first) &&
+			children.every((child) => !('split' in child) && child.state === first.state)
+		)
+			return first;
+		return { ...divided, children };
+	};
+	const current = { ...(part.paint?.[kind] ?? {}) };
+	for (let t = 0; t < positions.length / 9; t++) {
+		const facet = facetAt(positions, t);
+		if (!touches(facet)) continue;
+		try {
+			const node = update(facet, current[t] ? decodePaint(current[t]) : { state: 0 }, 0);
+			if (!('split' in node) && node.state === 0) delete current[t];
+			else current[t] = encodePaint(node);
+		} catch {
+			/* Preserve annotations this codec cannot safely edit. */
+		}
+	}
+	const paint: PaintData = { ...part.paint };
+	if (Object.keys(current).length) paint[kind] = current;
+	else delete paint[kind];
+	return Object.keys(paint).length ? paint : undefined;
 }
 
 /**

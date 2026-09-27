@@ -371,7 +371,8 @@ describe('painting', () => {
 
 	it('brushes triangles near a point and fills faces up to their edges', () => {
 		const n = adjacency(soup);
-		expect(brushTriangles(soup, top[0], [0, 0, 5], 0.5)).toEqual([top[0]]);
+		// The centre lies on the top face's diagonal, so both large triangles touch a small brush.
+		expect(brushTriangles(soup, top[0], [0, 0, 5], 0.5).sort()).toEqual([...top].sort());
 		expect(brushTriangles(soup, top[0], [0, 0, 5], 20)).toHaveLength(12);
 		// Smart fill stops at the cube's edges: only the top face's two triangles.
 		expect(fillTriangles(soup, n, top[0], 30).sort()).toEqual([...top].sort());
