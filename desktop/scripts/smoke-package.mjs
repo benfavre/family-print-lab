@@ -115,8 +115,8 @@ try {
 	assert.equal(actualVersion, version);
 	const actualData = await app.evaluate(({ app }) => app.getPath('userData'));
 	assert.equal(
-		path.resolve(actualData),
-		path.join(temp, 'data'),
+		fs.realpathSync(actualData),
+		fs.realpathSync(path.join(temp, 'data')),
 		'Installer smoke data must be isolated'
 	);
 	assert.match(page.url(), /^http:\/\/127\.0\.0\.1:\d+\//);
