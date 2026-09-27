@@ -2,7 +2,8 @@
 	import { onDestroy } from 'svelte';
 	import { useApp } from '$lib/client/app.svelte';
 	import type { WorkspaceState } from '$lib/client/slicer/workspace.svelte';
-	import { findObject, instanceBox } from '$lib/client/slicer/edit';
+	import { findObject } from '$lib/client/slicer/edit';
+	import { layerColour, objectLayerView } from '$lib/client/slicer/layer-view';
 	import {
 		adaptiveProfile,
 		adjustProfile,
@@ -11,7 +12,6 @@
 		objectTriangles,
 		profileProblem,
 		roundProfile,
-		slicingParams,
 		smoothProfile,
 		type LayerEdit
 	} from '$lib/client/slicer/layers';
@@ -34,14 +34,18 @@
 	let band = $state(2);
 	let quality = $state(0.5);
 
-	const height = $derived.by(() => {
+	const view = $derived.by(() => {
 		void ws.meshVersion;
-		const inst = obj.instances[0];
-		if (!inst) return 0;
-		const b = instanceBox(ws.project, obj, inst.transform, ws.meshSource);
-		return Math.round((b[5] - b[2]) * 1e5) / 1e5;
+		return objectLayerView(
+			ws.project,
+			obj,
+			ws.defaults,
+			ws.meshSource,
+			ws.selection.items[0]?.instanceId
+		);
 	});
-	const params = $derived(slicingParams({ ...ws.defaults, ...obj.config }, height));
+	const params = $derived(view.params);
+	const height = $derived(params.objectHeight);
 	const stored = $derived(obj.layerHeightProfile);
 	const problem = $derived(stored?.length ? profileProblem(stored, params) : null);
 	const profile = $derived(effectiveProfile(stored, obj.heightRanges, params));
@@ -114,7 +118,7 @@
 	onDestroy(up);
 
 	function adaptive() {
-		const triangles = objectTriangles(obj, ws.meshSource);
+		const triangles = objectTriangles(obj, ws.meshSource, view.instanceId);
 		if (!triangles) return ui.toast('The model is still loading. Try again in a moment.', 'error');
 		save(adaptiveProfile(params, triangles, quality), 'Adaptive layer heights');
 	}
@@ -135,6 +139,9 @@
 		['smooth', 'Smooth', 'Even out changes where you press']
 	];
 	const mm = (v: number) => `${Math.round(v * 1000) / 1000} mm`;
+	const legend = $derived(
+		`linear-gradient(90deg, ${[params.minLayerHeight, (params.minLayerHeight + params.maxLayerHeight) / 2, params.maxLayerHeight].map((h) => `rgb(${layerColour(h, params).join(' ')})`).join(', ')})`
+	);
 </script>
 
 <div class="lh">
@@ -178,6 +185,27 @@
 		{layers} layers{#if layers !== uniformLayers}
 			(even layers: {uniformLayers}){/if}. Press on the curve at a height to change it there.
 	</p>
+	<label class="overlay-switch">
+		<input type="checkbox" bind:checked={ws.layerHeightOverlay} disabled={!!ws.paint} />
+		Show layer colours
+	</label>
+	{#if ws.layerHeightOverlay && !ws.paint}
+		<div
+			class="legend"
+			role="img"
+			aria-label="Layer height colours: {mm(params.minLayerHeight)} to {mm(params.maxLayerHeight)}"
+		>
+			<div class="colour-scale" style:background={legend}></div>
+			<div class="axis">
+				<span>{mm(params.minLayerHeight)} · finer</span><span
+					>{mm(params.maxLayerHeight)} · faster</span
+				>
+			</div>
+		</div>
+	{/if}
+	{#if view.nozzles.length > 1}<p class="hint">
+			Limits include nozzles {view.nozzles.join(' and ')}.
+		</p>{/if}
 	<div class="seg" role="radiogroup" aria-label="Brush">
 		{#each MODES as [m, label, title] (m)}
 			<button
@@ -281,5 +309,19 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 6px;
+	}
+	.overlay-switch {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 12.5px;
+	}
+	.legend {
+		display: grid;
+		gap: 4px;
+	}
+	.colour-scale {
+		height: 8px;
+		border-radius: 4px;
 	}
 </style>

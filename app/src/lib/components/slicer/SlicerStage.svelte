@@ -4,6 +4,7 @@
 	import type { WorkspaceState } from '$lib/client/slicer/workspace.svelte';
 	import { clickPick, pickPart } from '$lib/client/slicer/selection';
 	import { PAINT_BLOCKER, PAINT_ENFORCER } from '$lib/shared/slicer/paint';
+	import { objectLayerView } from '$lib/client/slicer/layer-view';
 
 	// The 3D view of the workspace: every plate, the objects, the gizmo, picking and painting.
 	let { ws, scene = $bindable(null) }: { ws: WorkspaceState; scene?: SlicerScene | null } =
@@ -83,6 +84,16 @@
 					? { 1: '#d9a13d' }
 					: { [PAINT_ENFORCER]: '#3d8bff', [PAINT_BLOCKER]: '#ff4d6a' };
 		scene.setPaint({ kind: p.kind, colours, objectId: obj });
+	});
+	$effect(() => {
+		void ws.meshVersion;
+		if (!scene) return;
+		const pick = ws.selection.items.length === 1 ? ws.selection.items[0] : null;
+		const obj = pick && ws.project.objects.find((o) => o.id === pick.objectId);
+		if (!ws.layerHeightOverlay || ws.paint || ws.selection.partId || !obj || !pick)
+			return scene.setLayerView(null);
+		const view = objectLayerView(ws.project, obj, ws.defaults, ws.meshSource, pick.instanceId);
+		scene.setLayerView(view.params.objectHeight > 0 ? view : null);
 	});
 
 	export function focus(plate: number) {

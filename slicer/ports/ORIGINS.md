@@ -71,3 +71,7 @@ listed here: it is read through `app/tools/lib/upstream.ts` and regenerated on e
 | `slicer/engine/src/features/project/read.cpp`                          | BambuStudio | `src/libslic3r/Format/bbs_3mf.cpp`                       | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
 | `slicer/engine/src/features/project/write.cpp`                         | BambuStudio | `src/libslic3r/Format/bbs_3mf.cpp`                       | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
 | `slicer/engine/src/facade/upstream/project_io.cpp`                     | BambuStudio | `src/libslic3r/Format/bbs_3mf.cpp`                       | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
+| `app/src/lib/client/slicer/layers.ts`                                  | BambuStudio | `src/libslic3r/Slicing.cpp`                              | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
+| `app/src/lib/client/slicer/layers.ts`                                  | BambuStudio | `src/libslic3r/SlicingAdaptive.cpp`                      | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
+| `app/src/lib/client/slicer/layers.ts`                                  | BambuStudio | `src/libslic3r/PrintObject.cpp`                          | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
+| `app/src/lib/client/slicer/layer-view.ts`                              | BambuStudio | `src/libslic3r/PrintObject.cpp`                          | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |

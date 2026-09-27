@@ -84,6 +84,7 @@ export class WorkspaceState {
 	snapping = $state(true);
 	layFace = $state(false);
 	paint = $state<PaintSettings | null>(null);
+	layerHeightOverlay = $state(false);
 	tab = $state<'prepare' | 'preview'>('prepare');
 	/** Loaded mesh triangles by mesh id; `meshVersion` goes up when one arrives. */
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- large buffers; meshVersion signals changes
