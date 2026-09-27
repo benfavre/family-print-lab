@@ -65,19 +65,19 @@ not apply or we have not checked.
 
 ## What Bambu does not have
 
-| Feature                                          | Family Print Lab | Notes                                                                                   |
-| ------------------------------------------------ | ---------------- | --------------------------------------------------------------------------------------- |
-| A profile for each maker, projects, checklists   | Done             | Ideas, sketches, slicer settings and the result of each print, per person.              |
-| Kid mode with print requests                     | Done             | Kids make things from safe templates and ask; a grown-up approves here or on the phone. |
-| Parametric workbench with AI design              | Done             | OpenSCAD in WebAssembly, live sliders, version history; AI with your own subscription.  |
-| Local-first, LAN-only                            | Done             | Listens on `127.0.0.1` by default. Printers are reached on the LAN only.                |
-| Encrypted cloud backups                          | Done             | Family plan; sealed on the computer with a recovery key only the family has.            |
-| Verified connection to each printer              | Done             | Bambu CAs bundled; otherwise the certificate is pinned on first use.                    |
-| Optional login for LAN access                    | Planned          | lan-auth                                                                                |
-| Family differentiators (rewards, safe catalogue) | Planned          | kids                                                                                    |
-| Statistics, maintenance tracker                  | Planned          | analytics, maintenance                                                                  |
-| Smart plugs, Home Assistant, MQTT out            | Planned          | home-automation, off until you turn it on                                               |
-| First-run wizard                                 | Planned          | onboarding                                                                              |
+| Feature                                          | Family Print Lab | Notes                                                                                                                                                      |
+| ------------------------------------------------ | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A profile for each maker, projects, checklists   | Done             | Ideas, sketches, slicer settings and the result of each print, per person.                                                                                 |
+| Kid mode with print requests                     | Done             | Kids make things from safe templates and ask; a grown-up approves here or on the phone.                                                                    |
+| Parametric workbench with AI design              | Done             | OpenSCAD in WebAssembly, live sliders, version history; AI with your own subscription.                                                                     |
+| Local-first, LAN-only                            | Done             | Listens on `127.0.0.1` by default. Printers are reached on the LAN only.                                                                                   |
+| Encrypted cloud backups                          | Done             | Family plan; sealed on the computer with a recovery key only the family has.                                                                               |
+| Verified connection to each printer              | Done             | Bambu CAs bundled; otherwise the certificate is pinned on first use.                                                                                       |
+| Optional login for LAN access                    | Planned          | lan-auth                                                                                                                                                   |
+| Family differentiators (rewards, safe catalogue) | Planned          | kids                                                                                                                                                       |
+| Statistics, maintenance tracker                  | Partial          | Stats: success rate, filament and cost, printer hours, failure reasons and a CSV, by date, printer and person. Maintenance tracker: planned (maintenance). |
+| Smart plugs, Home Assistant, MQTT out            | Planned          | home-automation, off until you turn it on                                                                                                                  |
+| First-run wizard                                 | Planned          | onboarding                                                                                                                                                 |
 
 ## Not planned
 
