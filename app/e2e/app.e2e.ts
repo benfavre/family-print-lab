@@ -270,7 +270,9 @@ test('the command palette navigates and the backup exports', async ({ page }) =>
 	await page.getByRole('menuitemradio', { name: 'Nebula theme' }).click();
 	await expect(page.locator('html')).toHaveAttribute('data-theme', 'nebula');
 	await page.keyboard.press('Escape');
-	await page.locator('main').click({ position: { x: 5, y: 5 } });
+	// Main is keyboard-focusable; its top-left corner can sit behind the sticky top bar.
+	await page.getByRole('main').focus();
+	await expect(page.getByRole('main')).toBeFocused();
 	await page.keyboard.press('g');
 	await page.keyboard.press('j');
 	await expect(page).toHaveURL(/\/jobs$/);
