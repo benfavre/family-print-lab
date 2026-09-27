@@ -25,10 +25,12 @@
 	const modelOfPrinter = $derived(printer?.model ?? null);
 
 	// Lists for the printer preset in use (and the printer model, for the printer preset list).
+	let asked = 0;
 	$effect(() => {
 		const name = project.presets.printer.name;
 		const model = modelOfPrinter;
 		if (!profiles) return;
+		const ask = ++asked;
 		void (async () => {
 			const [p, pr, f] = await Promise.all([
 				getJson<PresetSummary[]>(`/api/slicer/profiles?${query({ kind: 'printer', model })}`),
@@ -44,7 +46,10 @@
 					: Promise.resolve({ data: [], error: null })
 			]);
 			// A printer whose model has no presets here: offer every printer preset.
-			printers = p.data?.length || !model ? (p.data ?? []) : await allPrinters();
+			const all = p.data?.length || !model ? (p.data ?? []) : await allPrinters();
+			// Answers for a printer chosen before the last one are dropped.
+			if (ask !== asked) return;
+			printers = all;
 			processes = pr.data ?? [];
 			filaments = f.data ?? [];
 			problem = p.error ?? pr.error ?? f.error ?? '';

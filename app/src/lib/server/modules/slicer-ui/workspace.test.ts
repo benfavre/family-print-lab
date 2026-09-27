@@ -185,6 +185,8 @@ describe('the slicer workspace against the Bambu Studio command line', () => {
 		);
 		const task = workspace.slice(summary.id, { plate: 2, revision: saved.revision });
 		expect(() => workspace.slice(summary.id, { plate: 2 })).toThrow(/slicing already/);
+		// A reloaded page finds the running slice again.
+		expect(workspace.results(summary.id).slicing).toEqual([{ plate: 2, taskId: task.id }]);
 		const done = await until(() =>
 			t.rt.tasks.list().find((x) => x.id === task.id && x.status !== 'running')
 		);
@@ -193,8 +195,9 @@ describe('the slicer workspace against the Bambu Studio command line', () => {
 		expect(progress.length).toBeGreaterThan(0);
 		expect(progress.every((p) => p.slicerProjectId === summary.id && p.plate === 2)).toBe(true);
 
-		const { results, revision } = workspace.results(summary.id);
+		const { results, revision, slicing } = workspace.results(summary.id);
 		expect(revision).toBe(saved.revision);
+		expect(slicing).toEqual([]);
 		expect(results).toHaveLength(1);
 		const result = results[0];
 		expect(result).toMatchObject({

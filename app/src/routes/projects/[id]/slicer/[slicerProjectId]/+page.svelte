@@ -65,15 +65,21 @@
 		if (ws?.doc.dirty) e.preventDefault();
 	}
 
-	// New presets: new placeholders.
+	// New presets (chosen, or brought back by undo): new placeholders and the printer preset's bed.
 	let presetKey = '';
+	let printerKey = '';
 	$effect(() => {
 		if (!ws) return;
 		const key = JSON.stringify(ws.project.presets);
 		if (key === presetKey) return;
 		const first = !presetKey;
+		const printer = JSON.stringify(ws.project.presets.printer);
+		const printerChanged = printer !== printerKey;
 		presetKey = key;
-		if (!first) void ws.refreshDefaults();
+		printerKey = printer;
+		if (first) return;
+		void ws.refreshDefaults();
+		if (printerChanged) void ws.refreshBed();
 	});
 
 	function choosePlate(index: number) {
@@ -309,6 +315,9 @@
 				</div>
 				{#if ws.tab === 'preview'}
 					<div class="preview-box">
+						{#if result?.stale}<p class="stale-note" role="status">
+								The project changed since this plate was sliced.
+							</p>{/if}
 						{#if result?.result.preview}
 							{#key `${result.result.plate}:${result.result.at}`}
 								<GcodePreview
@@ -495,6 +504,11 @@
 	}
 	.stage-box.hidden {
 		display: none;
+	}
+	.stale-note {
+		margin: 0 0 6px;
+		font-size: 12px;
+		color: var(--err-text);
 	}
 	.preview-box {
 		height: 100%;

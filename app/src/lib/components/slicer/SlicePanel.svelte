@@ -67,6 +67,9 @@
 		</div>
 	{:else}
 		{#each outside as m (m)}<p class="hint warn">{m}</p>{/each}
+		{#if !canSlice}<p class="hint">
+				This slicer cannot slice and export plates. Update it under Integrations.
+			</p>{/if}
 		<button
 			class="primary"
 			disabled={!canSlice || empty || ws.doc.saving}

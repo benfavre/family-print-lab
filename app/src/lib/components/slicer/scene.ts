@@ -435,44 +435,37 @@ export class SlicerScene {
 		this.render();
 	}
 
-	/** A 512×512 PNG (base64) of a plate from above at an angle, for the printer's plate picture. */
+	/**
+	 * A 512×512 PNG (base64) of a plate from above at an angle, for the printer's plate picture. Drawn at
+	 * that size whatever the stage's size, so it works while the stage is hidden (the Preview tab).
+	 */
 	snapshot(index: number): string | null {
 		const pos = this.camera.position.clone(),
 			target = this.controls.target.clone();
+		const ratio = this.renderer.getPixelRatio();
 		const helper = this.gizmo.getHelper();
 		const hadHelper = helper.visible;
 		helper.visible = false;
 		this.beds.visible = false;
 		try {
+			this.renderer.setPixelRatio(1);
+			this.renderer.setSize(512, 512, false);
+			this.camera.aspect = 1;
+			this.camera.updateProjectionMatrix();
 			this.focusPlate(index);
 			this.renderer.render(this.scene, this.camera);
-			const src = this.renderer.domElement;
-			const side = Math.min(src.width, src.height);
-			const out = document.createElement('canvas');
-			out.width = out.height = 512;
-			out
-				.getContext('2d')!
-				.drawImage(
-					src,
-					(src.width - side) / 2,
-					(src.height - side) / 2,
-					side,
-					side,
-					0,
-					0,
-					512,
-					512
-				);
-			return out.toDataURL('image/png').split(',')[1] ?? null;
+			// Read in the same task as the render: the drawing buffer is not kept after that.
+			return this.renderer.domElement.toDataURL('image/png').split(',')[1] ?? null;
 		} catch {
 			return null;
 		} finally {
 			this.beds.visible = true;
 			helper.visible = hadHelper;
+			this.renderer.setPixelRatio(ratio);
 			this.camera.position.copy(pos);
 			this.controls.target.copy(target);
 			this.controls.update();
-			this.render();
+			this.resize();
 		}
 	}
 

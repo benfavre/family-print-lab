@@ -71,7 +71,9 @@ export class SlicerDoc {
 	/** Saves now if there is anything to save; resolves true when the server has the project. */
 	async save(): Promise<boolean> {
 		clearTimeout(this.timer);
-		if (this.pending) await this.pending;
+		// Two callers waiting on the same save must not both send the next one: the second would carry
+		// the revision the first replaces and be refused as a conflict.
+		while (this.pending) await this.pending;
 		if (!this.dirty) return !this.problem;
 		const project = this.project;
 		this.pending = (async () => {

@@ -47,6 +47,8 @@ export interface PlateResult {
 export interface ResultsView {
 	revision: number;
 	results: PlateResult[];
+	/** Plates slicing now (the page picks the progress up again after a reload). */
+	slicing: { plate: number; taskId: string }[];
 }
 
 /** POST /api/slicer-ui/[id]/arrange. */

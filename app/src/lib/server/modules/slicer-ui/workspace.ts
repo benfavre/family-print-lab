@@ -183,7 +183,10 @@ export class Workspace {
 				// A half-written result is as good as none.
 			}
 		}
-		return { revision, results: results.sort((a, b) => a.plate - b.plate) };
+		const slicing = [...this.slicing]
+			.filter(([key]) => key.startsWith(`${id}:`))
+			.map(([key, taskId]) => ({ plate: Number(key.slice(id.length + 1)), taskId }));
+		return { revision, results: results.sort((a, b) => a.plate - b.plate), slicing };
 	}
 
 	/** A plate's result if it still matches the saved project. */
@@ -506,11 +509,6 @@ export class Workspace {
 			// No preview is not a failed slice: the plate can still be sent.
 			return false;
 		}
-	}
-
-	/** The plate's task while it slices. */
-	slicingTask(id: string, plate: number): string | null {
-		return this.slicing.get(`${id}:${plate}`) ?? null;
 	}
 
 	/**

@@ -485,9 +485,9 @@ describe('results', () => {
 		at: ''
 	};
 	it('marks results of an older save as stale and breaks them down', () => {
-		expect(plateResult({ revision: 3, results: [result] }, 1, 3)?.stale).toBe(false);
-		expect(plateResult({ revision: 4, results: [result] }, 1, 4)?.stale).toBe(true);
-		expect(plateResult({ revision: 3, results: [result] }, 2, 3)).toBeNull();
+		expect(plateResult({ revision: 3, results: [result], slicing: [] }, 1, 3)?.stale).toBe(false);
+		expect(plateResult({ revision: 4, results: [result], slicing: [] }, 1, 4)?.stale).toBe(true);
+		expect(plateResult({ revision: 3, results: [result], slicing: [] }, 2, 3)).toBeNull();
 		expect(totalGrams(result)).toBe(4.3);
 		expect(objectRows(project, result)).toEqual([
 			{ objectId: 'o1', name: 'Cube', seconds: 600, grams: 2, share: 0.5 }

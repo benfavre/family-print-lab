@@ -129,6 +129,9 @@ export class WorkspaceState {
 		this.results = results;
 		await this.refreshBed();
 		void this.loadMeshes();
+		// A plate still slicing from before a reload: show its progress and Stop button again.
+		const running = results?.slicing[0];
+		if (running) void this.follow(running.taskId, running.plate);
 	}
 
 	async refreshBed() {
@@ -508,10 +511,16 @@ export class WorkspaceState {
 			this.progress = null;
 			return;
 		}
-		this.sliceTask = r.task.id;
-		this.ui.watching.add(r.task.id);
-		const done = await this.lab.waitForTask(r.task.id);
-		if (this.sliceTask === r.task.id) {
+		await this.follow(r.task.id, plate);
+	}
+
+	/** Shows a slice task's progress until it ends, then its result. */
+	private async follow(taskId: string, plate: number) {
+		this.sliceTask = taskId;
+		this.progress ??= { percent: 0, message: `Slicing plate ${plate}…` };
+		this.ui.watching.add(taskId);
+		const done = await this.lab.waitForTask(taskId);
+		if (this.sliceTask === taskId) {
 			this.sliceTask = null;
 			this.progress = null;
 		}
