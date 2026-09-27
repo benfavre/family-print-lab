@@ -19,6 +19,8 @@ export type PreviewAnswer = { bytes: Buffer } | { taskId: string };
 export class PreviewStore {
 	/** Previews being made, by cache path. */
 	private making = new Map<string, { done: Promise<Buffer>; taskId: string | null }>();
+	/** Plates that could not be read, by cache path: asking again gives the same answer, not a new try. */
+	private failed = new Map<string, string>();
 	/** One worker at a time: this machine may be small, and a queue keeps memory predictable. */
 	private queue: Promise<unknown> = Promise.resolve();
 
@@ -41,6 +43,8 @@ export class PreviewStore {
 		const cache = this.cachePath(sliced.file, plate);
 		const cached = await fs.promises.readFile(cache).catch(() => null);
 		if (cached) return { bytes: cached };
+		const failure = this.failed.get(cache);
+		if (failure) throw new AppError(422, failure);
 		const running = this.making.get(cache);
 		if (running) return running.taskId ? { taskId: running.taskId } : { bytes: await running.done };
 
@@ -71,6 +75,8 @@ export class PreviewStore {
 							ctx.stage(`Reading the toolpaths… ${pct} %`);
 						}
 					}
+				}).catch((error: Error) => {
+					throw error.message === 'Stopped' ? error : new AppError(422, error.message);
 				});
 				return this.store(source, cache, result);
 			});
@@ -109,7 +115,11 @@ export class PreviewStore {
 	private track(cache: string, done: Promise<Buffer>, taskId: string | null) {
 		this.making.set(cache, { done, taskId });
 		const clear = () => this.making.delete(cache);
-		done.then(clear, clear);
+		done.then(clear, (error: Error) => {
+			clear();
+			// A stopped task may run again; a file that cannot be read stays that way.
+			if (error?.message !== 'Stopped') this.failed.set(cache, error?.message || 'Unreadable.');
+		});
 	}
 
 	private enqueue<T>(fn: () => Promise<T>): Promise<T> {

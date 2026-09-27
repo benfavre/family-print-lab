@@ -5,7 +5,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { RequestEvent } from '@sveltejs/kit';
 import { startTestLab, type TestLab } from '../testing/harness';
-import { readZip, writeZip } from '../cad/mesh';
+import { readZip, writeZip, zipEntries } from '../cad/mesh';
 import { createGcodeParser, packPreview } from './parse';
 import { previewInWorker } from './worker';
 import { GET } from '../../../routes/api/jobs/[id]/sliced/preview/+server';
@@ -139,6 +139,19 @@ describe('GET /api/jobs/[id]/sliced/preview', () => {
 		const res = await get(job.id, '?plate=4');
 		expect(res.status).toBe(404);
 		expect(await res.json()).toEqual({ error: 'That plate is not in the file.' });
+	});
+
+	it('answers 422 for G-code that cannot be read, and does not try again on every request', async () => {
+		const file = fs.readFileSync(FIXTURE);
+		const entry = zipEntries(file).find((e) => e.name === 'Metadata/plate_1.gcode')!;
+		// Blank the second half of the deflated G-code; the head the attach step reads stays good.
+		const start = entry.raw.byteOffset - file.byteOffset;
+		file.fill(0, start + entry.raw.length / 2, start + entry.raw.length);
+		const job = newJob(file);
+		const res = await get(job.id);
+		expect(res.status).toBe(422);
+		expect((await res.json()).error).toMatch(/damaged/);
+		expect((await get(job.id)).status).toBe(422);
 	});
 
 	it(
