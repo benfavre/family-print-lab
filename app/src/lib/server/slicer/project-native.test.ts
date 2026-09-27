@@ -20,11 +20,12 @@ function portable(project: Project): Project {
 
 describe.runIf(!!BIN)('native project files', () => {
 	for (const name of fixtures) {
-		it(`round-trips ${name} in both directions`, { timeout: 180_000 }, async ({ skip }) => {
+		it(`round-trips ${name} in both directions`, { timeout: 180_000 }, async () => {
 			const work = fs.mkdtempSync(path.join(os.tmpdir(), 'fpl-project-'));
 			const engine = await StdioEngine.open({ command: BIN!, workDir: work });
 			try {
-				if (!engine.has('project.open') || !engine.has('project.save')) skip();
+				expect(engine.has('project.open')).toBe(true);
+				expect(engine.has('project.save')).toBe(true);
 				const input = path.join(dir, name);
 				const reference = read3mf(fs.readFileSync(input));
 				const opened = await engine.call('project.open', { path: input });
