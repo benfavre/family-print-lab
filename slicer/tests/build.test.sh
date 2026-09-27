@@ -26,6 +26,60 @@ fi
 grep -q 'No working native pkg-config.exe' "$TEMP/pkg-config.log" || fail 'missing pkg-config diagnostic'
 pass 'native pkg-config selection skips wrappers and broken executables, preserving spaced paths'
 
+# Directory-scoped Windows definitions do not propagate through a linked upstream target. Exercise
+# that exact parent/child layout without downloading upstream or needing a Windows compiler. The
+# simulated platform checks target properties, so MSVC-only flags are never sent to the host compiler.
+mkdir -p "$TEMP/facade/upstream"
+cat >"$TEMP/facade/upstream/CMakeLists.txt" <<'CMAKE'
+add_definitions(-D_USE_MATH_DEFINES -DBOOST_ALL_NO_LIB -DBOOST_USE_WINAPI_VERSION=0x602 -DBOOST_SYSTEM_USE_UTF8 -DUNICODE)
+add_library(upstream INTERFACE)
+CMAKE
+cat >"$TEMP/facade/CMakeLists.txt" <<'CMAKE'
+cmake_minimum_required(VERSION 3.13)
+project(FacadePlatform LANGUAGES CXX)
+add_subdirectory(upstream)
+file(WRITE "${CMAKE_BINARY_DIR}/facade.cpp" "int facade() { return 0; }\n")
+add_library(facade STATIC "${CMAKE_BINARY_DIR}/facade.cpp")
+target_link_libraries(facade PUBLIC upstream)
+set(WIN32 "${SIMULATE_WINDOWS}")
+set(MSVC "${SIMULATE_MSVC}")
+include("${HELPER}")
+printlab_upstream_facade_platform(facade "${CMAKE_CURRENT_SOURCE_DIR}/upstream")
+get_target_property(definitions facade COMPILE_DEFINITIONS)
+get_target_property(options facade COMPILE_OPTIONS)
+if(SIMULATE_WINDOWS)
+    foreach(required _USE_MATH_DEFINES BOOST_ALL_NO_LIB BOOST_USE_WINAPI_VERSION=0x602 BOOST_SYSTEM_USE_UTF8 UNICODE)
+        if(NOT required IN_LIST definitions)
+            message(FATAL_ERROR "Missing upstream facade definition: ${required}")
+        endif()
+    endforeach()
+elseif(definitions)
+    message(FATAL_ERROR "Windows definitions leaked to another platform")
+endif()
+if(SIMULATE_WINDOWS AND SIMULATE_MSVC)
+    if(NOT "/bigobj" IN_LIST options OR NOT "$<$<CXX_COMPILER_ID:MSVC>:/utf-8>" IN_LIST options)
+        message(FATAL_ERROR "Missing MSVC facade options")
+    endif()
+elseif(options)
+    message(FATAL_ERROR "MSVC options leaked to another compiler/platform")
+endif()
+get_target_property(public_definitions facade INTERFACE_COMPILE_DEFINITIONS)
+get_target_property(public_options facade INTERFACE_COMPILE_OPTIONS)
+get_directory_property(parent_definitions COMPILE_DEFINITIONS)
+if(public_definitions OR public_options OR parent_definitions)
+    message(FATAL_ERROR "Upstream settings leaked outside the facade")
+endif()
+CMAKE
+for platform in windows-msvc windows-other unix; do
+	win=OFF; msvc=OFF
+	case "$platform" in windows-msvc) win=ON; msvc=ON ;; windows-other) win=ON ;; esac
+	cmake -S "$TEMP/facade" -B "$TEMP/facade-$platform" \
+		-DHELPER="$SLICER/engine/cmake/UpstreamFacade.cmake" \
+		-DSIMULATE_WINDOWS="$win" -DSIMULATE_MSVC="$msvc" >"$TEMP/facade-$platform.log" 2>&1 ||
+		{ cat "$TEMP/facade-$platform.log"; fail "$platform facade platform settings"; }
+done
+pass 'facade inherits Windows header settings privately and scopes MSVC options to its compiler'
+
 # Reproduce the real layout: a dependency build under the app repository beside a nested upstream
 # repository, with an unpacked archive that has no .git directory of its own.
 git init --quiet "$TEMP"

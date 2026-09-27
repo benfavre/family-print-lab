@@ -113,6 +113,8 @@ if (PRINTLAB_WITH_UPSTREAM)
     # reach this directory: the facade takes the same list from there.
     get_directory_property(_upstream_includes DIRECTORY "${PRINTLAB_UPSTREAM_DIR}" INCLUDE_DIRECTORIES)
     target_include_directories(printlab_facade PRIVATE ${_upstream_includes})
+    include(cmake/UpstreamFacade.cmake)
+    printlab_upstream_facade_platform(printlab_facade "${PRINTLAB_UPSTREAM_DIR}")
     # Our own resources (calibration models ported from OrcaSlicer) sit beside the source when the
     # engine runs from its build directory; a bundle has them under resources/printlab/.
     target_compile_definitions(printlab_facade PRIVATE PRINTLAB_UPSTREAM_RESOURCES="${PRINTLAB_UPSTREAM_DIR}/resources"
