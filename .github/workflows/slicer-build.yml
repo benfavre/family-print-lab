@@ -67,6 +67,8 @@ jobs:
         run: bash slicer/tests/build.test.sh
       - name: Bambu Studio at the pin, with our patch queue
         run: slicer/scripts/upstream.sh fetch
+      - name: Headless Windows runtime copy regression
+        run: python slicer/tests/windows-dll-copy.test.py
       - name: Dependency cache key
         id: key
         run: echo "key=$(slicer/scripts/build-deps.sh --print-key)" >> "$GITHUB_OUTPUT"
