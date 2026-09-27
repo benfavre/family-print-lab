@@ -2,7 +2,7 @@
 // estimates, badges and photo sniffing.
 import { describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import fs from 'node:fs';
+import { findFfmpeg } from '$lib/server/ffmpeg';
 import { estimateGrams, NO_LIMITS } from '$lib/shared/kids';
 import { startOfLocalDay, weekKey, windowStart } from './windows';
 import { blockedNow, checkLimits, usageOf } from './limits';
@@ -10,6 +10,7 @@ import { earnedBadges, type PrintedThing } from './badges';
 import { decodePhoto, fitSnapshot, MAX_PHOTO_BYTES, sniffPhoto } from './images';
 
 const at = (iso: string) => new Date(iso);
+const ffmpeg = findFfmpeg();
 const start = (iso: string, period: 'day' | 'week' | 'month', tz: string) =>
 	windowStart(at(iso), period, tz).toISOString();
 
@@ -202,12 +203,12 @@ describe('photos', () => {
 		await expect(fitSnapshot(webp)).rejects.toThrow(/JPEG/);
 	});
 
-	it.skipIf(!fs.existsSync('/usr/bin/ffmpeg'))(
+	it.skipIf(!ffmpeg)(
 		'scales large snapshots down with ffmpeg',
 		async () => {
 			// A noisy 2560×1440 frame at best quality is well over 400 KB.
 			const big = spawnSync(
-				'/usr/bin/ffmpeg',
+				ffmpeg!,
 				[
 					...['-hide_banner', '-loglevel', 'error', '-f', 'lavfi'],
 					...['-i', 'nullsrc=s=2560x1440,geq=random(1)*255:128:128', '-frames:v', '1'],
@@ -216,7 +217,7 @@ describe('photos', () => {
 				{ maxBuffer: 50e6 }
 			).stdout;
 			expect(big.length).toBeGreaterThan(MAX_PHOTO_BYTES);
-			const small = await fitSnapshot(big);
+			const small = await fitSnapshot(big, { bin: ffmpeg! });
 			expect(sniffPhoto(small)).toBe('image/jpeg');
 			expect(small.length).toBeLessThanOrEqual(MAX_PHOTO_BYTES);
 		},
