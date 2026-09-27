@@ -213,7 +213,8 @@ describe('diagnostics', () => {
 			gcode_file: '/sdcard/Mia’s rocket v2.gcode.3mf'
 		});
 		sim.report(true);
-		await until(() => printer.snapshot?.camera.rtspUrl);
+		// The simulated camera reports a URL of its own first: wait for this one.
+		await until(() => printer.snapshot?.camera.rtspUrl?.includes('192.168.1.5'));
 		const raw = printer.rawReport();
 		const text = JSON.stringify(raw);
 		expect(raw.model).toBe('N6');

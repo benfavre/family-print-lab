@@ -2,6 +2,7 @@
 	import { resolve } from '$app/paths';
 	import { duration, printerStateLabel, temp } from '$lib/client/format';
 	import { ACTIVE_PRINTER_STATES, type PrinterStatus } from '$lib/shared/domain';
+	import CameraThumb from '$lib/components/camera/CameraThumb.svelte';
 
 	// One printer at a glance on /printers: state, progress, temperatures and what is loaded.
 	let { printer }: { printer: PrinterStatus } = $props();
@@ -38,6 +39,7 @@
 			><i></i>{label}</span
 		>
 	</header>
+	<CameraThumb {printer} />
 	<div class="body">
 		<svg
 			class="ring"
