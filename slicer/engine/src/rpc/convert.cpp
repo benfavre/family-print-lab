@@ -175,6 +175,7 @@ ResolvedBundle bundle_from(const Json &j, const std::string &where) {
 
 Project project_from(const Json &j, const std::string &where) {
 	Project p;
+	p.source_json = j.dump();
 	const Json &meta = j["meta"];
 	p.title = opt_string(meta, "title");
 	if (meta["extras"].is_object())
@@ -366,6 +367,7 @@ Json to_json(const PresetRef &r) {
 }
 
 Json to_json(const Project &p, const std::map<std::string, MeshInfo> &meshes) {
+	if (!p.source_json.empty()) return Json::parse(p.source_json);
 	Json extras = Json::object();
 	for (const auto &kv : p.extras) extras[kv.first] = kv.second;
 	Json filaments_sel = Json::array();

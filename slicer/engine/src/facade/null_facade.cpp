@@ -20,6 +20,8 @@ public:
 	void configure(const std::string &, const std::string &) override {}
 	MeshInfo mesh_put(const std::string &, const std::string &, const std::string &) override { missing(); }
 	void mesh_drop(const std::vector<std::string> &) override {}
+	OpenProjectResult project_open(const std::string &) override { missing(); }
+	void project_save(const std::string &, const std::string &, const std::vector<PlateImages> &) override { missing(); }
 	std::string project_create(const PresetSelection &) override { missing(); }
 	SyncResult project_sync(const std::string &, const Project &, const ResolvedBundle &) override { missing(); }
 	void project_close(const std::string &) override {}

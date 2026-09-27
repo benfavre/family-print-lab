@@ -54,6 +54,11 @@ struct ValidateResult {
 	std::vector<ConfigError> errors;
 	std::vector<SliceWarning> warnings;
 };
+struct OpenProjectResult {
+	std::string project_id, mesh_dir;
+	Project project;
+	std::map<std::string, MeshInfo> meshes;
+};
 struct PreviewResult {
 	std::string path;
 	preview::Header header;
@@ -88,6 +93,8 @@ public:
 	virtual MeshInfo mesh_put(const std::string &mesh_id, const std::string &path, const std::string &format) = 0;
 	virtual void mesh_drop(const std::vector<std::string> &mesh_ids) = 0;
 
+	virtual OpenProjectResult project_open(const std::string &path) = 0;
+	virtual void project_save(const std::string &project_id, const std::string &path, const std::vector<PlateImages> &images) = 0;
 	virtual std::string project_create(const PresetSelection &presets) = 0;
 	virtual SyncResult project_sync(const std::string &project_id, const Project &project, const ResolvedBundle &presets) = 0;
 	virtual void project_close(const std::string &project_id) = 0;

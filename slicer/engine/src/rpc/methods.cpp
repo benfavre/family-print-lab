@@ -55,15 +55,6 @@ std::vector<std::string> string_list(const Json &j, const std::string &where) {
 
 void register_methods(Server &server, Facade &facade, const EngineOptions &options) {
 	std::vector<std::string> caps = facade.capabilities();
-	// Protocol methods this engine does not implement yet: named, so a client that calls one anyway hears
-	// CAPABILITY_MISSING (protocol.ts), not METHOD_NOT_FOUND. The capability is never reported, so the
-	// handler is never reached.
-	for (const auto &m : std::vector<std::pair<std::string, std::string>>{
-	         {"project.open", "project.open"}, {"project.save", "project.save"}})
-		if (std::find(caps.begin(), caps.end(), m.second) == caps.end())
-			server.add(m.first, {m.second, false, [](const Json &, CallContext &) -> Json {
-				                     throw EngineError(err::CAPABILITY_MISSING, "This version of the slicer cannot do that yet.");
-			                     }});
 
 	if (options.test_methods) caps.push_back("test.wait");
 	server.set_capabilities(caps);
@@ -94,6 +85,15 @@ void register_methods(Server &server, Facade &facade, const EngineOptions &optio
 		                         facade.mesh_drop(string_list(need(p, "meshIds", "params"), "params.meshIds"));
 		                         return ok();
 	                         }});
+	server.add("project.open", {"project.open", false, [&facade](const Json &p, CallContext &) {
+		                           auto r = facade.project_open(need_string(p, "path", "params"));
+		                           return Json(Json::Object{{"projectId", r.project_id}, {"project", to_json(r.project, r.meshes)}, {"meshDir", r.mesh_dir}});
+	                           }});
+	server.add("project.save", {"project.save", false, [&facade](const Json &p, CallContext &) {
+		                           auto path = need_string(p, "path", "params");
+		                           facade.project_save(need_string(p, "projectId", "params"), path, images_from(p["thumbnails"], "params.thumbnails"));
+		                           return Json(Json::Object{{"path", path}});
+	                           }});
 	server.add("project.create", {"", false, [&facade](const Json &p, CallContext &) {
 		                              std::string id = facade.project_create(selection_from(need(p, "presets", "params"), "params.presets"));
 		                              return Json(Json::Object{{"projectId", id}});
