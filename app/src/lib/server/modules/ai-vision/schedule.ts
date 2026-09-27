@@ -12,6 +12,8 @@ export interface PrintWatch {
 	hasReference: boolean;
 	/** When the last alert went out for this print. */
 	alertedAt: number | null;
+	/** When a check paused this print (it pauses a print once: after a resume it only alerts). */
+	pausedAt: number | null;
 	/** When we first saw this print running. */
 	startedAt: number;
 }
@@ -23,6 +25,7 @@ export function newWatch(task: string, now: number): PrintWatch {
 		lastAt: null,
 		hasReference: false,
 		alertedAt: null,
+		pausedAt: null,
 		startedAt: now
 	};
 }
@@ -35,7 +38,7 @@ export function activeFor(s: VisionSettings, printerId: string): boolean {
 /**
  * Whether a print needs a check now. The first check comes once the first layer is done (layer 2,
  * the rough check's reference); then every `everyLayers` layers and/or every `everyMinutes`
- * minutes, whichever comes first.
+ * minutes, whichever comes first. With both off, only "Check now" checks.
  */
 export function checkDue(
 	w: PrintWatch,
@@ -43,6 +46,7 @@ export function checkDue(
 	layer: number | null,
 	now: number
 ): boolean {
+	if (!s.everyLayers && !s.everyMinutes) return false;
 	if (w.lastAt === null)
 		return !w.hasReference && layer !== null ? layer >= 2 : minutesDue(w, s, now);
 	if (
@@ -70,16 +74,18 @@ export interface Decision {
 
 /**
  * An alert when a problem verdict is sure enough (not again within 15 min for the same print, unless
- * it pauses the print: that is always worth telling); a pause when asked for.
+ * it pauses the print: that is always worth telling); a pause when asked for, once per print. Someone
+ * who resumed a print a check paused has looked at it, so later checks of that print only alert.
  */
 export function decide(
 	r: { verdict: VisionVerdict; confidence: number; error?: string | null },
 	s: Pick<VisionSettings, 'threshold' | 'autoPause'>,
-	w: Pick<PrintWatch, 'alertedAt'> | null,
+	w: Pick<PrintWatch, 'alertedAt' | 'pausedAt'> | null,
 	now: number
 ): Decision {
 	const problem = !r.error && VISION_PROBLEMS.includes(r.verdict) && r.confidence >= s.threshold;
 	if (!problem) return { alert: false, pause: false };
 	const recent = w?.alertedAt != null && now - w.alertedAt < REALERT_MS;
-	return { alert: !recent || s.autoPause, pause: s.autoPause };
+	const pause = s.autoPause && w?.pausedAt == null;
+	return { alert: !recent || pause, pause };
 }

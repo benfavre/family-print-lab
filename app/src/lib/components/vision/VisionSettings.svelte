@@ -9,6 +9,7 @@
 	let view = $state<VisionSettingsView | null>(null);
 	let error = $state('');
 	const s = $derived(view?.settings ?? null);
+	const method = $derived(view?.methods.find((m) => m.id === s?.method) ?? null);
 
 	onMount(async () => {
 		try {
@@ -117,6 +118,15 @@
 		</p>
 		{#if s.method === 'local' && !view.ffmpeg}
 			<p class="warn">The rough check needs ffmpeg on this computer (sudo apt install ffmpeg).</p>
+		{:else if s.method === 'local' && s.threshold > 0.9}
+			<p class="warn">
+				The rough check is never more than 90% sure, so it will not alert at this setting.
+			</p>
+		{:else if method && !method.ready}
+			<p class="warn">
+				{method.label} is not set up on this computer. Set it up under AI above, or pick another way to
+				check.
+			</p>
 		{/if}
 		{#if !view.camera}
 			<p class="warn">Camera support is not running, so there are no pictures to check.</p>
@@ -128,6 +138,11 @@
 				onchange={(e) => save({ autoPause: e.currentTarget.checked })}
 			/> Pause the print when sure</label
 		>
+		{#if s.autoPause}
+			<p class="note">
+				A print is paused once. If you resume it, later checks of that print only send alerts.
+			</p>
+		{/if}
 		<p class="note">
 			Alerts go to the bell and your notification channels. Each printer can be switched off on its
 			own page.

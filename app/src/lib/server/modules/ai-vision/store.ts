@@ -3,7 +3,7 @@
 // (a printer that was removed takes its rows with it).
 import fs from 'node:fs';
 import path from 'node:path';
-import { and, desc, eq, isNotNull, lt } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, isNull, lt, ne, or } from 'drizzle-orm';
 import type { DB } from '$lib/server/db';
 import { jobs, visionChecks } from '$lib/server/db/schema';
 import type { VisionCheck } from '$lib/shared/vision';
@@ -70,15 +70,27 @@ export class VisionStore {
 		);
 	}
 
-	/** Newest first; `before` is an `at` from the previous page. */
-	list(printerId: string, o: { before?: string; limit?: number } = {}): VisionCheck[] {
+	/**
+	 * Newest first; `before` is an `at` from the previous page. `problems`: only checks that alerted or
+	 * saw something other than a normal print (not the ones that could not run).
+	 */
+	list(
+		printerId: string,
+		o: { before?: string; limit?: number; problems?: boolean } = {}
+	): VisionCheck[] {
 		return this.db
 			.select()
 			.from(visionChecks)
 			.where(
 				and(
 					eq(visionChecks.printerId, printerId),
-					o.before ? lt(visionChecks.at, o.before) : undefined
+					o.before ? lt(visionChecks.at, o.before) : undefined,
+					o.problems
+						? or(
+								eq(visionChecks.alerted, true),
+								and(ne(visionChecks.verdict, 'ok'), isNull(visionChecks.error))
+							)
+						: undefined
 				)
 			)
 			.orderBy(desc(visionChecks.at))

@@ -1,6 +1,7 @@
 // The AI check itself: follows each printer's print (layer events and a 15 s timer), takes a camera
 // picture when a check is due, asks the rough check or the chosen AI provider, stores the result,
-// raises vision.alert when a problem is sure enough and, only when asked to, pauses the print.
+// raises vision.alert when a problem is sure enough and, only when asked to, pauses the print (once:
+// a print someone resumed after that is only alerted about, and the rough check starts afresh).
 // Nothing leaves the computer unless a parent picked an AI provider in the settings.
 import type { EventBus } from '$lib/server/events';
 import type { LivePublisher } from '$lib/server/modules';
@@ -59,6 +60,8 @@ export class VisionChecker {
 	private running = new Map<string, Promise<VisionCheck | null>>();
 	private offs: (() => void)[] = [];
 	private timer: ReturnType<typeof setInterval> | null = null;
+	/** Aborted on stop, so a slow provider or camera does not outlive the module. */
+	private stopped = new AbortController();
 	private now: () => number;
 
 	constructor(private d: VisionDeps) {
@@ -66,12 +69,20 @@ export class VisionChecker {
 	}
 
 	start() {
+		if (this.stopped.signal.aborted) this.stopped = new AbortController();
 		const bus = this.d.bus;
 		this.offs.push(
 			bus.on('print.started', (e) => this.follow(e.printerId, e.task, e.jobId, true)),
 			bus.on('print.layer', (e) => {
 				this.follow(e.printerId, e.task, e.jobId);
 				this.maybe(e.printerId, e.layer);
+			}),
+			// Resumed after a check paused it: someone looked, so what the camera shows now is normal.
+			bus.on('print.resumed', (e) => {
+				const w = this.watches.get(e.printerId);
+				if (w?.pausedAt == null) return;
+				w.reference = null;
+				w.previous = null;
 			})
 		);
 		for (const name of ['print.finished', 'print.failed', 'print.cancelled'] as const)
@@ -81,6 +92,7 @@ export class VisionChecker {
 	}
 
 	stop() {
+		this.stopped.abort();
 		for (const off of this.offs.splice(0)) off();
 		if (this.timer) clearInterval(this.timer);
 		this.timer = null;
@@ -155,7 +167,8 @@ export class VisionChecker {
 		return job;
 	}
 
-	private async check(printerId: string, signal?: AbortSignal): Promise<VisionCheck> {
+	private async check(printerId: string, request?: AbortSignal): Promise<VisionCheck> {
+		const signal = request ? AbortSignal.any([request, this.stopped.signal]) : this.stopped.signal;
 		const settings = this.d.settings.get();
 		const p = this.d.printers.get(printerId);
 		if (!p) throw new AppError(404, 'That printer is not here any more.');
@@ -171,6 +184,13 @@ export class VisionChecker {
 		this.d.live.send(LIVE_CHANNEL, { printerId, running: true });
 
 		const outcome = await this.look(printerId, settings, s, w, signal);
+		if (this.stopped.signal.aborted) throw new AppError(503, 'AI print checks stopped.');
+		// A provider can take minutes: decide on how the print is now. A print that ended (or was
+		// replaced by another) meanwhile is not alerted about or paused.
+		const after = this.d.printers.get(printerId)?.snapshot ?? null;
+		const current = !w || this.watches.get(printerId) === w;
+		const stillPrinting =
+			current && (after?.gcodeState === 'RUNNING' || after?.gcodeState === 'PAUSE');
 		let check = this.d.store.add({
 			printerId,
 			jobId: w?.jobId ?? null,
@@ -189,10 +209,11 @@ export class VisionChecker {
 		});
 
 		// A print that is already paused cannot be paused again (and was told about already).
-		const running = s?.gcodeState === 'RUNNING';
-		const decision = printing
-			? decide(outcome, { ...settings, autoPause: settings.autoPause && running }, w, now)
-			: { alert: false, pause: false };
+		const running = after?.gcodeState === 'RUNNING';
+		const decision =
+			printing && stillPrinting
+				? decide(outcome, { ...settings, autoPause: settings.autoPause && running }, w, now)
+				: { alert: false, pause: false };
 		if (decision.alert || decision.pause) {
 			let paused = false;
 			let reason = outcome.reason;
@@ -200,6 +221,7 @@ export class VisionChecker {
 				try {
 					await p.send('print.pause', {});
 					paused = true;
+					if (w) w.pausedAt = now;
 				} catch (error) {
 					reason = `${reason} Could not pause the print: ${(error as Error).message}`;
 				}
@@ -279,7 +301,10 @@ export class VisionChecker {
 				return {
 					verdict: 'ok',
 					confidence: 0.6,
-					reason: 'The first picture of this print. Later checks compare with it.',
+					reason:
+						w.pausedAt !== null
+							? 'The print was resumed after a pause. Later checks compare with this picture.'
+							: 'The first picture of this print. Later checks compare with it.',
 					error: null,
 					frame: jpeg
 				};

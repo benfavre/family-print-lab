@@ -12,16 +12,15 @@
 	let loading = $state(false);
 	let only = $state<'all' | 'problems'>('all');
 	let open = $state<VisionCheck | null>(null);
-	const shown = $derived(
-		only === 'all' ? checks : checks.filter((c) => c.alerted || (c.verdict !== 'ok' && !c.error))
-	);
 
 	async function load(before?: string) {
 		loading = true;
+		const filter = only;
 		try {
-			const q = `limit=${PAGE}${before ? `&before=${encodeURIComponent(before)}` : ''}`;
+			const q = `limit=${PAGE}${filter === 'problems' ? '&problems=1' : ''}${before ? `&before=${encodeURIComponent(before)}` : ''}`;
 			const res = await fetch(`${data.base}/checks?${q}`);
 			const body = await res.json().catch(() => ({}));
+			if (filter !== only) return;
 			if (!res.ok) {
 				error = body.error ?? `Could not load the checks (${res.status}).`;
 				return;
@@ -37,13 +36,17 @@
 		}
 	}
 
-	// Reload from the top whenever a check finishes (data.version).
+	// Reload from the top whenever a check finishes (data.version) or the filter changes.
 	$effect(() => {
 		void data.version;
 		void data.base;
+		void only;
 		void load();
 	});
 </script>
+
+<!-- Escape closes the picture wherever the focus is. -->
+<svelte:window onkeydown={(e) => open && e.key === 'Escape' && (open = null)} />
 
 <section class="panel">
 	<header class="panel-head">
@@ -57,7 +60,7 @@
 	</header>
 	{#if error}
 		<p class="error">{error}</p>
-	{:else if !shown.length && !loading}
+	{:else if !checks.length && !loading}
 		<p class="panel-empty">
 			{only === 'all'
 				? 'No checks yet. They show up here once a print is checked, or when you press Check now.'
@@ -65,7 +68,7 @@
 		</p>
 	{:else}
 		<ul class="checks">
-			{#each shown as c (c.id)}
+			{#each checks as c (c.id)}
 				<li style:--tone={verdictTone(c.verdict, c.error)}>
 					{#if c.hasFrame}
 						<button class="thumb" onclick={() => (open = c)} aria-label="Show the picture"

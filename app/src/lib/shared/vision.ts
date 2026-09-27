@@ -82,7 +82,8 @@ export interface VisionOverview {
 
 export interface VisionSettingsView {
 	settings: VisionSettings;
-	methods: { id: VisionMethod; label: string }[];
+	/** `ready`: ffmpeg is there, or the AI provider looks set up (nothing is asked to find out). */
+	methods: { id: VisionMethod; label: string; ready: boolean }[];
 	/** ffmpeg was found (the rough check needs it). */
 	ffmpeg: boolean;
 	/** The camera package is running. */

@@ -56,5 +56,10 @@ export const VERDICT_JSON_SCHEMA: Record<string, unknown> = {
 
 export const listQuery = z.object({
 	before: z.string().max(40).optional(),
-	limit: z.coerce.number().int().min(1).max(200).default(50)
+	limit: z.coerce.number().int().min(1).max(200).default(50),
+	/** Only checks that saw something wrong or alerted. */
+	problems: z
+		.enum(['1', '0'])
+		.optional()
+		.transform((v) => v === '1')
 });

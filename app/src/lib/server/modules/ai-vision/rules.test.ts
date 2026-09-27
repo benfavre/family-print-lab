@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { VISION_SETTINGS_DEFAULTS } from '$lib/shared/vision';
 import { buildPrompt, parseVerdict } from './prompt';
 import { activeFor, checkDue, decide, newWatch, REALERT_MS } from './schedule';
-import { verdictSchema, visionSettingsSchema, VERDICT_JSON_SCHEMA } from './validation';
+import { listQuery, verdictSchema, visionSettingsSchema, VERDICT_JSON_SCHEMA } from './validation';
 
 const MIN = 60_000;
 const every = (everyLayers: number | null, everyMinutes: number | null) => ({
@@ -44,6 +44,8 @@ describe('checkDue', () => {
 	it('never checks by schedule when both are off', () => {
 		const w = { ...newWatch('box', 0), lastAt: 0, lastLayer: 2, hasReference: true };
 		expect(checkDue(w, every(null, null), 900, 900 * MIN)).toBe(false);
+		// Not even the first picture: only Check now checks.
+		expect(checkDue(newWatch('box', 0), every(null, null), 2, 900 * MIN)).toBe(false);
 	});
 });
 
@@ -71,7 +73,7 @@ describe('decide', () => {
 	});
 
 	it('does not alert again for the same print within 15 minutes', () => {
-		const w = { alertedAt: 0 };
+		const w = { alertedAt: 0, pausedAt: null };
 		expect(decide({ verdict: 'detached', confidence: 0.9 }, s, w, REALERT_MS - 1).alert).toBe(
 			false
 		);
@@ -80,11 +82,23 @@ describe('decide', () => {
 
 	it('pauses only when asked to, and a pause is always told', () => {
 		const pause = { ...s, autoPause: true };
-		expect(decide({ verdict: 'spaghetti', confidence: 0.9 }, pause, { alertedAt: 0 }, 1)).toEqual({
-			alert: true,
-			pause: true
-		});
+		expect(
+			decide({ verdict: 'spaghetti', confidence: 0.9 }, pause, { alertedAt: 0, pausedAt: null }, 1)
+		).toEqual({ alert: true, pause: true });
 		expect(decide({ verdict: 'spaghetti', confidence: 0.6 }, pause, null, 0).pause).toBe(false);
+	});
+
+	it('pauses a print once: after a resume it only alerts, and not again within 15 minutes', () => {
+		const pause = { ...s, autoPause: true };
+		const resumed = { alertedAt: 0, pausedAt: 0 };
+		expect(decide({ verdict: 'spaghetti', confidence: 0.9 }, pause, resumed, MIN)).toEqual({
+			alert: false,
+			pause: false
+		});
+		expect(decide({ verdict: 'spaghetti', confidence: 0.9 }, pause, resumed, REALERT_MS)).toEqual({
+			alert: true,
+			pause: false
+		});
 	});
 });
 
@@ -169,5 +183,18 @@ describe('settings', () => {
 		expect(
 			visionSettingsSchema.safeParse({ ...VISION_SETTINGS_DEFAULTS, threshold: 0.2 }).success
 		).toBe(false);
+	});
+});
+
+describe('history query', () => {
+	it('pages by date and filters problems only when asked', () => {
+		expect(listQuery.parse({})).toEqual({ limit: 50, problems: false });
+		expect(listQuery.parse({ limit: '30', problems: '1', before: '2026-01-01' })).toEqual({
+			limit: 30,
+			problems: true,
+			before: '2026-01-01'
+		});
+		expect(listQuery.safeParse({ problems: 'yes' }).success).toBe(false);
+		expect(listQuery.safeParse({ limit: '500' }).success).toBe(false);
 	});
 });

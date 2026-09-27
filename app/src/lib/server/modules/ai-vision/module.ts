@@ -13,6 +13,7 @@ import {
 	anthropicApi,
 	claudeCode,
 	codex,
+	findBin,
 	PROVIDER_LABEL,
 	type Provider,
 	type ProviderId
@@ -91,10 +92,20 @@ export interface VisionModuleOptions {
 
 /** The provider for an id, with the model chosen in Settings, as the runtime builds it. */
 function realProvider(ctx: ModuleContext, id: ProviderId): Provider {
+	if (ctx.env.LAB_AI === 'off')
+		throw new Error('AI is switched off on this computer (LAB_AI=off).');
 	const model = getSettings(ctx.db).ai.models[id] || undefined;
 	if (id === 'claude-code') return claudeCode({ bin: ctx.env.CLAUDE_BIN, model });
 	if (id === 'codex') return codex({ bin: ctx.env.CODEX_BIN, model });
 	return anthropicApi({ env: ctx.env, model });
+}
+
+/** Whether a provider looks set up, without asking it anything (as runtime.aiSummary does). */
+function providerReady(env: ModuleContext['env'], id: ProviderId): boolean {
+	if (env.LAB_AI === 'off') return false;
+	if (id === 'claude-code') return !!findBin('claude', env.CLAUDE_BIN);
+	if (id === 'codex') return !!findBin('codex', env.CODEX_BIN);
+	return !!(env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN);
 }
 
 export function visionModule(o: VisionModuleOptions = {}) {
@@ -149,15 +160,22 @@ export function visionModule(o: VisionModuleOptions = {}) {
 				if (!p) throw new AppError(404, 'That printer is not here any more.');
 				return p;
 			};
-			const view = (): VisionSettingsView => ({
-				settings: settings.get(),
-				methods: [
-					{ id: 'local', label: methodLabel('local', PROVIDER_LABEL) },
-					...AI_PROVIDERS.map((id) => ({ id, label: PROVIDER_LABEL[id] }))
-				],
-				ffmpeg: !!ffmpeg(),
-				camera: !!camera()
-			});
+			const view = (): VisionSettingsView => {
+				const hasFfmpeg = !!ffmpeg();
+				return {
+					settings: settings.get(),
+					methods: [
+						{ id: 'local', label: methodLabel('local', PROVIDER_LABEL), ready: hasFfmpeg },
+						...AI_PROVIDERS.map((id) => ({
+							id,
+							label: PROVIDER_LABEL[id],
+							ready: o.provider ? true : providerReady(ctx.env, id)
+						}))
+					],
+					ffmpeg: hasFfmpeg,
+					camera: !!camera()
+				};
+			};
 			const overview = (id: string): VisionOverview => {
 				printer(id);
 				const s = settings.get();

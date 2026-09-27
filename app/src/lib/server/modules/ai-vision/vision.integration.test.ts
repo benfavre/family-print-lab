@@ -28,6 +28,7 @@ import {
 const holder = globalThis as Record<symbol, unknown>;
 const key = Symbol.for('family-print-lab.runtime');
 const ffmpeg = findFfmpeg();
+const ACTIVE = ['PREPARE', 'RUNNING', 'PAUSE'];
 // Prints run in real time on the simulator (a layer a second).
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 20_000 });
 
@@ -59,6 +60,17 @@ async function lab(extra?: ReturnType<typeof visionModule>) {
 	const id = t.printer('N1').info.id;
 	await until(() => !!t.rt.module('camera')?.has(id));
 	return { t, id };
+}
+
+/** Waits until the camera shows the spaghetti picture (the camera keeps a picture up to 1.5 s). */
+async function spaghettiOnCamera(t: TestLab, id: string) {
+	const deadline = Date.now() + 10_000;
+	while (Date.now() < deadline) {
+		const jpeg = await t.rt.module('camera')!.getSnapshot(id, { maxAgeMs: 200 });
+		if (jpeg.toString('base64') === VISION_SPAGHETTI) return;
+		await new Promise((r) => setTimeout(r, 100));
+	}
+	throw new Error('The camera never showed spaghetti.');
 }
 
 /** Starts a print and waits for the first two checks (the reference and one compared with it). */
@@ -93,6 +105,8 @@ describe.skipIf(!ffmpeg)('the rough check on a simulated print', () => {
 			'anthropic-api'
 		]);
 		expect(view).toMatchObject({ ffmpeg: true, camera: true });
+		// The harness runs with LAB_AI=off, so no real provider counts as set up.
+		expect(view.methods.map((m) => m.ready)).toEqual([true, false, false, false]);
 	});
 
 	it('flags spaghetti, notifies and pauses the print when asked', async () => {
@@ -152,6 +166,15 @@ describe.skipIf(!ffmpeg)('the rough check on a simulated print', () => {
 		await until(() => t.rt.printers.get(id)?.snapshot?.gcodeState === 'PAUSE');
 		const again = await t.rt.module('ai-vision')!.checkNow(id);
 		expect(again).toMatchObject({ verdict: 'spaghetti', alerted: false, paused: false });
+
+		// Resumed by hand: the rough check takes what it sees now as normal and does not pause again.
+		const store = t.rt.module('ai-vision')!.store;
+		sim.print.resume();
+		await until(() => !!store.list(id, { limit: 1 })[0]?.reason.includes('resumed after a pause'));
+		const rebased = store.list(id).length;
+		await until(() => store.list(id).length > rebased, 15_000);
+		expect(store.list(id, { limit: 1 })[0]).toMatchObject({ verdict: 'ok', paused: false });
+		expect(sim.state.gcode_state).toBe('RUNNING');
 		sim.print.stop();
 	});
 
@@ -211,15 +234,19 @@ describe.skipIf(!ffmpeg)('the rough check on a simulated print', () => {
 	});
 });
 
-describe.skipIf(!ffmpeg)('an AI provider on a simulated print', () => {
+// The provider path needs no ffmpeg: the simulated camera already sends JPEGs.
+describe('an AI provider on a simulated print', () => {
 	let t: TestLab;
 	let id: string;
 	const asked: StructuredRequest[] = [];
+	/** Set to hold the next answer until the test lets it go. */
+	let hold: Promise<void> | null = null;
 	const provider: Provider = {
 		id: 'anthropic-api',
 		status: async () => ({ id: 'anthropic-api', label: 'stand-in', available: true, detail: '' }),
 		async structured<T>(req: StructuredRequest) {
 			asked.push(req);
+			if (hold) await hold;
 			const spaghetti = req.image?.data === VISION_SPAGHETTI;
 			return (
 				spaghetti
@@ -267,6 +294,71 @@ describe.skipIf(!ffmpeg)('an AI provider on a simulated print', () => {
 		expect(sim.state.gcode_state).toBe('RUNNING');
 		sim.print.stop();
 		await t.rt.module('ai-vision')!.idle();
+	});
+
+	/** Starts a print and waits until the app sees it running (not the previous print's last report). */
+	async function startPrint(task: string) {
+		const { sim } = t.printer('N1');
+		const snap = () => t.rt.printers.get(id)?.snapshot;
+		await until(() => !ACTIVE.includes(snap()?.gcodeState ?? ''));
+		sim.print.start({ name: task, minutes: 40, layers: 40 });
+		await until(() => snap()?.task === task && snap()?.gcodeState === 'RUNNING');
+		return { sim, snap };
+	}
+
+	it('pauses a print once: after a resume it carries on checking without pausing', async () => {
+		const vision = t.rt.module('ai-vision')!;
+		vision.saveSettings({
+			method: 'anthropic-api',
+			autoPause: true,
+			everyLayers: null,
+			everyMinutes: null
+		});
+		const { sim, snap } = await startPrint('dragon');
+		setTrouble(sim, 'spaghetti');
+		await spaghettiOnCamera(t, id);
+		const first = await vision.checkNow(id);
+		expect(first).toMatchObject({ verdict: 'spaghetti', alerted: true, paused: true });
+		await until(() => snap()?.gcodeState === 'PAUSE');
+
+		// Someone looked and resumed it: the same answer no longer pauses it (or alerts within 15 min).
+		sim.print.resume();
+		await until(() => snap()?.gcodeState === 'RUNNING');
+		const again = await vision.checkNow(id);
+		expect(again).toMatchObject({ verdict: 'spaghetti', alerted: false, paused: false });
+		expect(sim.state.gcode_state).toBe('RUNNING');
+		sim.print.stop();
+		vision.saveSettings({ autoPause: false });
+	});
+
+	it('does not alert about a print that ended while the AI was answering', async () => {
+		const vision = t.rt.module('ai-vision')!;
+		const { sim, snap } = await startPrint('vase');
+		setTrouble(sim, 'spaghetti');
+		await spaghettiOnCamera(t, id);
+		let release = () => {};
+		hold = new Promise((r) => (release = r));
+		const alerts: unknown[] = [];
+		const off = t.rt.bus.on('vision.alert', (d) => alerts.push(d));
+		const pending = vision.checkNow(id);
+		await until(() => asked.length > 0 && vision.checker.isRunning(id));
+		sim.print.stop();
+		await until(() => !ACTIVE.includes(snap()?.gcodeState ?? ''));
+		hold = null;
+		release();
+		const check = await pending;
+		off();
+		expect(check).toMatchObject({ verdict: 'spaghetti', alerted: false, paused: false });
+		expect(alerts).toEqual([]);
+	});
+
+	it('lists only the problems when asked', async () => {
+		const res = await checksRoute(event({ id }, `/api/printers/${id}/vision/checks?problems=1`));
+		const { checks } = (await res.json()) as { checks: VisionCheck[] };
+		expect(checks.length).toBeGreaterThan(0);
+		expect(checks.every((c) => c.verdict !== 'ok')).toBe(true);
+		const all = t.rt.module('ai-vision')!.list(id, {});
+		expect(all.some((c) => c.verdict === 'ok')).toBe(true);
 	});
 
 	it('stores a provider failure as a check that could not run', async () => {
