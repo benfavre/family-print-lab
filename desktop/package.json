@@ -1,7 +1,7 @@
 {
 	"name": "family-print-lab",
 	"productName": "Family Print Lab",
-	"version": "2.1.5",
+	"version": "2.2.0",
 	"description": "Plan, design, print and track your family’s 3D-printing projects.",
 	"author": {
 		"name": "Webdesign29",
@@ -14,9 +14,9 @@
 	"scripts": {
 		"postinstall": "electron-builder install-app-deps",
 		"prepare-server": "node scripts/prepare-server.mjs",
-		"start": "npm run prepare-server && electron .",
-		"dist": "npm run prepare-server && electron-builder --publish never",
-		"release": "npm run prepare-server && electron-builder --publish always"
+		"start": "bun run prepare-server && electron .",
+		"dist": "bun run prepare-server && electron-builder --publish never",
+		"release": "bun run prepare-server && electron-builder --publish always"
 	},
 	"dependencies": {
 		"@anthropic-ai/sdk": "^0.128.0",

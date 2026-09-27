@@ -4,11 +4,13 @@ An Electron shell around the same app: it starts the app's server inside Electro
 port, bound to `127.0.0.1`), keeps the database in the per-user app folder, and updates itself from
 GitHub Releases with `electron-updater`.
 
+Install Node 24 and Bun first. Install the web app’s dependencies with `bun install` in `app/`, then:
+
 ```sh
 cd desktop
-npm install
-npm start          # builds the web app into server/ and opens it
-npm run dist       # installers for this platform in release/ (not published)
+bun install
+bun run start      # builds the web app into server/ and opens it
+bun run dist       # installers for this platform in release/ (not published)
 ```
 
 `scripts/prepare-server.mjs` builds `../app` into `server/`, copies the migrations and resources, and
@@ -27,7 +29,7 @@ Settings the web app reads from its environment (printer, `ANTHROPIC_API_KEY`, `
 ## Releasing
 
 1. Bump `version` in `desktop/package.json` (and `app/package.json`).
-2. Commit, then `git tag v2.1.0 && git push --tags`.
+2. Commit, then `git tag v2.2.0 && git push --tags`.
 3. The _Desktop release_ workflow builds Windows (NSIS), macOS (dmg, zip) and Linux (AppImage, deb)
    and publishes them, with the `latest*.yml` files the updater reads, as a GitHub Release.
 
