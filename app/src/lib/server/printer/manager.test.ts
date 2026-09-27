@@ -1,5 +1,6 @@
 import dgram from 'node:dgram';
 import fs from 'node:fs';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -532,15 +533,21 @@ describe('printer certificates and access codes', () => {
 			expect(() => manager.update(saved.id, { version: saved.version, ...patch })).toThrow(
 				/access code/
 			);
-		// With the code typed in, all of these are fine.
+		// A local peer closes before TLS completes, so the connection failure is deterministic.
+		const peer = net.createServer((socket) => socket.destroy());
+		await new Promise<void>((resolve) => peer.listen(0, '127.0.0.2', resolve));
+		cleanups.push(() => new Promise<void>((resolve) => peer.close(() => resolve())));
+		const port = (peer.address() as net.AddressInfo).port;
+		// With the code typed in, changing the address is fine.
 		const edited = manager.update(saved.id, {
 			version: saved.version,
-			host: '10.0.0.66',
+			host: '127.0.0.2',
+			port,
 			accessCode: 'NEWCODE1'
 		});
-		expect(edited.host).toBe('10.0.0.66');
+		expect(edited.host).toBe('127.0.0.2');
 		// The same saved connection can still be tested without typing the code (it fails to connect).
-		await expect(manager.test({ ...same, host: '10.0.0.66', port: 1 })).resolves.toMatchObject({
+		await expect(manager.test({ ...same, host: '127.0.0.2', port })).resolves.toMatchObject({
 			ok: false
 		});
 	});
