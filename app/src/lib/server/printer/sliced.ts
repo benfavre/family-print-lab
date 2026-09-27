@@ -31,6 +31,13 @@ export const PRINTER_MODEL_IDS: Record<string, string> = {
 const attr = (tag: string, name: string) =>
 	tag.match(new RegExp(`\\b${name}="([^"]*)"`))?.[1] ?? '';
 
+// Imported files can contain the old processor's -2147483648 sentinel. Keep invalid estimates
+// out of scheduling and filament accounting, and try the next source instead.
+function estimate(value: string | number | undefined): number {
+	const n = Number(value);
+	return Number.isFinite(n) && n >= 0 && n <= Number.MAX_SAFE_INTEGER ? n : 0;
+}
+
 /** Reads a sliced .gcode.3mf. Throws a friendly error for files that were never sliced. */
 export function readSliced(buf: Buffer): SlicedFile {
 	const files = readZip(buf, (name) => {
@@ -64,7 +71,7 @@ export function readSliced(buf: Buffer): SlicedFile {
 			const head = files.get(name)!.toString('utf8');
 			const fromHead = (label: RegExp) => head.match(label)?.[1];
 			const seconds =
-				Number(meta('prediction')) || parseDuration(fromHead(/total estimated time: ([^;\n]+)/));
+				estimate(meta('prediction')) || parseDuration(fromHead(/total estimated time: ([^;\n]+)/));
 			// One extruder per project filament, space-separated ("1 2 1"; 1 left, 2 right).
 			const maps = meta('filament_maps').trim().split(/\s+/).map(Number);
 			const filaments: SlicedFilament[] = [...block.matchAll(/<filament\b[^>]*\/?>/g)].map((f) => {
@@ -74,16 +81,15 @@ export function readSliced(buf: Buffer): SlicedFile {
 					id,
 					type: attr(f[0], 'type') || 'PLA',
 					color: attr(f[0], 'color') || '#888888',
-					grams: Number(attr(f[0], 'used_g')) || 0,
-					meters: Number(attr(f[0], 'used_m')) || 0,
+					grams: estimate(attr(f[0], 'used_g')),
+					meters: estimate(attr(f[0], 'used_m')),
 					...(extruder === 1 || extruder === 2 ? { extruder } : {})
 				};
 			});
 			const grams =
-				Number(meta('weight')) ||
-				filaments.reduce((a, f) => a + f.grams, 0) ||
-				Number(fromHead(/total filament weight \[g\] : ([\d.]+)/)) ||
-				0;
+				estimate(meta('weight')) ||
+				estimate(filaments.reduce((a, f) => a + f.grams, 0)) ||
+				estimate(fromHead(/total filament weight \[g\] : ([^;\r\n]+)/));
 			return {
 				index,
 				gcode: name,
@@ -109,11 +115,11 @@ export function readSliced(buf: Buffer): SlicedFile {
 
 /** "1h 20m 5s", "2d 3h", "45m 10s" → seconds. */
 function parseDuration(text: string | undefined): number {
-	if (!text) return 0;
+	if (!text || !/^(?:\d+\s*[dhms]\s*)+$/.test(text.trim())) return 0;
 	let s = 0;
 	for (const [, n, unit] of text.matchAll(/(\d+)\s*([dhms])/g))
 		s += Number(n) * { d: 86400, h: 3600, m: 60, s: 1 }[unit as 'd' | 'h' | 'm' | 's'];
-	return s;
+	return estimate(s);
 }
 
 /**
