@@ -1,10 +1,11 @@
 // Exercise the distributed installer, including its native libraries, Electron, SQLite and UI.
 // CI stages a draft release first; a failed smoke check must prevent publication.
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { _electron as electron } from '../../app/node_modules/playwright/index.mjs';
 
@@ -27,6 +28,59 @@ function installer(suffix) {
 		.filter((name) => name.includes(version) && name.endsWith(suffix));
 	assert.equal(matches.length, 1, `Expected one ${suffix} installer for ${version}`);
 	return path.join(release, matches[0]);
+}
+
+async function probeEngine(engine, resourcesDir) {
+	const child = spawn(engine, [], { cwd: temp });
+	const closed = new Promise((resolve) => child.once('close', resolve));
+	let stderr = '';
+	child.stderr.on('data', (chunk) => {
+		stderr = (stderr + chunk).slice(-8000);
+	});
+	let timer;
+	try {
+		return await new Promise((resolve, reject) => {
+			const replies = [];
+			timer = setTimeout(() => reject(new Error(`Packaged engine timed out: ${stderr}`)), 60_000);
+			child.on('error', reject);
+			child.stdin.on('error', reject);
+			readline.createInterface({ input: child.stdout }).on('line', (line) => {
+				try {
+					const reply = JSON.parse(line);
+					if (reply.error) throw new Error(JSON.stringify(reply.error));
+					replies.push(reply);
+					// EOF means the client has gone away, so keep stdin open until async work finishes.
+					if (reply.id === 2) child.stdin.end();
+				} catch (error) {
+					reject(error);
+				}
+			});
+			child.on('close', (code) =>
+				code === 0
+					? resolve(replies)
+					: reject(new Error(`Packaged engine exited ${code}: ${stderr}`))
+			);
+			for (const message of [
+				{
+					jsonrpc: '2.0',
+					id: 1,
+					method: 'engine.hello',
+					params: {
+						client: 'installer-smoke',
+						protocol: { major: 1, minor: 0 },
+						workDir: temp,
+						resourcesDir
+					}
+				},
+				{ jsonrpc: '2.0', id: 2, method: 'profiles.list', params: { kind: 'printer' } }
+			])
+				child.stdin.write(JSON.stringify(message) + '\n');
+		});
+	} finally {
+		clearTimeout(timer);
+		if (child.exitCode === null) child.kill();
+		await closed;
+	}
 }
 
 try {
@@ -69,27 +123,19 @@ try {
 		engineDir,
 		process.platform === 'win32' ? 'printlab-slicer.exe' : 'printlab-slicer'
 	);
-	const output = run(engine, [], {
-		cwd: temp,
-		input:
-			JSON.stringify({
-				jsonrpc: '2.0',
-				id: 1,
-				method: 'engine.hello',
-				params: {
-					client: 'installer-smoke',
-					protocol: { major: 1, minor: 0 },
-					workDir: temp
-				}
-			}) + '\n'
-	});
-	const hello = output
-		.trim()
-		.split('\n')
-		.map((line) => JSON.parse(line))
-		.find((line) => line.id === 1)?.result;
+	const replies = await probeEngine(engine, path.join(engineDir, 'resources'));
+	const hello = replies.find((line) => line.id === 1)?.result;
 	assert.equal(hello?.engine, 'printlab-slicer');
 	assert.equal(hello?.patchQueue.hash, manifest.patchQueue.hash);
+	assert.equal(
+		fs.realpathSync(hello.profiles.dir),
+		fs.realpathSync(path.join(engineDir, 'resources/profiles/BBL'))
+	);
+	const presets = replies.find((line) => line.id === 2)?.result?.presets;
+	assert.ok(
+		presets?.some((preset) => preset.name.includes('P1S')),
+		'Packaged engine could not load its printer profiles'
+	);
 	for (const capability of [
 		'slice',
 		'project.open',
@@ -139,6 +185,7 @@ try {
 		url: page.url(),
 		title: await page.title(),
 		engine: hello,
+		printerProfiles: presets.length,
 		backend
 	};
 	fs.writeFileSync(`${report}.json`, JSON.stringify(result, null, 2));
