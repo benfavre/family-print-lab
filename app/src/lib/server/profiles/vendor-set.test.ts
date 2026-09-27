@@ -70,18 +70,70 @@ describe.skipIf(!where)('the Bambu Studio vendor set on this machine', () => {
 	});
 });
 
-// The engine's PresetBundle is the oracle: compare a sample of selections key by key.
-// Bambu Studio v02.08.02.61 src/libslic3r/PrintConfig.cpp defines best_object_pos as
-// coPoint. Config.hpp ConfigOptionPoint accepts both separators and serialises with a comma.
-// Compare the two coordinates only for that option; preserve exact comparisons for other strings.
+// Compare values using the types declared in Bambu Studio v02.08.02.61
+// src/libslic3r/PrintConfig.cpp. Config.hpp's scalar serializers canonicalise decimal/percent
+// spelling and ConfigOptionPoint accepts both separators. Config.cpp::load_from_json flattens
+// singleton arrays before set_deserialize, including the X1's scalar retraction setting.
+// Keep this list explicit: G-code and arbitrary string options must still match byte for byte.
+const oracleTypes: Record<string, 'float' | 'percent' | 'int'> = {
+	top_surface_density: 'percent',
+	bottom_surface_density: 'percent',
+	monotonic_travel_into_wall: 'percent',
+	infill_lock_depth: 'float',
+	skin_infill_depth: 'float',
+	support_ironing_inset: 'float',
+	top_shell_thickness: 'float',
+	fuzzy_skin_scale: 'float',
+	enable_long_retraction_when_cut: 'int'
+};
 function oracleValue(key: string, value: unknown): unknown {
 	if (key === 'best_object_pos' && typeof value === 'string') {
 		const point = value.split(/[x,]/);
 		if (point.length === 2 && point.every((v) => v.trim() && Number.isFinite(Number(v))))
 			return point.map(Number);
 	}
+	const kind = oracleTypes[key];
+	if (kind === 'int' && Array.isArray(value) && value.length === 1) value = value[0];
+	if (kind && typeof value === 'string') {
+		const number = kind === 'percent' ? value.replace(/%$/, '') : value;
+		if (/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(number) && Number.isFinite(Number(number)))
+			return Number(number);
+	}
 	return value;
 }
+
+describe('typed preset oracle comparison', () => {
+	it('accepts equivalent point, decimal, percent and singleton scalar spellings', () => {
+		for (const [key, left, right] of [
+			['best_object_pos', '0.5x0.5', '0.5,0.5'],
+			['infill_lock_depth', '1.0', '1'],
+			['bottom_surface_density', '100', '100%'],
+			['enable_long_retraction_when_cut', ['2'], '2']
+		] as const)
+			expect(oracleValue(key, left)).toEqual(oracleValue(key, right));
+	});
+	it('keeps G-code, arbitrary strings and invalid typed values exact', () => {
+		for (const [key, value] of [
+			['machine_start_gcode', 'G28\nG1 X20'],
+			['machine_start_gcode', 'G28\\nG1 X20'],
+			['printer_model', '1.0'],
+			['infill_lock_depth', '1%'],
+			['bottom_surface_density', 'unknown'],
+			['enable_long_retraction_when_cut', ['1', '2']]
+		] as const)
+			expect(oracleValue(key, value)).toEqual(value);
+	});
+	it('still detects changed numeric values', () => {
+		expect(oracleValue('best_object_pos', '0.5x0.5')).not.toEqual(
+			oracleValue('best_object_pos', '0.5,0.6')
+		);
+		expect(oracleValue('bottom_surface_density', '90')).not.toEqual(
+			oracleValue('bottom_surface_density', '100%')
+		);
+	});
+});
+
+// The engine's PresetBundle is the oracle: compare a sample of selections key by key.
 const engineHere = !!locateEngine();
 describe.skipIf(!engineHere || !where)('oracle: the engine’s own preset resolution', () => {
 	afterAll(async () => (await openSlicer())?.close());
