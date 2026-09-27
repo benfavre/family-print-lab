@@ -547,7 +547,7 @@ cmd_build() {
 }
 
 cmd_test() {
-	local engine="" codec="" dir mode="" config=Release native_only=0 protocol_only=0
+	local engine="" codec="" dir mode="" config=Release native_only=0 protocol_only=0 result=0 suite_result
 	while [ $# -gt 0 ]; do
 		case "$1" in
 		--sanitize | --debug-symbols)
@@ -568,7 +568,13 @@ cmd_test() {
 	[ $protocol_only = 0 ] || dirs=("$BUILD/engine-protocol${mode:+-$mode}")
 	for dir in "${dirs[@]}"; do
 		if [ -f "$dir/CTestTestfile.cmake" ]; then
-			ctest --test-dir "$dir" --build-config "$config" --output-on-failure
+			# Keep collecting independent failures after an expensive platform build.
+			if ctest --test-dir "$dir" --build-config "$config" --output-on-failure; then
+				:
+			else
+				suite_result=$?
+				[ "$result" != 0 ] || result=$suite_result
+			fi
 			if [ -z "$engine" ]; then
 				engine="$(engine_binary "$dir" "$config")"
 				codec="$dir/tests/project_codec"
@@ -578,10 +584,16 @@ cmd_test() {
 		fi
 	done
 	[ -n "$engine" ] || die "no matching engine build: run build with the same options first."
-	[ $native_only = 0 ] || return 0
+	[ $native_only = 0 ] || return "$result"
 	[ -f "$codec" ] || die "the project codec test helper is missing: rebuild the engine first."
-	(cd "$ROOT/app" && PRINTLAB_SLICER_PATH="$engine" PRINTLAB_PROJECT_CODEC="$codec" bunx vitest --run \
-		src/lib/server/slicer/ src/lib/server/slicer3mf/native-codec.test.ts)
+	if (cd "$ROOT/app" && PRINTLAB_SLICER_PATH="$engine" PRINTLAB_PROJECT_CODEC="$codec" bunx vitest --run \
+		src/lib/server/slicer/ src/lib/server/slicer3mf/native-codec.test.ts); then
+		:
+	else
+		suite_result=$?
+		[ "$result" != 0 ] || result=$suite_result
+	fi
+	return "$result"
 }
 
 case "${1:-}" in
