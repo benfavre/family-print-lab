@@ -1,10 +1,11 @@
 import fs from 'node:fs';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { startTestLab, type TestLab } from '../../testing/harness';
 import { writeStl } from '../../cad/mesh';
 import { renderScad } from '../../cad/openscad';
 import { readSliced } from '../../printer/sliced';
 import { read3mf } from '../../slicer3mf/read';
+import * as locations from '../../slicer/locate';
 import { fakeInstall, type FakeInstall } from '../../slicer/__fixtures__/install';
 import { decodePreview } from '$lib/shared/slicer/preview';
 import { paintTriangle, PAINT_ENFORCER } from '$lib/shared/slicer/paint';
@@ -90,6 +91,7 @@ describe('the slicer workspace against the Bambu Studio command line', () => {
 	afterAll(() => install.remove());
 	afterEach(async () => {
 		await t?.stop();
+		vi.restoreAllMocks();
 	});
 
 	async function until<T>(get: () => T | undefined, ms = 15_000): Promise<T> {
@@ -103,6 +105,8 @@ describe('the slicer workspace against the Bambu Studio command line', () => {
 	}
 
 	async function setUp(modules: string[]) {
+		// The fake command line and its presets are the backend under test here.
+		vi.spyOn(locations, 'locateEngine').mockReturnValue(null);
 		t = await startTestLab({
 			fleet: ['C12'],
 			modules,

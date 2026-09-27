@@ -26,6 +26,7 @@ export function createFtpServer(opts: {
 	const log = opts.log ?? (() => {});
 	const host = opts.host ?? '127.0.0.1';
 	const sockets = new Set<net.Socket>();
+	let enabled = true;
 	// Control and data listeners share ticket keys, so a data connection can resume the control session.
 	const ticketKeys = crypto.randomBytes(48);
 	const listen = (handler: (s: net.Socket) => void) =>
@@ -34,6 +35,7 @@ export function createFtpServer(opts: {
 			: net.createServer(handler);
 
 	const server = listen((control) => {
+		if (!enabled) return void control.destroy();
 		sockets.add(control);
 		control.on('close', () => sockets.delete(control));
 		control.on('error', () => {});
@@ -195,6 +197,11 @@ export function createFtpServer(opts: {
 
 	return {
 		files,
+		/** Reject new sessions and disconnect current clients while keeping the port reserved. */
+		setEnabled(on: boolean) {
+			enabled = on;
+			if (!on) for (const socket of sockets) socket.destroy();
+		},
 		listen(port = 0): Promise<number> {
 			return new Promise((resolve) =>
 				server.listen(port, host, () => resolve((server.address() as net.AddressInfo).port))
