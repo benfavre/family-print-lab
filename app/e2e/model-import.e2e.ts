@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import type { ProjectSource } from '../src/lib/shared/model-import';
 
 // Model import: dropping a model file anywhere adds it to a project; the link window explains what it
 // accepts; the Thingiverse token is saved without ever coming back. Nothing here reaches the internet
@@ -121,4 +122,34 @@ test('Integrations → Model links saves the Thingiverse token without showing i
 	expect(settings).toEqual({ hasThingiverseToken: true });
 	await section.getByRole('button', { name: 'Remove token' }).click();
 	await expect(section.getByRole('button', { name: 'Remove token' })).toHaveCount(0);
+});
+
+test('the project shows designer credits and licences with safe links', async ({ page }) => {
+	const source: ProjectSource = {
+		id: 'source-1',
+		projectId: 'idea-04',
+		site: 'printables',
+		url: 'https://www.printables.com/model/3161',
+		title: 'Imported boat',
+		author: 'A designer',
+		authorUrl: 'javascript:alert(1)',
+		licence: 'CC BY 4.0',
+		licenceUrl: 'https://creativecommons.org/licenses/by/4.0/',
+		importedAt: '2026-09-27T00:00:00Z'
+	};
+	await page.route('**/api/projects/idea-04/sources', (route) =>
+		route.fulfill({ json: { sources: [source] } })
+	);
+	await page.goto('/projects/idea-04');
+	const credits = page.getByRole('region', { name: 'Model credits' });
+	await expect(credits).toContainText('By A designer · Printables');
+	await expect(credits.getByRole('link', { name: 'Imported boat' })).toHaveAttribute(
+		'href',
+		source.url
+	);
+	await expect(credits.getByRole('link', { name: 'CC BY 4.0' })).toHaveAttribute(
+		'href',
+		source.licenceUrl!
+	);
+	await expect(credits.getByRole('link', { name: 'A designer' })).toHaveCount(0);
 });

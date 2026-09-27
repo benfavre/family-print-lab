@@ -271,6 +271,19 @@ export interface ImportSettingsView {
 
 // ---------- Credits ----------
 
+export interface ProjectSource {
+	id: string;
+	projectId: string;
+	site: ImportSite;
+	url: string;
+	title: string;
+	author: string | null;
+	authorUrl: string | null;
+	licence: string | null;
+	licenceUrl: string | null;
+	importedAt: string;
+}
+
 /** The credit block added to the project's description; never shortened. */
 export function creditText(p: {
 	site: ImportSite;
