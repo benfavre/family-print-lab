@@ -3,7 +3,12 @@
 	import { useApp } from '$lib/client/app.svelte';
 	import { duration } from '$lib/client/format';
 	import { useQueue } from '$lib/client/modules/queue/store.svelte';
-	import { queueActions, upNextFor, STATUS_LABEL } from '$lib/client/modules/queue/actions';
+	import {
+		itemNote,
+		queueActions,
+		upNextFor,
+		STATUS_LABEL
+	} from '$lib/client/modules/queue/actions';
 	import type { PrinterStatus } from '$lib/shared/domain';
 
 	// The printer page's "Up next": what the queue starts on this printer next, and the plate button.
@@ -36,16 +41,12 @@
 		{/if}
 		<ol class="next-list">
 			{#each next.slice(0, 4) as item (item.id)}
+				{@const note =
+					itemNote(item, me.blocked, me.name) ??
+					(item.status === 'waiting' ? null : STATUS_LABEL[item.status])}
 				<li>
-					<span
-						><b>{item.title}</b>{#if item.minutes}<small>&nbsp;· {duration(item.minutes)}</small
-							>{/if}
-						<small class="why"
-							>{item.status === 'waiting'
-								? (item.waitingFor ?? 'Starts next.')
-								: `${STATUS_LABEL[item.status]}${item.reason ? `: ${item.reason}` : ''}`}</small
-						></span
-					>
+					<b>{item.title}</b>{#if item.minutes}<small>&nbsp;· {duration(item.minutes)}</small>{/if}
+					{#if note}<small class="why">{note}</small>{/if}
 				</li>
 			{/each}
 		</ol>

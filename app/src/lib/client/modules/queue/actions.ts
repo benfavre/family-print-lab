@@ -62,3 +62,19 @@ export const STATUS_TONE: Record<QueueItemView['status'], string> = {
 	sent: 'Printing',
 	failed: 'Failed'
 };
+
+/**
+ * What to say under an item: why it is held or failed, or why it waits, unless that only repeats why
+ * its printer waits (shown once beside the printer).
+ */
+export function itemNote(
+	item: QueueItemView,
+	blocked: string | null = null,
+	name = ''
+): string | null {
+	if (item.status === 'failed' || (item.status === 'held' && item.reason)) return item.reason;
+	if (item.status !== 'waiting' || !item.waitingFor) return null;
+	if (blocked && (item.waitingFor === blocked || item.waitingFor === `${name}: ${blocked}`))
+		return null;
+	return item.waitingFor;
+}

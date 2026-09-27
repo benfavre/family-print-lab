@@ -2,7 +2,13 @@
 	import { tick } from 'svelte';
 	import { useApp } from '$lib/client/app.svelte';
 	import { duration } from '$lib/client/format';
-	import { open, queueActions, STATUS_LABEL, STATUS_TONE } from '$lib/client/modules/queue/actions';
+	import {
+		itemNote,
+		open,
+		queueActions,
+		STATUS_LABEL,
+		STATUS_TONE
+	} from '$lib/client/modules/queue/actions';
 	import { modelShort } from '$lib/shared/printers/models';
 	import type { QueueItemView, QueuePrinterView, QueueView } from '$lib/shared/queue';
 	import StatusPill from '$lib/components/StatusPill.svelte';
@@ -169,11 +175,11 @@
 										? ` · for ${modelShort(item.slicedFor)}`
 										: ''}{item.requirePlateClear ? '' : ' · no plate check'}</small
 								>
-								{#if item.status === 'failed' || (item.status === 'held' && item.reason)}
-									<small class="why bad">{item.reason}</small>
-								{:else if item.waitingFor && item.status === 'waiting'}
-									<small class="why">{item.waitingFor}</small>
-								{/if}
+								{#if itemNote(item, p?.blocked ?? null, p?.name)}<small
+										class="why"
+										class:bad={item.status !== 'waiting'}
+										>{itemNote(item, p?.blocked ?? null, p?.name)}</small
+									>{/if}
 							</div>
 							<div class="acts">
 								<StatusPill status={STATUS_TONE[item.status]} label={STATUS_LABEL[item.status]} />

@@ -4,7 +4,6 @@ import { expect, test, type Page } from '@playwright/test';
 // Waits until the app has hydrated, so handlers are live.
 const ready = (page: Page) => page.locator('html[data-ready]').waitFor({ state: 'attached' });
 const workspace = (page: Page) => page.request.get('/api/workspace').then((r) => r.json());
-const SIM = 'http://127.0.0.1:18661';
 const CLIP = fs.readFileSync('src/lib/server/__fixtures__/cable-clip.gcode.3mf');
 
 test.beforeEach(async ({ context }) => {
@@ -44,7 +43,6 @@ test('the queue starts two jobs one after another, the second once the plate is 
 		headers: { origin },
 		data: { plateCleared: true }
 	});
-	await page.request.post(`${SIM}/api/speed`, { data: { speed: 300 } });
 	const first = await slicedJob(page, 'Queue one');
 	const second = await slicedJob(page, 'Queue two');
 
@@ -83,7 +81,9 @@ test('the queue starts two jobs one after another, the second once the plate is 
 	// Released, the second waits for the print to end and the plate to be cleared.
 	await two.getByRole('button', { name: 'Release' }).click();
 	await expect.poll(() => jobStatus(page, first), { timeout: 40_000 }).toBe('Succeeded');
-	await expect(two).toContainText('Waiting for someone to clear the plate.', { timeout: 10_000 });
+	await expect(column).toContainText('Waiting for someone to clear the plate.', {
+		timeout: 10_000
+	});
 	expect(await jobStatus(page, second)).toBe('Queued');
 
 	// The printer page offers the same button under "Up next".
@@ -94,5 +94,4 @@ test('the queue starts two jobs one after another, the second once the plate is 
 	await upNext.getByRole('button', { name: 'Plate is clear' }).click();
 	await expect.poll(() => jobStatus(page, second), { timeout: 20_000 }).toBe('Printing');
 	await expect.poll(() => jobStatus(page, second), { timeout: 40_000 }).toBe('Succeeded');
-	await page.request.post(`${SIM}/api/speed`, { data: { speed: 120 } });
 });
