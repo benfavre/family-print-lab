@@ -39,8 +39,12 @@ manual installation. Printer verification uses simulators.
 - Retain completed native dependency caches when a later build step fails, and allow retries of one
   engine platform at a time.
 - Test RPC concurrency with explicit synchronisation instead of a machine-speed threshold.
+- Keep startup logs out of the slicer's JSON protocol on Windows. Read and write projects,
+  profiles, previews and thumbnails in folders containing accents or non-Latin characters.
 - Stage desktop releases as drafts, require all native builds and bundles, and launch installed
   packages on each platform before publication. Check that the packaged server discovers its engine.
+- Verify candidate installers before tagging, accepting native artifacts only when all platform
+  tests passed and the slicer source matches the candidate.
 
 ## 2.2.0 — 2026-09-27
 
