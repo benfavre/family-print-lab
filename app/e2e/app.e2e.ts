@@ -82,6 +82,9 @@ test('grid morphs into the sidebar; the sidebar searches, pins and navigates by 
 	await page.keyboard.press('ArrowDown');
 	await page.keyboard.press('Enter');
 	await expect(page).not.toHaveURL(/idea-04$/);
+	// URL changes before the shared view transition finishes restoring navigation focus.
+	// Wait until the sidebar is ready for keyboard input, or Escape can land on the page.
+	await expect(page.locator('html')).not.toHaveAttribute('data-transition', /.+/);
 	await page.locator('.side-search input').press('Escape');
 	await expect(page.locator('.side-search input')).toHaveValue('');
 

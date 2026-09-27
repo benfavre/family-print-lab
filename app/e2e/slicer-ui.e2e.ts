@@ -83,7 +83,7 @@ test('the slicer workspace: plates, objects, a modifier, plate settings, undo, a
 	await panel.getByLabel('Position Z').press('Enter');
 	await panel.getByRole('button', { name: 'Drop to bed' }).click();
 	await expect(panel.getByLabel('Position Z')).not.toHaveValue('5');
-	await panel.getByText('Parts and modifiers').click();
+	await panel.getByText(/^Parts and modifiers \(\d+\)$/).click();
 	await panel.getByRole('button', { name: '+ Box modifier' }).click();
 	await expect(objects).toContainText('Box');
 	await expect(
