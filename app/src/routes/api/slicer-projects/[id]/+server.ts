@@ -18,7 +18,7 @@ export const GET = api(({ params }, rt): SlicerProjectDetail => {
  * overwriting a newer save (409).
  */
 export const PUT = api(async ({ request, params }, rt) => {
-	const project = parse(projectSchema, await readJson(request, 200_000_000)) as Project;
+	const project = parse(projectSchema, await readJson(request, 100_000_000)) as Project;
 	const match = request.headers.get('if-match');
 	const revision = match === null ? undefined : Number(match.replace(/"/g, ''));
 	if (revision !== undefined && !Number.isInteger(revision))

@@ -39,7 +39,8 @@ import type { ProjectStoreService } from '../modules/contracts';
 const BLOB_BYTES = 256 * 1024;
 /** Unused files younger than this survive a sweep (an upload waiting for its first save). */
 const SWEEP_GRACE_MS = 24 * 3600_000;
-export const MAX_PROJECT_BYTES = 300_000_000;
+// Under BODY_SIZE_LIMIT (110M, .env.example), like sliced plates.
+export const MAX_PROJECT_BYTES = 100_000_000;
 
 interface Sidecar {
 	meshes: MeshId[];
@@ -505,7 +506,7 @@ export function arrange(project: Project, bed: [number, number] = [256, 256], ga
 		const t = o.instances[0].transform;
 		t[9] = x - b[0];
 		t[10] = bed[1] / 2 - (b[1] + b[4]) / 2;
-		t[11] = -b[2];
+		t[11] = 0 - b[2];
 		x += widths[i] + gap;
 	});
 }
