@@ -11,6 +11,9 @@ project(printlab-slicer VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# Protocol strings, fixtures and facade sources are UTF-8 on every host, including MSVC systems
+# whose active Windows code page is not UTF-8. Set this before creating any of our targets.
+add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
 if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release)
 endif ()

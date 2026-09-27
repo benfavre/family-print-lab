@@ -19,7 +19,9 @@ TEST("parses and dumps the protocol's shapes on one line") {
 
 TEST("escapes strings so no raw newline reaches the stream") {
 	Json j(std::string("line one\nline \"two\"\t\x01"));
-	CHECK_EQ(j.dump(), std::string(R"("line one\nline \"two\"\t\u0001")"));
+	// MSVC's traditional preprocessor cannot stringify this raw literal inside CHECK_EQ.
+	const std::string expected = R"("line one\nline \"two\"\t\u0001")";
+	CHECK_EQ(j.dump(), expected);
 	CHECK_EQ(Json::parse(j.dump()).as_string(), j.as_string());
 }
 
