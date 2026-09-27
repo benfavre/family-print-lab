@@ -239,7 +239,7 @@ in every engine build, so ZIP reads and writes retain alignment sanitizer checks
   fake engine, `CliEngine` (`cli.ts`) against a fake Bambu Studio for every model in the catalogue,
   `service.ts` (what jobs call) through both, and the protocol conformance tests against the real
   protocol-only binary.
-- The protocol layer and features pass locally with Make, Ninja and Ninja Multi-Config (`--no-upstream`); native Windows and macOS verification remains outstanding.
+- The protocol layer and features pass locally with Make, Ninja and Ninja Multi-Config (`--no-upstream`); native macOS compilation and integration tests pass; Windows verification remains outstanding.
 - The full engine builds, links and runs on Linux x64. On the previous machine (Ubuntu 22.04, GCC 11,
   `-j 2`), dependencies took about 75 minutes and libslic3r plus the engine about two hours. ctest passes
   (`test_facade` slices a cube for the P1S), the protocol conformance tests pass, the golden boxes
@@ -330,10 +330,18 @@ in every engine build, so ZIP reads and writes retain alignment sanitizer checks
   tests exposed an RPC concurrency test that assumed completion within 380 ms. That assertion now
   uses explicit gates (50 consecutive local passes). The Windows facade now inherits upstream's
   directory-scoped header definitions and MSVC source options; an isolated CMake regression verifies
-  their private scope. Complete runner verification remains pending. Development builds report
+  their private scope. macOS native compilation, 12 native tests and all 105 integration tests now
+  pass (one protocol-only skip); the cached-dependency build took 714 seconds (11 minutes 54 seconds).
+  Windows verification remains pending. Development builds report
   portability failures, while release builds now require every native platform to pass. The v2.2.0 desktop installers for
   Windows/macOS therefore use the installed-Studio fallback. Local Linux AppImage and Debian
   packaging succeeds; the packaged app launches on loopback and preserves all 2,556 engine files.
+
+- The queue-18 Linux rebuild took 394.23 seconds (6 minutes 34 seconds) at 24 workers. An MSVC
+  early-startup stdout redirect and cross-translation-unit logging regression add one native and
+  one protocol test: the local totals are now 13 native, ten protocol and 105 integration passes
+  (one protocol-only skip). The startup-test incremental rebuild took 10.26 seconds. Windows
+  runs the protocol and startup tests before its longer native build.
 
 For a future rebuild, from the repository root:
 
