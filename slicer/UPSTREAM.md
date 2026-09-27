@@ -322,8 +322,12 @@ in every engine build, so ZIP reads and writes retain alignment sanitizer checks
   and exposed an incomplete `ExPolygon` definition in `ClipperZUtils.hpp`; patch 0017 supplies its
   missing include, verified with Clang before and after the fix. The following attempt reached
   `LocalesUtils.cpp`, where libc++ requires an explicit `<sstream>` include (patch 0018). Its failing
-  and corrected forms were reproduced with Clang/libc++ locally. Full native builds on those runners
-  remain unverified and nonblocking. The v2.2.0 desktop installers for
+  and corrected forms were reproduced with Clang/libc++ locally. The subsequent macOS build compiled and linked successfully; its native
+  tests exposed an RPC concurrency test that assumed completion within 380 ms. That assertion now
+  uses explicit gates (50 consecutive local passes). The Windows facade now inherits upstream's
+  directory-scoped header definitions and MSVC source options; an isolated CMake regression verifies
+  their private scope. Complete runner verification remains pending. Development builds report
+  portability failures, while release builds now require every native platform to pass. The v2.2.0 desktop installers for
   Windows/macOS therefore use the installed-Studio fallback. Local Linux AppImage and Debian
   packaging succeeds; the packaged app launches on loopback and preserves all 2,556 engine files.
 

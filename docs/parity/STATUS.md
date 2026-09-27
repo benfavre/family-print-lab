@@ -242,3 +242,14 @@ and ambiguous dual mappings retain their previous behaviour. Dynamic rack and fi
 assignments still need a dedicated compatibility check: their metadata is recognised, but this
 fixed-nozzle comparison does not guess their physical assignment. Validation uses simulator and
 browser fixtures; no real-printer verification is claimed.
+
+
+The 2.2.1 release candidate passes 1,489 app unit/integration tests (four optional/protocol-only
+skips), up from 1,467 before this pass. App check reports zero errors and warnings; formatting and
+ESLint pass. Nozzle changes pass 98 targeted tests and two dedicated browser cases. Native Linux
+validation passes 12 native, nine protocol and 105 integration tests (one protocol-only skip).
+The RPC concurrency regression passes 50 consecutive runs using explicit gates instead of a
+machine-speed assertion. The Linux AppImage was extracted and launched with isolated data; its
+server discovers the bundled native engine and reports configuration validation capability.
+Release automation now requires all native platforms, stages a draft, and checks the installed
+AppImage/NSIS/dmg packages before publication. Windows/macOS release verification is still pending.

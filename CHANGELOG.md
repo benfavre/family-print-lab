@@ -4,10 +4,15 @@ Changes to Family Print Lab, the local, self-hosted household printing app. Prin
 optional companion with its own releases. Earlier releases remain documented in the
 [GitHub release history](https://github.com/benfavre/family-print-lab/releases).
 
-## Unreleased
+## 2.2.1 — 2026-09-27
 
-These changes are on `parity` after the published 2.2.0 tag. They are **not included in the 2.2.0
-installers**.
+[Download 2.2.1](https://github.com/benfavre/family-print-lab/releases/tag/v2.2.1) ·
+[Changes since 2.2.0](https://github.com/benfavre/family-print-lab/compare/v2.2.0...v2.2.1)
+
+This release improves checks between slicing, filament selection and sending. Its release pipeline
+requires native bundles and successful installed-package checks on Linux x64, Windows x64 and macOS
+Apple silicon before the draft is published. Installers remain unsigned; macOS updates require
+manual installation. Printer verification uses simulators.
 
 - Match H2D/X2D filaments to feeders connected to the correct nozzle. Reject known wrong-side
   selections before sending, including forced sends; queue dispatch checks the same restrictions.
@@ -32,7 +37,7 @@ installers**.
   `pkg-config.exe` explicitly.
 - Supply missing upstream header includes exposed by Clang/libc++ when precompiled headers are off.
 - Retain completed native dependency caches when a later build step fails, and allow retries of one
-  engine platform at a time. Complete Windows and macOS native-engine verification remains pending.
+  engine platform at a time.
 - Test RPC concurrency with explicit synchronisation instead of a machine-speed threshold.
 - Stage desktop releases as drafts, require all native builds and bundles, and launch installed
   packages on each platform before publication. Check that the packaged server discovers its engine.
