@@ -7,3 +7,4 @@ export * from './tables/notifications';
 export * from './tables/slicer-projects';
 export * from './tables/imports';
 export * from './tables/presets';
+export * from './tables/queue';
