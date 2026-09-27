@@ -422,6 +422,39 @@ describe('user presets', () => {
 		expect(b.full).not.toHaveProperty('different_settings_to_system');
 	});
 
+	it('keeps the owning filament beside every raw nozzle variant until the engine groups them', () => {
+		const selection = {
+			printer: sys('printer', X1C),
+			process: sys('process', '0.20mm Standard @BBL X1C'),
+			filaments: [sys('filament', 'Bambu PLA Basic @BBL X1C')]
+		};
+		const one = lib.bundle(selection);
+		expect(one.full.filament_self_index).toEqual(['1', '1']);
+		const two = lib.bundle({
+			...selection,
+			filaments: [...selection.filaments, ...selection.filaments]
+		});
+		expect(two.full.filament_self_index).toEqual(['1', '1', '2', '2']);
+		expect(two.full.filament_extruder_variant).toEqual([
+			'Direct Drive Standard',
+			'Direct Drive High Flow',
+			'Direct Drive Standard',
+			'Direct Drive High Flow'
+		]);
+		expect(two.full.nozzle_temperature).toEqual(['220', '225', '220', '225']);
+		const mixed = lib.bundle({
+			...selection,
+			filaments: [...selection.filaments, sys('filament', 'Bambu PETG HF @BBL X1C')]
+		});
+		expect(mixed.full.filament_self_index).toEqual(['1', '1', '2']);
+		expect(mixed.full.filament_extruder_variant).toEqual([
+			'Direct Drive Standard',
+			'Direct Drive High Flow',
+			'Direct Drive Standard'
+		]);
+		expect(mixed.full.nozzle_temperature).toEqual(['220', '225', '250']);
+	});
+
 	it('reports a user preset whose parent is gone', () => {
 		add({ id: 'x', kind: 'process', name: 'Orphan', inherits: 'Gone', config: {} });
 		expect(() =>

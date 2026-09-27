@@ -2,6 +2,8 @@
 // load_vendor_configs_from_json on <resources>/profiles, resolved configs from the loaded presets and
 // the combined config from PresetBundle::full_config(). The inheritance chain and which preset set
 // each key are read from the same JSON files, since PresetBundle keeps only the resolved result.
+// origin: BambuStudio src/libslic3r/PresetBundle.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
+// origin: BambuStudio src/libslic3r/Print.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
 #include <fstream>
 #include <sstream>
 
@@ -167,14 +169,16 @@ ResolvedBundle UpstreamFacade::profiles_resolve(const PresetSelection &selection
 	out.vendor_tag = PRINTLAB_UPSTREAM_TAG;
 	if (!b.vendors.empty()) out.vendor_version = b.vendors.begin()->second.config_version.to_string();
 
-	// The combined config exactly as Bambu Studio builds it for slicing (PresetBundle::full_config).
+	// Keep raw variant arrays and filament_self_index until Print::apply / automatic grouping
+	// chooses the physical nozzles. full_config(true) would select every filament for nozzle 1,
+	// losing (for example) X2D Bowden retraction settings before Print can remap them.
 	std::lock_guard<std::mutex> lock(mutex_); // selections are bundle state
 	b.printers.select_preset_by_name(selection.printer.name, true);
 	b.prints.select_preset_by_name(selection.process.name, true);
 	b.filament_presets.clear();
 	for (const PresetRef &f : selection.filaments) b.filament_presets.push_back(f.name);
 	if (!selection.filaments.empty()) b.filaments.select_preset_by_name(selection.filaments.front().name, true);
-	out.full = from_config(b.full_config());
+	out.full = from_config(b.full_config(false));
 	return out;
 }
 
