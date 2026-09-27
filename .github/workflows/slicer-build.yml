@@ -58,6 +58,7 @@ jobs:
           case "${{ runner.os }}" in
             Linux) sudo apt-get update && sudo apt-get install -y build-essential cmake git m4 pkg-config libdbus-1-dev libgl1-mesa-dev autoconf automake libtool texinfo ;;
             macOS) brew install cmake m4 autoconf automake libtool texinfo ;;
+            Windows) choco install pkgconfiglite --version=0.28 --yes --no-progress ;;
           esac
       - name: Dependency target discovery and build option tests
         run: bash slicer/tests/build.test.sh
@@ -81,6 +82,10 @@ jobs:
             # Use the native Strawberry Perl supplied by the windows-2022 runner image.
             export PATH="/c/Strawberry/perl/bin:$PATH"
             perl -MIPC::Cmd -MLocale::Maketext::Simple -e 'die "Native Windows Perl is required\n" unless $^O eq "MSWin32";'
+            # Upstream honours PKG_CONFIG_EXECUTABLE. Select the native Chocolatey executable
+            # explicitly so Strawberry's extensionless Perl wrapper cannot shadow it.
+            pkg_config="$(bash slicer/scripts/windows-pkg-config.sh "$(command -v pkg-config.exe)")"
+            export PKG_CONFIG_EXECUTABLE="$(cygpath -m "$pkg_config")"
           fi
           slicer/scripts/upstream.sh build -j 4
       - name: Check completed dependencies

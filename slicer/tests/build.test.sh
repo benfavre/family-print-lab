@@ -10,6 +10,22 @@ trap 'rm -rf "$TEMP"' EXIT
 fail() { echo "not ok - $*" >&2; exit 1; }
 pass() { echo "ok - $*"; }
 
+# Strawberry's extensionless Perl wrapper may work in Bash but cannot be spawned by native CMake.
+# A failed executable must also be skipped, and paths with spaces must retain their boundaries.
+mkdir -p "$TEMP/pkg config"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$TEMP/pkg config/pkg-config"
+printf '#!/usr/bin/env bash\nexit 1\n' >"$TEMP/pkg config/broken.exe"
+printf '#!/usr/bin/env bash\n[ "$1" = --version ]\n' >"$TEMP/pkg config/pkg-config.exe"
+chmod +x "$TEMP/pkg config/"*
+selector="$SLICER/scripts/windows-pkg-config.sh"
+selected="$(bash "$selector" "$TEMP/pkg config/pkg-config" "$TEMP/pkg config/broken.exe" "$TEMP/pkg config/pkg-config.exe")"
+[ "$selected" = "$TEMP/pkg config/pkg-config.exe" ] || fail 'native pkg-config selection'
+if bash "$selector" "$TEMP/pkg config/pkg-config" "$TEMP/pkg config/broken.exe" >"$TEMP/pkg-config.log" 2>&1; then
+	fail 'unusable native pkg-config candidates were accepted'
+fi
+grep -q 'No working native pkg-config.exe' "$TEMP/pkg-config.log" || fail 'missing pkg-config diagnostic'
+pass 'native pkg-config selection skips wrappers and broken executables, preserving spaced paths'
+
 # Reproduce the real layout: a dependency build under the app repository beside a nested upstream
 # repository, with an unpacked archive that has no .git directory of its own.
 git init --quiet "$TEMP"
