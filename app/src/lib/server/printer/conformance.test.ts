@@ -52,6 +52,33 @@ const ctx = (f: Fixture) => ({
 const parse = (f: Fixture, raw: Raw) => parseReport(raw, ctx(f));
 const fresh = (f: Fixture) => mergeReport({}, structuredClone(f.pushall));
 
+describe('printer task identifiers', () => {
+	it('keeps job ids through deltas and clears them when the printer does', () => {
+		const context = { model: PRINTER_MODELS.C12, versions: [], accessCodeSet: true };
+		const raw = mergeReport({}, { job_id: '9007199254740993', subtask_id: '0', job_attr: 0x21 });
+		mergeReport(raw, { mc_percent: 42 });
+		expect(parseReport(raw, context)).toMatchObject({
+			jobId: '9007199254740993',
+			subtaskId: '0',
+			jobAttr: 0x21,
+			percent: 42
+		});
+		mergeReport(raw, { job_id: '', subtask_id: '', job_attr: 0 });
+		expect(parseReport(raw, context)).toMatchObject({ jobId: '', subtaskId: '', jobAttr: 0 });
+	});
+
+	it('accepts numeric ids and defaults missing or malformed fields', () => {
+		const context = { model: PRINTER_MODELS.C12, versions: [], accessCodeSet: true };
+		expect(parseReport({ job_id: 360562969, subtask_id: 0, job_attr: 17 }, context)).toMatchObject({
+			jobId: '360562969',
+			subtaskId: '0',
+			jobAttr: 17
+		});
+		for (const raw of [{}, { job_id: {}, subtask_id: [], job_attr: '33' }, { job_attr: 1.5 }])
+			expect(parseReport(raw, context)).toMatchObject({ jobId: '', subtaskId: '', jobAttr: 0 });
+	});
+});
+
 describe('fixtures', () => {
 	it('are all here, each with a source, licence and known model', () => {
 		expect(names).toEqual(

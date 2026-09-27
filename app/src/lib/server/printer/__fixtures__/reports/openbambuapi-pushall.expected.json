@@ -10,6 +10,9 @@
 	"bedTarget": 55,
 	"chamber": 31,
 	"task": "cable_dock_v03",
+	"jobId": "",
+	"subtaskId": "",
+	"jobAttr": 0,
 	"speedLevel": 3,
 	"printError": 0,
 	"hms": [

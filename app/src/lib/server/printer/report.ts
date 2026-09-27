@@ -470,6 +470,11 @@ export function parseReport(raw: Raw, ctx: ParseContext): PrinterSnapshot {
 		bedTarget: bed ? bed.target : round1(num(p.bed_target_temper)),
 		chamber: chamber ? chamber.now : round1(num(p.chamber_temper)),
 		task: text(p.subtask_name) || text(p.gcode_file),
+		// BambuStudio src/slic3r/GUI/DeviceManager.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466:
+		// job_id (3182), job_attr (3223), subtask_id (3243); HMS commands send the ids unchanged.
+		jobId: text(p.job_id, 40),
+		subtaskId: text(p.subtask_id, 40),
+		jobAttr: Number.isSafeInteger(p.job_attr) ? (p.job_attr as number) : 0,
 		speedLevel,
 		printError: num(p.print_error) || 0,
 		hms: list(p.hms)

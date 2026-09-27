@@ -169,7 +169,7 @@ describe('hms module with a simulated printer', () => {
 
 		sim.state.job_attr = 17;
 		sim.report();
-		await until(() => (printer as unknown as { raw: Record<string, unknown> }).raw.job_attr === 17);
+		await until(() => printer.snapshot?.jobAttr === 17);
 		const send = vi.spyOn(printer, 'send');
 		try {
 			const ok = await call(pressAction, '/', { id: info.id }, { code: '0700_8011', actionId: 4 });

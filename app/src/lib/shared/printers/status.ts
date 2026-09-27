@@ -129,6 +129,11 @@ export interface PrinterSnapshot {
 	bedTarget: number | null;
 	chamber: number | null;
 	task: string;
+	/** Printer task identifiers for HMS actions; distinct from the lab's job id. */
+	jobId: string;
+	subtaskId: string;
+	/** job_attr: bits 4–7 identify processing tasks that can only resume on the printer. */
+	jobAttr: number;
 	speedLevel: number | null;
 	printError: number;
 	hms: HmsCode[];
@@ -268,6 +273,9 @@ export function emptySnapshot(over: Partial<PrinterSnapshot> = {}): PrinterSnaps
 		bedTarget: null,
 		chamber: null,
 		task: '',
+		jobId: '',
+		subtaskId: '',
+		jobAttr: 0,
 		speedLevel: null,
 		printError: 0,
 		hms: [],

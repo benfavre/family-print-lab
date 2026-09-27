@@ -6,7 +6,6 @@ import { hmsEvents } from '$lib/server/db/tables/hms';
 import { printers as printers_ } from '$lib/server/db/tables/printers';
 import type { Lab } from '$lib/server/lab';
 import type { PrinterManager } from '$lib/server/printer/manager';
-import type { BambuPrinter } from '$lib/server/printer/bambu';
 import type { CommandOutcome } from '$lib/server/printer/commands/registry';
 import { CANCEL_ERRORS } from '$lib/server/printer/diff';
 import { AppError } from '$lib/server/validation';
@@ -49,28 +48,6 @@ export interface HmsModuleService extends HmsService {
 	forJob(jobId: string): HmsEventRow[];
 	runAction(printerId: string, code: string, actionId: number): Promise<CommandOutcome>;
 	database(): HmsDatabase | null;
-}
-
-type Raw = Record<string, unknown>;
-
-/**
- * The report fields Bambu's error buttons carry (`job_id`, `subtask_id`, `job_attr`) are not in
- * PrinterSnapshot, and rawReport() redacts ids, so they are read from the printer's merged report.
- * A foundation gap (noted in the hms report): PrinterSnapshot should carry them.
- */
-function reportFields(printer: BambuPrinter): {
-	jobId: string;
-	subtaskId: string;
-	jobAttr: number;
-} {
-	const raw = ((printer as unknown as { raw?: Raw }).raw ?? {}) as Raw;
-	const str = (v: unknown) =>
-		typeof v === 'string' || typeof v === 'number' ? String(v).slice(0, 40) : '';
-	return {
-		jobId: str(raw.job_id),
-		subtaskId: str(raw.subtask_id),
-		jobAttr: typeof raw.job_attr === 'number' ? raw.job_attr : 0
-	};
 }
 
 const uuid = () => crypto.randomUUID();
@@ -148,7 +125,7 @@ export function createHmsService(deps: {
 	 */
 	function processingTask(printerId: string) {
 		const printer = printers.get(printerId);
-		return !!printer && ((reportFields(printer).jobAttr >> 4) & 0xf) > 1;
+		return (((printer?.snapshot?.jobAttr ?? 0) >> 4) & 0xf) > 1;
 	}
 
 	function active(printerId: string): HmsAlertInfo[] {
@@ -307,7 +284,8 @@ export function createHmsService(deps: {
 			if (!alert.actions.some((a) => a.id === actionId))
 				throw new AppError(400, 'That button does not belong to this alert.');
 			const def = ACTIONS[actionId];
-			const fields = reportFields(printer);
+			const fields = printer.snapshot;
+			if (!fields) throw new AppError(409, 'The printer has not reported its current task.');
 			const ctx: ActionContext = {
 				printError: parseInt(alert.key, 16),
 				jobId: fields.jobId,
