@@ -43,6 +43,13 @@
       "when": 1790400300000,
       "tag": "0005_printers",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1790400360000,
+      "tag": "0007_ams",
+      "breakpoints": true
     }
   ]
 }

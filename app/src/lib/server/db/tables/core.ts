@@ -1,7 +1,16 @@
 // Today's tables (profiles, projects, spools, jobs, models, sketches, requests, meta). Other areas
 // keep their tables in their own files beside this one.
 import { sql } from 'drizzle-orm';
-import { blob, check, index, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import {
+	blob,
+	check,
+	index,
+	integer,
+	real,
+	sqliteTable,
+	text,
+	uniqueIndex
+} from 'drizzle-orm/sqlite-core';
 import type {
 	Category,
 	JobDispatch,
@@ -83,9 +92,17 @@ export const spools = sqliteTable(
 		remainingGrams: real('remaining_grams').notNull(),
 		cost: real('cost'),
 		notes: text('notes').notNull().default(''),
+		// ams: the Bambu RFID spool this is (tray_uuid, tag_uid, tray_info_idx) and its Spoolman id.
+		rfidUuid: text('rfid_uuid'),
+		rfidTag: text('rfid_tag'),
+		bambuInfoIdx: text('bambu_info_idx'),
+		spoolmanId: integer('spoolman_id'),
 		...timestamps
 	},
 	(t) => [
+		uniqueIndex('spools_rfid_uuid')
+			.on(t.rfidUuid)
+			.where(sql`${t.rfidUuid} IS NOT NULL`),
 		check(
 			'spools_weights',
 			sql`${t.totalGrams} > 0 AND ${t.remainingGrams} >= 0 AND ${t.remainingGrams} <= ${t.totalGrams}`
