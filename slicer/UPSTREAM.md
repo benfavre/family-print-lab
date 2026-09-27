@@ -9,8 +9,8 @@ new Bambu Studio release is a rebase of a handful of small patches, not a merge 
 
 <!-- pin:start -->
 
-| Upstream | Tag | Commit | Patch queue |
-| --- | --- | --- | --- |
+| Upstream     | Tag            | Commit                                     | Patch queue                                                                                       |
+| ------------ | -------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------- |
 | Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 19, 20 patch(es), hash `0e319b62a41e88cd3f1615c36ae19f62ecb644216a9d1a659d8ebbf8c17565b8` |
 
 <!-- pin:end -->
@@ -364,6 +364,12 @@ in every engine build, so ZIP reads and writes retain alignment sanitizer checks
   now propagates that SDK library to its native consumers, matching the pinned upstream libcurl
   interface. An actual MSVC SDK link probe passes before the full native build. Complete Windows
   runtime and installed-package verification remains pending; release publication is gated on it.
+
+- The latest Linux and macOS native CI builds pass 13 native and 105 integration tests
+  (one protocol-only skip), in 1,269 and 865 seconds respectively with cached dependencies.
+  A separate Mach-O audit of the macOS artifact found a Homebrew zstd dynamic-library
+  dependency that is absent from the bundle. Packaging must include and relocate this runtime
+  library before the macOS installer can be considered self-contained.
 
 For a future rebuild, from the repository root:
 
