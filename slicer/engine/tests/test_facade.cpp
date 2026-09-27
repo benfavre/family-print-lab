@@ -121,6 +121,8 @@ TEST("slices a cube for the P1S and exports a printable file") {
 
 	std::ifstream generated(work + "/" + id + "/plate_1.gcode");
 	const std::string gcode((std::istreambuf_iterator<char>(generated)), std::istreambuf_iterator<char>());
+	// Windows CRT file handles deny deletion while open; release the reader before project_close.
+	generated.close();
 	CHECK(gcode.find("; ownership-check eq ne lt gt le ge") != std::string::npos);
 	CHECK_EQ(stats.objects.size(), size_t(1));
 	CHECK_EQ(stats.objects[0].object_id, "o1");
@@ -137,6 +139,7 @@ TEST("slices a cube for the P1S and exports a printable file") {
 	CHECK_EQ(r.plates.size(), size_t(1));
 	CHECK_EQ(r.plates[0].md5.size(), size_t(32));
 	facade->project_close(id);
+	CHECK(!boost::filesystem::exists(boost::filesystem::path(work) / id));
 	boost::filesystem::remove_all(work);
 }
 
