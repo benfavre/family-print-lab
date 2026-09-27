@@ -47,6 +47,7 @@ describe.runIf(!!BIN)('native multi-extruder grouping', () => {
 			const engine = await StdioEngine.open({ command: BIN!, workDir: work });
 			try {
 				if (!engine.has('slice')) skip();
+				expect(engine.has('config.validate')).toBe(true);
 				const selection = selectionOf({
 					machine: `Bambu Lab ${model} 0.4 nozzle`,
 					process: `0.20mm Standard @BBL ${model}`,
@@ -121,7 +122,10 @@ describe.runIf(!!BIN)('native multi-extruder grouping', () => {
 				project.projectConfig.wipe_tower_y = ['200'];
 				project.projectConfig.filament_colour = ['#FF0000', '#0000FF'];
 				await engine.call('project.sync', { projectId, project, presets });
+				const validation = await engine.call('config.validate', { projectId, plate: 1 });
+				expect(validation.errors).toEqual([]);
 				const stats = await engine.call('slice', { projectId, plate: 1 });
+				expect((await engine.call('config.validate', { projectId, plate: 1 })).errors).toEqual([]);
 				expect(Number.isFinite(stats.seconds)).toBe(true);
 				expect(stats.seconds).toBeGreaterThan(0);
 				expect(stats.filaments.map((f) => f.index).sort()).toEqual([1, 2]);

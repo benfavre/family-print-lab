@@ -48,7 +48,7 @@ std::vector<std::string> UpstreamFacade::capabilities() const {
 	std::vector<std::string> caps = {"mesh.put",        "project.sync",  "arrange",         "orient",         "slice",
 	                                 "slice.cancel",    "export.gcode3mf", "export.thumbnails", "profiles.resolve", "profiles.list",
 	                                 "paint.supports",  "paint.seam",    "paint.color",     "paint.fuzzy_skin", "modifiers",
-	                                 "height_ranges",   "variable_layer_height", "preview.v1", "project.open", "project.save", "multi_nozzle"};
+	                                 "height_ranges",   "variable_layer_height", "preview.v1", "project.open", "project.save", "multi_nozzle", "config.validate"};
 	// Every calibration test (features/calib): their models ship with the engine's resources.
 	for (calib::Kind k : calib::all_kinds()) caps.push_back(calib::capability(k));
 	return caps;
@@ -117,27 +117,6 @@ void UpstreamFacade::project_close(const std::string &project_id) {
 	projects_.erase(project_id);
 	boost::system::error_code ec;
 	fs::remove_all(fs::path(work_dir_) / project_id, ec);
-}
-
-ValidateResult UpstreamFacade::config_validate(const std::string &project_id, int plate) {
-	auto state = project(project_id);
-	std::lock_guard<std::mutex> lock(state->mutex);
-	ValidateResult out;
-	for (const Plate &p : state->project.plates) {
-		if (plate && p.index != plate) continue;
-		std::vector<std::string> ids;
-		auto model = build_model(*state, p.index, &ids);
-		if (model->objects.empty()) continue;
-		Print print;
-		print.set_plate_origin(Vec3d::Zero());
-		print.set_plate_index(p.index - 1);
-		print.apply(*model, state->config);
-		StringObjectException warning;
-		StringObjectException error = print.validate(&warning);
-		if (!error.string.empty()) out.errors.push_back({error.opt_key, error.string, ""});
-		if (!warning.string.empty()) out.warnings.push_back({"VALIDATE", warning.string, "", p.index});
-	}
-	return out;
 }
 
 } // namespace printlab::upstream
