@@ -5,6 +5,9 @@
 // functions min, max, int, one_of. Upstream treats a condition that fails to parse as "compatible with
 // everything" (Preset.cpp is_compatible_with_printer); callers do the same with ConditionError.
 // At the pinned tag every condition in the BBL vendor set is empty, which parses to `true`.
+//
+// origin: BambuStudio src/libslic3r/PlaceholderParser.cpp, src/libslic3r/Preset.cpp @
+//   926a7192574bcb9b3a732e1ec59a46d79cb45466
 import type { ConfigMap, ConfigValue } from '$lib/shared/slicer/project';
 
 export class ConditionError extends Error {}

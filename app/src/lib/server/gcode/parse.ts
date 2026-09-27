@@ -22,6 +22,9 @@
 //
 // Both functions below also run inside a worker thread, where worker.ts loads them from their source
 // text: they must not use imports or anything outside their own body (types are fine; they vanish).
+//
+// origin: BambuStudio src/libslic3r/GCode/GCodeProcessor.cpp @
+//   926a7192574bcb9b3a732e1ec59a46d79cb45466
 import type { PreviewData, PreviewHeader } from '$lib/shared/slicer/preview';
 
 export interface GcodeFilament {

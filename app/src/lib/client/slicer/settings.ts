@@ -4,6 +4,9 @@
 // keys against). Values are text as upstream stores them; the placeholder shows what the presets give.
 // Hints list the option values of src/libslic3r/PrintConfig.cpp (s_keys_map_SeamPosition, _SupportType,
 // _BrimType, _IroningType, _FuzzySkinType, _InfillPattern) at the tag in slicer/upstream.lock.
+//
+// origin: BambuStudio src/libslic3r/PrintConfig.cpp, src/slic3r/GUI/Tab.cpp @
+//   926a7192574bcb9b3a732e1ec59a46d79cb45466
 import type { ConfigMap, ConfigValue } from '$lib/shared/slicer/project';
 
 export interface SettingDef {

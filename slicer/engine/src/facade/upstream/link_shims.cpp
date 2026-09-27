@@ -11,6 +11,9 @@
 //   failure, and LogSink then writes nothing encrypted.
 //
 // Nothing else from src/slic3r is linked (slicer/UPSTREAM.md: no GUI, no bambu_networking).
+//
+// origin: BambuStudio src/slic3r/Utils/Http.cpp, src/slic3r/Utils/BBLUtil.cpp @
+//   926a7192574bcb9b3a732e1ec59a46d79cb45466
 #define NANOSVG_IMPLEMENTATION
 #include "nanosvg/nanosvg.h"
 

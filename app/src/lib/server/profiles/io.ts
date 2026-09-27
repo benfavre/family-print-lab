@@ -12,6 +12,9 @@
 // Import reads either, like import_presets: every .json in a zip except bundle_structure.json. A preset
 // without a version, of unknown kind, named like a system preset, or based on a system preset these
 // profiles lack is skipped, as upstream skips it; one named like an existing user preset replaces it.
+//
+// origin: BambuStudio src/libslic3r/Config.cpp, src/slic3r/GUI/CreatePresetsDialog.cpp @
+//   926a7192574bcb9b3a732e1ec59a46d79cb45466
 import { readZip, writeZip } from '../cad/mesh';
 import { AppError } from '../validation';
 import { META_KEYS } from './vendor';

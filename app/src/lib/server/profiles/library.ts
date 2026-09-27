@@ -13,6 +13,8 @@
 //     different_settings_to_system, compatible_machine/process_expression_group,
 //     print_compatible_printers), as PresetBundle::full_fff_config does (~3255–3545) without the
 //     per-extruder variant expansion, which the engine applies from the *_extruder_variant keys.
+//
+// origin: BambuStudio src/libslic3r/Preset.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
 import fs from 'node:fs';
 import { AppError } from '../validation';
 import { META_KEYS, VendorError, VendorProfiles, type VendorPreset } from './vendor';

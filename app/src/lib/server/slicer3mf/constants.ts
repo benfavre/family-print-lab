@@ -2,6 +2,10 @@
 // src/libslic3r/Format/bbs_3mf.cpp at Bambu Studio v02.08.02.61 (slicer/upstream.lock); the line
 // numbers below refer to that file. PrusaSlicer names come from src/libslic3r/Format/3mf.cpp at
 // PrusaSlicer version_2.8.1.
+//
+// origin: BambuStudio src/libslic3r/Format/bbs_3mf.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
+// origin: PrusaSlicer src/libslic3r/Format/3mf.cpp @ 5dc04b4e8f14f65bbcc5377d62cad3e86c2aea36
+//   (version_2.8.1)
 import type { PartType } from '$lib/shared/slicer/project';
 
 // Archive paths (bbs_3mf.cpp:151-190).

@@ -12,6 +12,8 @@
 // id (bbs_3mf.cpp ~8745), and each box covers only an object's first instance (Print.cpp
 // get_first_layer_bbox ~1894). So a box is matched by object name, and only when one object on the
 // plate has that name.
+//
+// origin: BambuStudio src/libslic3r/Format/bbs_3mf.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
 import { readZip } from '$lib/server/cad/mesh';
 import type { PlateObject } from '$lib/shared/controls';
 

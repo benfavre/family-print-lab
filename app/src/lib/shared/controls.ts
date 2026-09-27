@@ -4,6 +4,9 @@
 // Sources: Bambu Studio v02.08.02.61 src/slic3r/GUI/StatusPanel.cpp, DeviceManager.cpp and DeviceCore/*
 // (https://github.com/bambulab/BambuStudio), ha-bambulab pybambu (https://github.com/greghesp/ha-bambulab
 // at 0e027ff), OpenBambuAPI mqtt.md (https://github.com/Doridian/OpenBambuAPI at cc383a2).
+//
+// origin: BambuStudio src/slic3r/GUI/StatusPanel.cpp, src/slic3r/GUI/DeviceManager.cpp @
+//   926a7192574bcb9b3a732e1ec59a46d79cb45466
 import type { Capabilities, PrinterModel } from './printers/models';
 import type { PrinterSnapshot, SpeedLevel } from './printers/status';
 

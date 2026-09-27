@@ -5,6 +5,9 @@
 // page 49), that do nothing (Load Filament 10, Cancel 37), or that need data we do not have (Proceed
 // 41 and Don't Remind Me 57 need the dialog's action JSON) are left out: no button. Disable
 // Purification 54 is only listed for HMS codes, which get no buttons (see actionIdsFor).
+//
+// origin: BambuStudio src/slic3r/GUI/DeviceErrorDialog.hpp, src/slic3r/GUI/DeviceErrorDialog.cpp @
+//   926a7192574bcb9b3a732e1ec59a46d79cb45466
 import type { CommandMap, CommandName } from '$lib/server/printer/commands/registry';
 
 /** What a button needs to fill in its command. */

@@ -4,6 +4,8 @@
 // every value is optional, clamped and validated; unknown data is ignored rather than trusted.
 // Field sources: ha-bambulab pybambu/models.py (https://github.com/greghesp/ha-bambulab at 0e027ff),
 // Bambu Studio v02.08.02.61 src/slic3r/GUI/DeviceManager.cpp and DeviceCore/*, OpenBambuAPI mqtt.md.
+//
+// origin: BambuStudio src/slic3r/GUI/DeviceManager.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
 import {
 	EXT_DEPUTY,
 	EXT_MAIN,

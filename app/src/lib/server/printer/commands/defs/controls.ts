@@ -6,6 +6,9 @@
 // v02.08.02.61 (https://github.com/bambulab/BambuStudio, files named per def), ha-bambulab
 // pybambu/commands.py and utils.py (https://github.com/greghesp/ha-bambulab at 0e027ff) and OpenBambuAPI
 // mqtt.md (https://github.com/Doridian/OpenBambuAPI at cc383a2), and exercised against the simulator.
+//
+// origin: BambuStudio src/slic3r/GUI/DeviceManager.cpp, src/slic3r/GUI/StatusPanel.cpp @
+//   926a7192574bcb9b3a732e1ec59a46d79cb45466
 import { z } from 'zod';
 import { defineCommand, type CommandContext } from '../registry';
 import { amsSlotOf } from '../../report';

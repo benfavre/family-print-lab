@@ -1,6 +1,10 @@
 // Calibration recipes; see calib.hpp for where each comes from. Values are written the way preset
 // files write them (enums by key, booleans "0"/"1") so the facade loads them with upstream's own
 // config reader.
+//
+// origin: BambuStudio src/slic3r/GUI/Plater.cpp, src/slic3r/GUI/calib_dlg.cpp @
+//   926a7192574bcb9b3a732e1ec59a46d79cb45466
+// origin: OrcaSlicer src/slic3r/GUI/Plater.cpp @ 8500fcdccaa10b5099ac20d252af3a7c560046f1 (v2.4.2)
 #include "calib.hpp"
 
 #include <cmath>

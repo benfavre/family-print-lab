@@ -3,6 +3,8 @@
 // objects are components pointing at meshes in 3D/Objects/*.model (production extension p:path),
 // Metadata/model_settings.config for names, parts, settings and plates, Metadata/project_settings.config
 // for the settings, and the per-object side files. Passthrough files are copied byte for byte.
+//
+// origin: BambuStudio src/libslic3r/Format/bbs_3mf.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
 import fs from 'node:fs';
 import { writeZip } from '../cad/mesh';
 import { AppError } from '../validation';

@@ -9,6 +9,9 @@
 // bits 2–3 the special side (split) or the state (leaf, 0–2). A leaf with state ≥ 3 writes 0b1100,
 // then 0b1111 for every 15 above 3, then the rest. Children are written last child first (kept for
 // compatibility with PrusaSlicer 2.3.1). The string is the nibbles as hex digits, last nibble first.
+//
+// origin: BambuStudio src/libslic3r/TriangleSelector.cpp, src/libslic3r/Model.cpp @
+//   926a7192574bcb9b3a732e1ec59a46d79cb45466
 
 /** Painting states: 0 none; supports/seam 1 = enforcer, 2 = blocker; colour n = filament n; fuzzy skin 1. */
 export type PaintState = number;

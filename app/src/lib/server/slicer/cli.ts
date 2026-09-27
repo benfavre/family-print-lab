@@ -14,6 +14,8 @@
 // Limits of this backend (the engine has none of them): modifiers, negative parts, support
 // painting, per-object settings, height ranges and layer height profiles cannot be passed as STL,
 // so they are left out with a warning; every plate is sliced as plate 1 in bed coordinates.
+//
+// origin: BambuStudio src/libslic3r/PrintConfig.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
 import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';

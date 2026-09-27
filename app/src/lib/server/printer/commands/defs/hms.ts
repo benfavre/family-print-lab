@@ -2,6 +2,8 @@
 // exactly like Bambu Studio v02.08.02.61 src/slic3r/GUI/DeviceManager.cpp builds them (line numbers at
 // that tag). The hms module picks which one a button sends (modules/hms/actions.ts, after
 // DeviceErrorDialog.cpp on_button_click ~535).
+//
+// origin: BambuStudio src/slic3r/GUI/DeviceManager.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
 import { z } from 'zod';
 import { defineCommand } from '../registry';
 

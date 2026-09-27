@@ -1,6 +1,8 @@
 // User presets in the database (user_presets): a name, the system preset it inherits from and only the
 // keys it changes, like Bambu Studio's user preset files (Preset::save writes the diff against the
 // parent, src/libslic3r/Preset.cpp ~640).
+//
+// origin: BambuStudio src/libslic3r/Preset.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
 import crypto from 'node:crypto';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import type { DB } from '../db';

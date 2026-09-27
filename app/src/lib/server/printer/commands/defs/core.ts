@@ -3,6 +3,9 @@
 // against OpenBambuAPI mqtt.md (https://github.com/Doridian/OpenBambuAPI at cc383a2), Bambu Studio
 // v02.08.02.61 src/slic3r/GUI/DeviceManager.cpp and SelectMachine.cpp, and ha-bambulab
 // pybambu/commands.py (https://github.com/greghesp/ha-bambulab at 0e027ff).
+//
+// origin: BambuStudio src/slic3r/GUI/DeviceManager.cpp, src/slic3r/GUI/SelectMachine.cpp @
+//   926a7192574bcb9b3a732e1ec59a46d79cb45466
 import { z } from 'zod';
 import { defineCommand } from '../registry';
 import { amsSlotOf } from '../../report';

@@ -9,6 +9,8 @@
 // them (six decimals) where Bambu Studio sends text; replies are read in shared/slicer-calibration.ts
 // (DevCalib.cpp). Offered only when the printer reports the feature (flags.ts bits 6 and 7, Bambu
 // Studio DeviceManager.cpp ~4438), and never during a print.
+//
+// origin: BambuStudio src/slic3r/GUI/DeviceManager.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
 import { z } from 'zod';
 import { defineCommand, type CommandContext } from '../registry';
 import { amsSlotOf } from '../../report';

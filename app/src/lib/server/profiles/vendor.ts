@@ -16,6 +16,8 @@
 // Keys no preset in the chain sets keep the engine's built-in defaults (libslic3r's PrintConfigDef),
 // which are not modelled here; everything a system preset writes is. "nil" array entries are kept as
 // they are: the slicer reads them as "use the printer's value".
+//
+// origin: BambuStudio src/libslic3r/PresetBundle.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ConfigMap, ConfigValue } from '$lib/shared/slicer/project';

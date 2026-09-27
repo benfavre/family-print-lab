@@ -3,6 +3,9 @@
 // slicer/engine/src/features/calib/calib.hpp), how to read each one, the filament setting each result
 // goes into, and the printer's own flow dynamics (pressure advance) and flow rate calibration, whose
 // K-value profiles Bambu Studio lists per filament and nozzle.
+//
+// origin: BambuStudio src/slic3r/GUI/calib_dlg.cpp, src/slic3r/GUI/DeviceCore/DevCalib.cpp @
+//   926a7192574bcb9b3a732e1ec59a46d79cb45466
 import type { Capabilities, Series } from './printers/models';
 import type { PrinterSnapshot } from './printers/status';
 import type { ConfigMap, PresetRef } from './slicer/project';

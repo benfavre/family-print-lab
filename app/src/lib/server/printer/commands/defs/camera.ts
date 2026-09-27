@@ -5,6 +5,8 @@
 // command_ipcam_resolution_set (~2133–2166; values "720p" and "1080p" per the cfg decoding ~4393).
 // The printer acknowledges on the camera topic with the command and its control/resolution
 // (DeviceManager.cpp ~3661–3685); the next report shows ipcam.timelapse / ipcam_record / resolution.
+//
+// origin: BambuStudio src/slic3r/GUI/DeviceManager.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
 import { z } from 'zod';
 import { defineCommand } from '../registry';
 

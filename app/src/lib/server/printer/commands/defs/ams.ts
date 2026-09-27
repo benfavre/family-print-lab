@@ -4,6 +4,9 @@
 // ~1677) and DeviceCore/DevFilaSystemCtrl.cpp (CtrlAmsStartDryingHour, CtrlAmsStopDrying), OpenBambuAPI
 // mqtt.md (https://github.com/Doridian/OpenBambuAPI at cc383a2) and ha-bambulab pybambu/commands.py
 // AMS_FILAMENT_DRYING_TEMPLATE (https://github.com/greghesp/ha-bambulab at 0e027ff).
+//
+// origin: BambuStudio src/slic3r/GUI/DeviceManager.cpp,
+//   src/slic3r/GUI/DeviceCore/DevFilaSystemCtrl.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
 import { z } from 'zod';
 import { defineCommand } from '../registry';
 import { amsSlotOf } from '../../report';

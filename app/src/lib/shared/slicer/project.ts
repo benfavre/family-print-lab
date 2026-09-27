@@ -1,6 +1,8 @@
 // The Scene/Project model: a Bambu Studio project (3MF) as the app holds it, mirroring Bambu Studio's
 // own model so a 3MF round-trips losslessly (slicer-3mf owns this file after the foundation; changes
 // are additive). Names follow src/libslic3r/Format/bbs_3mf.cpp at the tag in slicer/upstream.lock.
+//
+// origin: BambuStudio src/libslic3r/Format/bbs_3mf.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
 import type { GlobalTray } from '../printers/status';
 import type { PresetKind } from './profiles';
 

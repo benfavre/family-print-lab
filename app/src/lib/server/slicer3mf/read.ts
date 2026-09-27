@@ -3,6 +3,8 @@
 // build items become objects and instances in item order, components become parts, model_settings.config
 // names them and holds per-object/per-part settings and plates, and per-object side files are indexed by
 // the 1-based object order. Files we do not model are kept byte for byte in `passthrough`.
+//
+// origin: BambuStudio src/libslic3r/Format/bbs_3mf.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
 import { readZip } from '../cad/mesh';
 import { AppError } from '../validation';
 import { child, childrenNamed, parseXml, rootElement, xmlUnescape, type XmlNode } from './xml';
