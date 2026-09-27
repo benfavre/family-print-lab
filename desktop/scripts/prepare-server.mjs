@@ -14,12 +14,13 @@ fs.rmSync(server, { recursive: true, force: true });
 fs.mkdirSync(server, { recursive: true });
 
 console.log('• building the web app');
-execFileSync('npm', ['run', 'build'], {
+execFileSync('bun', ['run', 'build'], {
 	cwd: app,
 	stdio: 'inherit',
-	// npm is npm.cmd on Windows, which needs a shell.
-	shell: process.platform === 'win32',
-	env: { ...process.env, BUILD_DIR: path.relative(app, path.join(server, 'build')) }
+	env: {
+		...process.env,
+		BUILD_DIR: path.relative(app, path.join(server, 'build'))
+	}
 });
 
 for (const dir of ['drizzle', 'resources']) {
@@ -27,7 +28,8 @@ for (const dir of ['drizzle', 'resources']) {
 		recursive: true,
 		// No bytecode and no download caches (an older generator cached raw upstream files under
 		// resources/bambu/.cache; they are commit-specific and do not belong in a release).
-		filter: (src) => !src.split(path.sep).some((part) => part === '__pycache__' || part === '.cache')
+		filter: (src) =>
+			!src.split(path.sep).some((part) => part === '__pycache__' || part === '.cache')
 	});
 }
 // Print Lab Slicer, when slicer/dist/<platform> holds a build (slicer/scripts/upstream.sh build, or
@@ -36,14 +38,25 @@ for (const dir of ['drizzle', 'resources']) {
 // Bambu Studio.
 const engine = path.resolve(desktop, '../slicer/dist', `${process.platform}-${process.arch}`);
 if (fs.existsSync(path.join(engine, 'engine.json'))) {
+	const binary = path.join(
+		engine,
+		process.platform === 'win32' ? 'printlab-slicer.exe' : 'printlab-slicer'
+	);
+	if (!fs.existsSync(binary))
+		throw new Error(`Incomplete Print Lab Slicer bundle: missing ${binary}`);
 	fs.cpSync(engine, path.join(server, 'engine'), { recursive: true });
+	// GitHub artifacts lose Unix executable permissions.
+	if (process.platform !== 'win32')
+		fs.chmodSync(path.join(server, 'engine', 'printlab-slicer'), 0o755);
 	console.log(`• copied Print Lab Slicer (${path.relative(desktop, engine)})`);
 } else console.log('• no Print Lab Slicer build for this platform; the app will use Bambu Studio');
 // The settings template the desktop app offers as printlab.env.
 fs.copyFileSync(path.join(app, '.env.example'), path.join(server, 'env.example'));
 console.log('• copied drizzle/, resources/ and env.example');
 if (!fs.existsSync(path.join(server, 'resources/bambu/profiles/BBL.json')))
-	console.warn('! no slicer presets in resources/bambu/profiles: run bun run profiles:fetch in app/');
+	console.warn(
+		'! no slicer presets in resources/bambu/profiles: run bun run profiles:fetch in app/'
+	);
 
 // The build is ES modules; say so for its folder (main.cjs outside it stays CommonJS).
 fs.writeFileSync(path.join(server, 'package.json'), '{ "type": "module" }\n');
@@ -71,7 +84,9 @@ const out = execFileSync(process.execPath, ['--input-type=module', '-e', check],
 });
 const result = JSON.parse(out.trim().split('\n').pop());
 if (result.missing.length) {
-	console.error(`✘ The server needs packages the desktop app does not install: ${result.missing.join(', ')}`);
+	console.error(
+		`✘ The server needs packages the desktop app does not install: ${result.missing.join(', ')}`
+	);
 	process.exit(1);
 }
 console.log(`• all ${result.chunks} server chunks load with the desktop app's packages`);

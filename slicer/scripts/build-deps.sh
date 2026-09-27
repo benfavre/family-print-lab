@@ -27,6 +27,9 @@ die() {
 	exit 1
 }
 say() { echo "build-deps.sh: $*"; }
+sha256() {
+	if command -v sha256sum >/dev/null; then sha256sum "$@"; else shasum -a 256 "$@"; fi
+}
 
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -59,7 +62,26 @@ platform() {
 
 # The upstream tag under our patches (upstream.sh fetch tags that commit printlab-base).
 TAG="$(git -C "$UP" tag --points-at printlab-base 2>/dev/null | grep -v '^printlab-' | head -n 1 || true)"
-KEY="deps-${TAG:-$(git -C "$UP" rev-parse --short HEAD)}-$(git -C "$UP" rev-parse HEAD:deps | cut -c1-12)-$(platform)"
+PLATFORM="$(platform)"
+case "$PLATFORM" in
+win32-*)
+	COMPILER="${CXX:-cl}"
+	GENERATOR="${CMAKE_GENERATOR:-Visual Studio 17 2022}"
+	COMPILER_VERSION="$("$COMPILER" 2>&1 || true)"
+	command -v "$COMPILER" >/dev/null || die "MSVC is needed: use a Visual Studio developer shell."
+	;;
+*)
+	COMPILER="${CXX:-c++}"
+	GENERATOR="${CMAKE_GENERATOR:-Unix Makefiles}"
+	COMPILER_VERSION="$("$COMPILER" --version)"
+	;;
+esac
+# Installed dependencies are Release builds even when the engine is instrumented. Compiler,
+# generator and architecture changes must not reuse an incompatible cached prefix.
+FINGERPRINT="$(printf '%s\n' "$COMPILER_VERSION" "$GENERATOR" "${CMAKE_GENERATOR_PLATFORM:-}" \
+	"${CFLAGS:-}" "${CXXFLAGS:-}" 'Release;DEP_DEBUG=OFF;headless-v2' |
+	sha256 | cut -c1-12)"
+KEY="deps-${TAG:-$(git -C "$UP" rev-parse --short HEAD)}-$(git -C "$UP" rev-parse HEAD:deps | cut -c1-12)-$PLATFORM-$FINGERPRINT"
 if [ "$PRINT_KEY" = 1 ]; then
 	echo "$KEY"
 	exit 0
@@ -73,13 +95,13 @@ fi
 # GMP's configure needs m4; some hosts (and minimal CI images) lack it. Build it once into the build
 # directory instead of asking for root.
 TOOLS="$BUILD/tools"
-if ! command -v m4 >/dev/null; then
+if [[ "$PLATFORM" != win32-* ]] && ! command -v m4 >/dev/null; then
 	if [ ! -x "$TOOLS/bin/m4" ]; then
 		say "m4 is missing; building it into ${TOOLS}"
 		mkdir -p "$TOOLS/src"
 		# Checked against the GNU release's sha256 before anything in it runs.
 		curl -fsSL https://ftp.gnu.org/gnu/m4/m4-1.4.19.tar.xz -o "$TOOLS/src/m4.tar.xz"
-		local_sum="$( (command -v sha256sum >/dev/null && sha256sum "$TOOLS/src/m4.tar.xz" || shasum -a 256 "$TOOLS/src/m4.tar.xz") | cut -d' ' -f1)"
+		local_sum="$(sha256 "$TOOLS/src/m4.tar.xz" | cut -d' ' -f1)"
 		[ "$local_sum" = 63aede5c6d33b6d9b13511cd0be2cac046f2e70fd0a07aa9573a04a82783af96 ] ||
 			die "the m4 download does not match its checksum."
 		tar -xJ -C "$TOOLS/src" -f "$TOOLS/src/m4.tar.xz"
@@ -87,7 +109,9 @@ if ! command -v m4 >/dev/null; then
 	fi
 	export PATH="$TOOLS/bin:$PATH"
 fi
-for tool in cmake make git perl; do
+TOOLS_NEEDED=(cmake git perl)
+case "$PLATFORM" in win32-*) TOOLS_NEEDED+=(nmake) ;; *) TOOLS_NEEDED+=(make) ;; esac
+for tool in "${TOOLS_NEEDED[@]}"; do
 	command -v "$tool" >/dev/null || die "$tool is needed to build the dependencies."
 done
 
@@ -97,9 +121,12 @@ mkdir -p "$DEPS"
 # the machine usable meanwhile.
 export CMAKE_BUILD_PARALLEL_LEVEL="$JOBS"
 nice -n 10 cmake -S "$UP/deps" -B "$DEPS/build" \
+	-G "$GENERATOR" \
 	-DCMAKE_BUILD_TYPE=Release \
+	-DCMAKE_PROJECT_INCLUDE="$SLICER/scripts/dependency-targets.cmake" \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DDESTDIR="$DEPS" \
+	-DDEP_DEBUG=OFF \
 	-DDEP_WX_GTK3=ON \
 	-DDEP_BUILD_WXWIDGETS=OFF \
 	-DDEP_BUILD_FFMPEG=OFF \
@@ -108,9 +135,9 @@ nice -n 10 cmake -S "$UP/deps" -B "$DEPS/build" \
 # Every dependency target except the GL ones (their dependencies come along).
 TARGETS=()
 while IFS= read -r t; do
-	case "$t" in dep_GLEW | dep_OpenCSG | dep_GLFW) ;; *) TARGETS+=(--target "$t") ;; esac
-done < <(cmake --build "$DEPS/build" --target help | sed -n -E 's/^\.\.\. (dep_[A-Za-z0-9_]+).*$/\1/p')
+	[ -z "$t" ] || TARGETS+=("$t")
+done <"$DEPS/build/printlab-dependency-targets.txt"
 [ ${#TARGETS[@]} -gt 0 ] || die "the superbuild lists no dependency targets."
-nice -n 10 cmake --build "$DEPS/build" -j "$JOBS" "${TARGETS[@]}"
+nice -n 10 cmake --build "$DEPS/build" --config Release -j "$JOBS" --target "${TARGETS[@]}"
 echo "$KEY" >"$DEPS/.stamp"
 say "dependencies built into $DEPS/usr/local."

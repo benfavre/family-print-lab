@@ -44,6 +44,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: app/.nvmrc
+      - uses: oven-sh/setup-bun@v2
       - name: Tag matches the desktop version
         shell: bash
         run: test "v$(node -p "require('./desktop/package.json').version")" = "${GITHUB_REF_NAME}"
