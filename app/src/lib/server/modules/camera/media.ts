@@ -143,7 +143,9 @@ export function createMedia(o: {
 			const thumbs = thumbDir
 				? await listDir(p, joinPath(clean, 'thumbnail'), signal).catch(() => [])
 				: [];
-			const media = toMedia(clean, entries, thumbs);
+			// In the timelapse view the thumbnail folder is shown through the videos, not as a folder.
+			const shown = timelapses && thumbDir ? entries.filter((e) => e !== thumbDir) : entries;
+			const media = toMedia(clean, shown, thumbs);
 			const note = timelapses
 				? media.some((m) => m.kind === 'video')
 					? null

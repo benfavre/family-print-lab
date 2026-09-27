@@ -128,6 +128,7 @@ describe('camera on the simulated fleet', () => {
 		const listing = (await res.json()) as MediaListing;
 		expect(listing.dir).toBe('/timelapse');
 		const videos = listing.entries.filter((e) => e.kind === 'video');
+		expect(listing.entries.some((e) => e.name === 'thumbnail')).toBe(false);
 		expect(videos).toHaveLength(2);
 		expect(videos[0].thumbnail).toMatch(/^\/timelapse\/thumbnail\/video_.*\.jpg$/);
 		expect(listing.note).toBeNull();
