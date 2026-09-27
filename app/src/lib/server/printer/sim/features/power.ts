@@ -1,6 +1,7 @@
 // A simulated printer on a fake smart plug. Switched off, the printer really goes away: its MQTT and
-// file ports close (so the app sees it offline, as with a real printer), a running print is lost and
-// it cools down; switched on, it boots idle after a short delay and listens on the same ports again.
+// file connections close and new sessions are rejected, so the app sees it offline. The listeners
+// stay reserved during the cut: another test cannot take their ports. A running print is lost and
+// it cools down; switched on, it boots idle after a short delay and accepts sessions again.
 // The fake plug speaks the local HTTP APIs the home-automation module drives (Tasmota, Shelly Gen1,
 // Shelly Gen2+ RPC with optional digest login, Home Assistant REST, plain webhooks), so tests and
 // `bun run dev:sim -- --plugs <port>` exercise the real clients.
@@ -37,13 +38,13 @@ export function attachPlug(
 				on = next;
 				if (!next) {
 					powerCut(sim);
-					await simulator.close();
+					simulator.setPowered(false);
 					sim.log('⏻ plug off: printer unpowered');
 				} else {
 					sim.log('⏻ plug on: printer booting');
 					await new Promise((r) => setTimeout(r, o.bootMs ?? 1000));
 					if (!on) return;
-					await simulator.listen(simulator.port, o.host ?? '127.0.0.1', simulator.ftpPort);
+					simulator.setPowered(true);
 					sim.log('⏻ printer ready');
 				}
 			});

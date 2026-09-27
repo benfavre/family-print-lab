@@ -71,6 +71,17 @@ describe.skipIf(!where)('the Bambu Studio vendor set on this machine', () => {
 });
 
 // The engine's PresetBundle is the oracle: compare a sample of selections key by key.
+// Bambu Studio v02.08.02.61 src/libslic3r/PrintConfig.cpp defines best_object_pos as
+// coPoint. Config.hpp ConfigOptionPoint accepts both separators and serialises with a comma.
+// Compare the two coordinates only for that option; preserve exact comparisons for other strings.
+function oracleValue(key: string, value: unknown): unknown {
+	if (key === 'best_object_pos' && typeof value === 'string') {
+		const point = value.split(/[x,]/);
+		if (point.length === 2 && point.every((v) => v.trim() && Number.isFinite(Number(v))))
+			return point.map(Number);
+	}
+	return value;
+}
 const engineHere = !!locateEngine();
 describe.skipIf(!engineHere || !where)('oracle: the engine’s own preset resolution', () => {
 	afterAll(async () => (await openSlicer())?.close());
@@ -89,7 +100,10 @@ describe.skipIf(!engineHere || !where)('oracle: the engine’s own preset resolu
 			for (const part of ['printer', 'process'] as const)
 				for (const [key, value] of Object.entries(ours[part].config))
 					if (key in theirs[part].config)
-						expect(theirs[part].config[key], `${ours[part].name}: ${key}`).toEqual(value);
+						expect(
+							oracleValue(key, theirs[part].config[key]),
+							`${ours[part].name}: ${key}`
+						).toEqual(oracleValue(key, value));
 		}
 	});
 });

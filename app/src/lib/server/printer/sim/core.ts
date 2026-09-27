@@ -163,6 +163,8 @@ export function createSimulator(o: SimOptions = {}) {
 	const start = simState(model.code);
 	const versions = JSON.parse(JSON.stringify(start.get_version).replaceAll('**SERIAL**', serial));
 	const sockets = new Set<net.Socket>();
+	const connections = new Set<net.Socket>();
+	let powered = true;
 	let sent: Json = {};
 	let clock: NodeJS.Timeout | undefined;
 	const files = createFtpServer({ accessCode, log, tls: o.tls });
@@ -565,6 +567,9 @@ export function createSimulator(o: SimOptions = {}) {
 	}
 
 	const onSocket = (socket: net.Socket) => {
+		if (!powered) return void socket.destroy();
+		connections.add(socket);
+		socket.on('close', () => connections.delete(socket));
 		let buffer: Buffer = Buffer.alloc(0),
 			authed = false;
 		socket.on('data', (chunk: Buffer) => {
@@ -662,9 +667,17 @@ export function createSimulator(o: SimOptions = {}) {
 				});
 			});
 		},
+		/** Keep ports reserved during a power cut so parallel simulators cannot steal them. */
+		setPowered(on: boolean) {
+			powered = on;
+			clearInterval(clock);
+			files.setEnabled(on);
+			if (!on) for (const socket of connections) socket.destroy();
+			else if (broker.listening) clock = setInterval(tick, 1000);
+		},
 		async close(): Promise<void> {
 			clearInterval(clock);
-			for (const socket of sockets) socket.destroy();
+			for (const socket of connections) socket.destroy();
 			await files.close();
 			return new Promise((r) => broker.close(() => r()));
 		}

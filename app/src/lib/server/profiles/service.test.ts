@@ -1,10 +1,11 @@
 // The slicer-profiles module in a test lab (fixture vendor folder, a simulated A1 mini): the API
 // routes for user presets, import/export in Bambu Studio's formats, a job's slicer settings, a spool's
 // filament preset and the preset for an AMS tray.
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { RequestEvent } from '@sveltejs/kit';
 import { startTestLab, type TestLab } from '../testing/harness';
 import { readZip, writeZip } from '../cad/mesh';
+import * as locations from '../slicer/locate';
 import { FIXTURE } from './__fixtures__/helpers';
 import type { SlicerProfiles } from './service';
 import * as presetsRoute from '../../../routes/api/slicer/presets/+server';
@@ -28,6 +29,8 @@ const key = Symbol.for('family-print-lab.runtime');
 const A1M = 'Bambu Lab A1 mini 0.4 nozzle';
 
 beforeAll(async () => {
+	// This suite exercises the fixture vendor set even when a native engine is installed.
+	vi.spyOn(locations, 'locateEngine').mockReturnValue(null);
 	t = await startTestLab({
 		modules: ['slicer-profiles'],
 		fleet: ['N1'],
@@ -38,7 +41,8 @@ beforeAll(async () => {
 });
 afterAll(async () => {
 	delete holder[key];
-	await t.stop();
+	await t?.stop();
+	vi.restoreAllMocks();
 });
 
 type Handler = (e: RequestEvent) => Promise<Response>;
