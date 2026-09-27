@@ -53,6 +53,7 @@ async function until(ok: () => boolean, ms = 10_000) {
 async function lab(extra?: ReturnType<typeof visionModule>) {
 	const t = await startTestLab({
 		modules: ['camera', 'ai-vision', 'notifications'],
+		env: ffmpeg ? { FFMPEG_PATH: ffmpeg } : {},
 		extraModules: extra ? [extra] : undefined,
 		fleet: ['N1']
 	});
