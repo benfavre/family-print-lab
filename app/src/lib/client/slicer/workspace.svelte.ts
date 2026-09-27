@@ -44,7 +44,7 @@ import {
 } from './selection';
 import {
 	adjacency,
-	brushTriangles,
+	paintSphere,
 	fillTriangles,
 	paintWith,
 	shownStates,
@@ -434,12 +434,13 @@ export class WorkspaceState {
 		const part = obj?.parts.find((p) => p.id === hit.partId);
 		const positions = part && this.meshes.get(part.mesh);
 		if (!obj || !part || !positions) return;
-		let triangles: number[];
+		let triangles: number[] = [];
+		let radius = settings.radius;
 		if (settings.tool === 'brush') {
 			// The brush radius is in bed millimetres; the mesh may be scaled.
 			const s = decompose(compose(part.transform, obj.instances[0].transform)).scale;
 			const scale = (Math.abs(s[0]) + Math.abs(s[1]) + Math.abs(s[2])) / 3 || 1;
-			triangles = brushTriangles(positions, hit.triangle, hit.point, settings.radius / scale);
+			radius = settings.radius / scale;
 		} else {
 			if (!first) return;
 			let n = this.neighbours.get(part.mesh);
@@ -458,7 +459,10 @@ export class WorkspaceState {
 			label,
 			(p) => {
 				const target = findObject(p, hit.objectId).parts.find((x) => x.id === hit.partId)!;
-				const paint = paintWith(target, settings.kind, triangles, settings.state);
+				const paint =
+					settings.tool === 'brush'
+						? paintSphere(target, settings.kind, positions, hit.point, radius, settings.state)
+						: paintWith(target, settings.kind, triangles, settings.state);
 				if (paint) target.paint = paint;
 				else delete target.paint;
 			},

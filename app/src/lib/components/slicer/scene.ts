@@ -13,9 +13,9 @@ import { plateOrigin } from '$lib/client/slicer/plates';
 import { partFilament } from '$lib/client/slicer/edit';
 import type { Selection, Pick } from '$lib/client/slicer/selection';
 import type { PaintKind } from '$lib/client/slicer/paint';
-import { shownStates } from '$lib/client/slicer/paint';
 import type { LayerView } from '$lib/client/slicer/layer-view';
 import { applyLayerColours } from './layer-material';
+import { paintedFacets } from '$lib/client/slicer/paint-geometry';
 
 export type Gizmo = 'translate' | 'rotate' | 'scale' | null;
 
@@ -308,19 +308,20 @@ export class SlicerScene {
 		this.render();
 	}
 
-	/** A copy of a mesh with per-triangle colours for the painting being edited. */
+	/** Draw native subdivision leaves, retaining source facet ids for painting picks. */
 	private paintedGeometry(base: THREE.BufferGeometry, strings: Record<number, string> | undefined) {
-		const g = base.clone();
-		const count = g.getAttribute('position').count;
-		const colours = new Float32Array(count * 3);
+		const facets = paintedFacets(base.getAttribute('position').array as Float32Array, strings);
+		const g = new THREE.BufferGeometry();
+		g.setAttribute('position', new THREE.BufferAttribute(facets.positions, 3));
+		g.computeVertexNormals();
+		g.userData.paintSources = facets.sources;
+		const colours = new Float32Array(facets.positions.length);
 		const plain = new THREE.Color(0xc8ccd4);
-		for (let v = 0; v < count; v++) plain.toArray(colours, v * 3);
-		const states = shownStates(strings);
 		const c = new THREE.Color();
-		for (const [tri, state] of states) {
+		for (const [tri, state] of facets.states.entries()) {
 			const css = this.paint?.colours[state];
-			if (!css) continue;
-			c.set(css.slice(0, 7));
+			if (css) c.set(css.slice(0, 7));
+			else c.copy(plain);
 			for (let k = 0; k < 3; k++) c.toArray(colours, (tri * 3 + k) * 3);
 		}
 		g.setAttribute('color', new THREE.BufferAttribute(colours, 3));
@@ -430,7 +431,7 @@ export class SlicerScene {
 			{
 				objectId: mesh.userData.objectId,
 				partId: mesh.userData.partId,
-				triangle: hit.faceIndex ?? 0,
+				triangle: mesh.geometry.userData.paintSources?.[hit.faceIndex ?? 0] ?? hit.faceIndex ?? 0,
 				point: [local.x, local.y, local.z]
 			},
 			first
