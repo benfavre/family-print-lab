@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Print Lab patch queue <patch-queue@printlab.invalid>
+Date: Sun, 27 Sep 2026 14:36:57 +0000
+Subject: [PATCH] Build: require C++11 for OCCT on AppleClang
+
+Why: OCCT 7.6 only recognises Clang and GNU when adding its C++11 compiler flag. AppleClang otherwise compiles as C++98 and fails on nested BVH template arguments. Set the standard through CMake for every compiler.
+
+Files: deps/OCCT/OCCT.cmake
+Upstreamable: yes
+---
+ deps/OCCT/OCCT.cmake | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/deps/OCCT/OCCT.cmake b/deps/OCCT/OCCT.cmake
+index 0c146a6..dbed899 100644
+--- a/deps/OCCT/OCCT.cmake
++++ b/deps/OCCT/OCCT.cmake
+@@ -16,6 +16,9 @@ bambustudio_add_cmake_project(OCCT
+     #DEPENDS dep_FREETYPE
+     CMAKE_ARGS
+         -DCMAKE_POLICY_VERSION_MINIMUM=3.5
++        # OCCT 7.6 recognises Clang but not AppleClang when selecting its language standard.
++        -DCMAKE_CXX_STANDARD=11
++        -DCMAKE_CXX_STANDARD_REQUIRED=ON
+         -DBUILD_LIBRARY_TYPE=${library_build_type}
+         -DUSE_TK=OFF
+         -DUSE_TBB=OFF
