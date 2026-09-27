@@ -120,6 +120,13 @@
         "when": 1790400960000,
         "tag": "0021_lan_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1790401020000,
+      "tag": "0024_calibration",
+      "breakpoints": true
     }
   ]
 }

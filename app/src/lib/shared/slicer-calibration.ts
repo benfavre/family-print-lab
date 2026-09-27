@@ -383,8 +383,7 @@ export function nozzleId(volume: NozzleVolume, diameter: number): string {
 export function nozzleVolumeOf(id: string): NozzleVolume {
 	const letter = id[1];
 	return (
-		(Object.entries(NOZZLE_LETTER).find(([, l]) => l === letter)?.[0] as NozzleVolume) ??
-		'standard'
+		(Object.entries(NOZZLE_LETTER).find(([, l]) => l === letter)?.[0] as NozzleVolume) ?? 'standard'
 	);
 }
 
@@ -432,7 +431,9 @@ const str = (v: unknown) => (typeof v === 'string' ? v : '');
  * diameter comes from the reply itself, and K values outside 0–10 are dropped.
  */
 export function parseKProfiles(reply: Record<string, unknown> | undefined): KProfile[] {
-	const list = Array.isArray(reply?.filaments) ? (reply.filaments as Record<string, unknown>[]) : [];
+	const list = Array.isArray(reply?.filaments)
+		? (reply.filaments as Record<string, unknown>[])
+		: [];
 	const fallbackDiameter = flexible(reply?.nozzle_diameter, 0.4);
 	return list
 		.filter((f) => f && typeof f === 'object')
@@ -454,7 +455,9 @@ export function parseKProfiles(reply: Record<string, unknown> | undefined): KPro
 
 /** A flowrate_get_result reply's `filaments` (DevCalib.cpp from_json(FlowRatioCalibResult)). */
 export function parseFlowResults(reply: Record<string, unknown> | undefined): FlowRatioResult[] {
-	const list = Array.isArray(reply?.filaments) ? (reply.filaments as Record<string, unknown>[]) : [];
+	const list = Array.isArray(reply?.filaments)
+		? (reply.filaments as Record<string, unknown>[])
+		: [];
 	return list
 		.filter((f) => f && typeof f === 'object')
 		.map((f) => ({
