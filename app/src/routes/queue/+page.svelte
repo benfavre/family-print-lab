@@ -71,6 +71,7 @@
 				<a class="primary button-link" href="{resolve('/integrations')}#printers">Add a printer</a>
 			</section>
 		{:else}
+			{#if queue.error}<p class="load-error" role="alert">{queue.error}</p>{/if}
 			{#if view.quietNow}<p class="quiet-note">
 					Quiet hours: nothing starts by itself right now.
 				</p>{/if}
@@ -131,6 +132,11 @@
 		margin: 0 0 8px;
 		font-size: 13px;
 		color: var(--amber);
+	}
+	.load-error {
+		margin: 0 0 8px;
+		font-size: 13px;
+		color: var(--err-text);
 	}
 	.add-wrap {
 		margin-top: 12px;

@@ -311,10 +311,8 @@ export class Queue implements QueueService {
 			const check = this.d.printing.check(row.jobId, opts);
 			const problem = check.blocking[0] ?? check.warnings.join(' ');
 			if (problem) {
-				if (!TRANSIENT.has(problem)) {
-					this.hold(row, problem, at);
-					changed = true;
-				} else decision.blocked[x.printerId] = problem;
+				if (TRANSIENT.has(problem)) decision.blocked[x.printerId] = problem;
+				else changed = this.holdOnce(row, problem, at, decision) || changed;
 				decision.dispatch = decision.dispatch.filter((y) => y !== x);
 				continue;
 			}
@@ -322,9 +320,8 @@ export class Queue implements QueueService {
 			try {
 				task = this.d.printing.send(row.jobId, opts);
 			} catch (error) {
-				this.hold(row, (error as Error).message, at);
+				changed = this.holdOnce(row, (error as Error).message, at, decision) || changed;
 				decision.dispatch = decision.dispatch.filter((y) => y !== x);
-				changed = true;
 				continue;
 			}
 			this.watching.set(task.id, row.id);
@@ -343,6 +340,17 @@ export class Queue implements QueueService {
 		}
 		if (changed) this.announce(null, 'dispatcher');
 		return decision;
+	}
+
+	/**
+	 * Holds an item the send check refused. Automatic holds are looked at again on every pass, so one
+	 * already held for the same reason is left alone (no second queue.held). True when it changed.
+	 */
+	private holdOnce(row: Row, reason: string, at: string, decision: Decision): boolean {
+		decision.waiting[row.id] = reason;
+		if (row.status === 'held' && row.reason === reason) return false;
+		this.hold(row, reason, at);
+		return true;
 	}
 
 	private hold(row: Row, reason: string, at: string) {
@@ -392,7 +400,8 @@ export class Queue implements QueueService {
 				.update(queueItems)
 				.set({
 					status: printing ? 'sent' : 'failed',
-					reason: printing ? null : 'The app stopped while this was being sent.'
+					reason: printing ? null : 'The app stopped while this was being sent.',
+					updatedAt: new Date().toISOString()
 				})
 				.where(eq(queueItems.id, row.id))
 				.run();
@@ -522,8 +531,11 @@ export class Queue implements QueueService {
 	/**
 	 * A printer's switches (a row is made on first use). A printer whose last print ended (FINISH or
 	 * FAILED) before anyone told the queue starts with "plate needs clearing": nobody said it is clear.
+	 * Until the printer has reported, that is unknown, so no row is saved just for reading (nothing can
+	 * start on it before its first report anyway); a switch changed before then saves one that asks for
+	 * the plate to be confirmed, to be safe.
 	 */
-	private state(printerId: string): PrinterState {
+	private state(printerId: string, save = false): PrinterState {
 		const row = this.d.db
 			.select()
 			.from(queuePrinterState)
@@ -535,14 +547,15 @@ export class Queue implements QueueService {
 			printerId,
 			autoDispatch: true,
 			paused: false,
-			plateClearNeeded: gcode === 'FINISH' || gcode === 'FAILED'
+			plateClearNeeded: gcode === undefined ? save : gcode === 'FINISH' || gcode === 'FAILED'
 		};
-		this.d.db.insert(queuePrinterState).values(fresh).onConflictDoNothing().run();
+		if (gcode !== undefined || save)
+			this.d.db.insert(queuePrinterState).values(fresh).onConflictDoNothing().run();
 		return fresh;
 	}
 
 	private setState(printerId: string, change: Partial<PrinterState>) {
-		this.state(printerId);
+		this.state(printerId, true);
 		if (Object.keys(change).length)
 			this.d.db
 				.update(queuePrinterState)

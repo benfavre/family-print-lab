@@ -16,14 +16,18 @@
 
 	async function add(target: string | null) {
 		busy = true;
-		// The queue prints the job's chosen plate.
-		if (job.sliced && plate !== job.sliced.plate)
-			await lab.call('PATCH', `/api/jobs/${job.id}/sliced`, { plate });
-		await act.add(
-			{ jobId: job.id, printerId: target },
-			target ? `Queued for ${printerName}.` : 'Queued for any printer that fits.'
-		);
-		busy = false;
+		try {
+			// The queue prints the job's chosen plate (not queued if choosing it failed).
+			if (job.sliced && plate !== job.sliced.plate) {
+				if (!(await lab.call('PATCH', `/api/jobs/${job.id}/sliced`, { plate }))) return;
+			}
+			await act.add(
+				{ jobId: job.id, printerId: target },
+				target ? `Queued for ${printerName}.` : 'Queued for any printer that fits.'
+			);
+		} finally {
+			busy = false;
+		}
 	}
 </script>
 
