@@ -13,6 +13,7 @@ import { ProjectStore } from './store';
 import { openSlicer } from '../slicer/engine';
 import { kidAccess } from '../kid/session';
 import { paintTriangle } from '$lib/shared/slicer/paint';
+import { projectSchema } from '../modules/slicer-3mf/validation';
 import type { Project } from '$lib/shared/slicer/project';
 import * as list from '../../../routes/api/slicer-projects/+server';
 import * as one from '../../../routes/api/slicer-projects/[id]/+server';
@@ -287,6 +288,83 @@ describe('loading and saving', () => {
 	});
 });
 
+describe('saving what the browser sends back', () => {
+	it('saves every fixture through the store and reads it back the same', async () => {
+		for (const f of fs.readdirSync(fixtures).filter((n) => n.endsWith('.3mf'))) {
+			const id = store.importFile(projectId, f, fs.readFileSync(path.join(fixtures, f))).summary.id;
+			// Through JSON, as the browser sends it (JSON has no -0, so compare as JSON).
+			const before = JSON.parse(JSON.stringify(await store.load(id)));
+			// The request limits fit real projects.
+			expect(projectSchema.safeParse(before).error, f).toBeUndefined();
+			store.saveSync(id, before);
+			expect(JSON.parse(JSON.stringify(await store.load(id))), f).toEqual(before);
+			store.remove(id);
+		}
+	});
+
+	it('refuses bad archive names and XML that would break the file', async () => {
+		const id = store.importFile(
+			projectId,
+			'Checks',
+			fs.readFileSync(path.join(fixtures, 'synth-bambu-features.3mf'))
+		).summary.id;
+		const base = await store.load(id);
+		const attempt = async (change: (p: Project) => void) => {
+			const p = structuredClone(base);
+			change(p);
+			return jsonOf(await call(one.PUT, { params: { id }, method: 'PUT', body: p }));
+		};
+		const blob = Object.values(base.passthrough).find((e) => 'path' in e);
+		const escapes = await attempt((p) => {
+			p.passthrough['../outside.txt'] = blob ?? { base64: 'eA==' };
+		});
+		expect(escapes.status).toBe(400);
+		expect(escapes.body.error).toMatch(/bad name/);
+		const brokenPart = await attempt((p) => {
+			p.objects[0].parts[0].xml = ['</part></object><object id="99">'];
+		});
+		expect(brokenPart.status).toBe(400);
+		expect(brokenPart.body.error).toMatch(/not well-formed/);
+		const brokenCut = await attempt((p) => {
+			p.objects[0].cutInfo = '</object><evil>';
+		});
+		expect(brokenCut.status).toBe(400);
+		const brokenText = await attempt((p) => {
+			p.objects[0].parts[0].text = { 'a="1" onload': 'x' };
+		});
+		expect(brokenText.status).toBe(400);
+		const twoPlates = await attempt((p) => {
+			p.plates[1].index = p.plates[0].index;
+		});
+		expect(twoPlates.body.error).toMatch(/share a number/);
+		const brokenSettings = await attempt((p) => {
+			p.modelSettingsXml = ['<assemble>'];
+		});
+		expect(brokenSettings.status).toBe(400);
+		store.remove(id);
+	});
+
+	it('drops sliced G-code when saving, since an edit makes it stale', async () => {
+		const id = store.importFile(
+			projectId,
+			'Sliced',
+			fs.readFileSync(path.join(fixtures, 'synth-bambu-features.3mf'))
+		).summary.id;
+		const p = await store.load(id);
+		p.passthrough['Metadata/plate_1.gcode'] = { base64: Buffer.from('G28\n').toString('base64') };
+		p.passthrough['Metadata/plate_1.gcode.md5'] = { base64: Buffer.from('abc').toString('base64') };
+		p.passthrough['Metadata/plate_1.json'] = { base64: Buffer.from('{}').toString('base64') };
+		p.plates[0].config.gcode_file = 'Metadata/plate_1.gcode';
+		store.saveSync(id, p);
+		const back = await store.load(id);
+		expect(back.passthrough['Metadata/plate_1.gcode']).toBeUndefined();
+		expect(back.passthrough['Metadata/plate_1.gcode.md5']).toBeUndefined();
+		expect(back.passthrough['Metadata/plate_1.json']).toBeDefined();
+		expect(back.plates[0].config.gcode_file).toBeUndefined();
+		store.remove(id);
+	});
+});
+
 describe('meshes', () => {
 	it('adds a model version or an upload and serves it back as STL', async () => {
 		const fromModel = await jsonOf(
@@ -356,5 +434,16 @@ describe.skipIf(!engine?.has('project.open'))('Print Lab Slicer reads what we wr
 			expect(opened.project.objects.map((o) => o.name)).toEqual(project.objects.map((o) => o.name));
 			expect(opened.project.plates.length).toBe(project.plates.length);
 		}
+	});
+
+	it('opens a project started from a model version with the same objects and plates', async () => {
+		const s = store.createFromModels(projectId, 'Engine check', [{ modelId, versionId }]);
+		const project = await store.load(s.id);
+		const target = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'print-lab-3mf-')), 'Cube.3mf');
+		fs.copyFileSync(store.file(s.id).path, target);
+		const opened = await engine!.call('project.open', { path: target });
+		expect(opened.project.objects.map((o) => o.name)).toEqual(project.objects.map((o) => o.name));
+		expect(opened.project.objects[0].instances).toHaveLength(1);
+		expect(opened.project.plates.length).toBe(project.plates.length);
 	});
 });

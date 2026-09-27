@@ -159,13 +159,17 @@ function zipEntries(buf: Buffer): ZipEntry[] {
 
 /**
  * Reads the entries of a zip whose names match `want` (3MF meshes by default). `head` entries are only
- * partly inflated (their first bytes), for peeking at large files such as G-code.
+ * partly inflated (their first bytes), for peeking at large files such as G-code. `maxTotal` caps the
+ * unpacked size of all `all` entries together, so a small archive cannot unpack into gigabytes.
  */
 export function readZip(
 	buf: Buffer,
-	want: (name: string) => 'all' | 'head' | false = (n) => (/\.model$/i.test(n) ? 'all' : false)
+	want: (name: string) => 'all' | 'head' | false = (n) => (/\.model$/i.test(n) ? 'all' : false),
+	maxTotal = Infinity
 ): Map<string, Buffer> {
 	const files = new Map<string, Buffer>();
+	let left = maxTotal;
+	const tooBig = () => new AppError(400, 'That archive unpacks to more than this app can hold.');
 	for (const e of zipEntries(buf)) {
 		const mode = want(e.name);
 		if (!mode || (e.method !== 0 && e.method !== 8)) continue;
@@ -179,11 +183,19 @@ export function readZip(
 							maxOutputLength: 1 << 20
 						})
 			);
-		else
-			files.set(
-				e.name,
-				e.method === 0 ? e.raw : zlib.inflateRawSync(e.raw, { maxOutputLength: 512 * 1024 * 1024 })
-			);
+		else {
+			const cap = Math.min(512 * 1024 * 1024, left);
+			let data: Buffer;
+			try {
+				data = e.method === 0 ? e.raw : zlib.inflateRawSync(e.raw, { maxOutputLength: cap + 1 });
+			} catch (error) {
+				if ((error as { code?: string }).code === 'ERR_BUFFER_TOO_LARGE') throw tooBig();
+				throw error;
+			}
+			if (data.length > cap) throw tooBig();
+			left -= data.length;
+			files.set(e.name, data);
+		}
 	}
 	return files;
 }

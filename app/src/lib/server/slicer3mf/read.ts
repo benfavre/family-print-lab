@@ -64,6 +64,8 @@ import { parsePrintLabFile } from './printlab-file';
 export interface ReadOptions {
 	/** Storage recorded in each MeshRef (default: a file named <sha256>.stl). */
 	meshStorage?: (id: MeshId) => MeshRef['storage'];
+	/** Cap on the unpacked size of the whole archive (default MAX_UNPACKED_BYTES). */
+	maxUnpackedBytes?: number;
 }
 
 export interface ReadResult {
@@ -75,6 +77,8 @@ export interface ReadResult {
 }
 
 const bad = (why: string) => new AppError(400, why);
+/** What a project may unpack to in all (a 100 MB upload of well-compressed meshes stays far below). */
+export const MAX_UNPACKED_BYTES = 1024 * 1024 * 1024;
 const META_FIELDS = Object.entries(META) as [keyof typeof META, string][];
 
 interface ModelDoc {
@@ -117,7 +121,11 @@ export function read3mf(buf: Buffer, o: ReadOptions = {}): ReadResult {
 }
 
 function readProject(buf: Buffer, o: ReadOptions): ReadResult {
-	const files = readZip(buf, (n) => (n.endsWith('/') ? false : 'all'));
+	const files = readZip(
+		buf,
+		(n) => (n.endsWith('/') ? false : 'all'),
+		o.maxUnpackedBytes ?? MAX_UNPACKED_BYTES
+	);
 	const warnings: string[] = [];
 	const text = (path: string) => {
 		const b = files.get(path);
@@ -393,6 +401,21 @@ function readProject(buf: Buffer, o: ReadOptions): ReadResult {
 
 	// Plates (model_settings.config); a file without any gets one plate holding everything.
 	const plates: Plate[] = settings.plates.map((p) => plateFrom(p, topIds, warnings));
+	// Plate numbers are 1-based and unique (upstream: plate_index = plater_id); a plate without a
+	// usable one gets the next free number instead of clashing with another.
+	const usedIndex = new Set<number>();
+	const renumber: Plate[] = [];
+	for (const plate of plates) {
+		if (plate.index >= 1 && !usedIndex.has(plate.index)) usedIndex.add(plate.index);
+		else renumber.push(plate);
+	}
+	let freeIndex = 1;
+	for (const plate of renumber) {
+		while (usedIndex.has(freeIndex)) freeIndex++;
+		warnings.push(`A plate numbered ${plate.index} was renumbered ${freeIndex}.`);
+		plate.index = freeIndex;
+		usedIndex.add(freeIndex);
+	}
 	if (!plates.length)
 		plates.push({
 			index: 1,
@@ -617,6 +640,8 @@ function plateFrom(p: PlateSettings, topIds: Map<number, SceneObject>, warnings:
 		}
 		const identify = get(INSTANCE_KEYS.identifyId);
 		if (identify !== undefined && /^-?\d+$/.test(identify)) instance.identifyId = Number(identify);
+		if (plate.instances.some((r) => r.objectId === obj.id && r.instanceId === instance.id))
+			continue;
 		plate.instances.push({ objectId: obj.id, instanceId: instance.id });
 	}
 	return plate;

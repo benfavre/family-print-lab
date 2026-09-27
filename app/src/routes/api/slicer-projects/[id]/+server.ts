@@ -20,7 +20,9 @@ export const GET = api(({ params }, rt): SlicerProjectDetail => {
 export const PUT = api(async ({ request, params }, rt) => {
 	const project = parse(projectSchema, await readJson(request, 100_000_000)) as Project;
 	const match = request.headers.get('if-match');
-	const revision = match === null ? undefined : Number(match.replace(/"/g, ''));
+	// A bare number or an entity tag ("3", W/"3") both name the revision.
+	const revision =
+		match === null ? undefined : Number(match.trim().replace(/^W\//, '').replace(/"/g, ''));
 	if (revision !== undefined && !Number.isInteger(revision))
 		throw new AppError(400, 'If-Match must be a revision number.');
 	// No workspace in the answer: nothing in it changed.

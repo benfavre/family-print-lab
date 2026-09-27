@@ -165,3 +165,53 @@ export const child = (n: XmlNode, name: string) => n.children.find((c) => c.name
 export function xmlUnescape(s: string): string {
 	return s.includes('&') ? s.replace(/&(lt|gt|amp);/g, (_, e: string) => ENTITIES[e]) : s;
 }
+
+const NAME = /^[A-Za-z_][\w.:-]*$/;
+/** An XML name (element or attribute), as the writer may put it in a tag. */
+export const isXmlName = (s: string) => NAME.test(s);
+
+/**
+ * Checks XML the browser sends back verbatim (unmodelled elements, cut information): tags balance,
+ * names are names, attribute values are quoted and text has no stray '<'. Returns how many elements
+ * sit at the top level, or -1 when it is not well-formed enough to paste into a file we write.
+ */
+export function xmlFragmentElements(s: string): number {
+	const stack: string[] = [];
+	let top = 0;
+	let i = 0;
+	while (i < s.length) {
+		const lt = s.indexOf('<', i);
+		const text = s.slice(i, lt < 0 ? s.length : lt);
+		if (!stack.length && text.trim()) return -1;
+		if (/&(?!(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z]+);)/.test(text)) return -1;
+		if (lt < 0) break;
+		if (s.startsWith('<!--', lt)) {
+			const end = s.indexOf('-->', lt + 4);
+			if (end < 0) return -1;
+			i = end + 3;
+		} else if (s.startsWith('<![CDATA[', lt)) {
+			const end = s.indexOf(']]>', lt + 9);
+			if (end < 0 || !stack.length) return -1;
+			i = end + 3;
+		} else if (s[lt + 1] === '/') {
+			const end = s.indexOf('>', lt);
+			if (end < 0 || stack.pop() !== s.slice(lt + 2, end).trim()) return -1;
+			i = end + 1;
+		} else {
+			const end = findTagEnd(s, lt + 1);
+			if (end < 0) return -1;
+			const selfClosing = s[end - 1] === '/';
+			const inner = s.slice(lt + 1, selfClosing ? end - 1 : end);
+			const sp = inner.search(/\s/);
+			const name = sp < 0 ? inner : inner.slice(0, sp);
+			if (!isXmlName(name)) return -1;
+			// Everything after the name must be name="value" pairs.
+			const rest = sp < 0 ? '' : inner.slice(sp);
+			if (rest.replace(/\s+[A-Za-z_][\w.:-]*\s*=\s*("[^"<]*"|'[^'<]*')/g, '').trim()) return -1;
+			if (!stack.length) top++;
+			if (!selfClosing) stack.push(name);
+			i = end + 1;
+		}
+	}
+	return stack.length ? -1 : top;
+}

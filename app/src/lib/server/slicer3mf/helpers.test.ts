@@ -1,12 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { parseXml, rootElement, decodeEntities, escapeXml, xmlUnescape } from './xml';
+import {
+	parseXml,
+	rootElement,
+	decodeEntities,
+	escapeXml,
+	xmlUnescape,
+	xmlFragmentElements
+} from './xml';
 import { formatG9, formatNumber, scanMesh, sliceTriangles } from './mesh';
 import { composeTransforms, formatTransform, parseTransform } from './transform';
 import { parsePrintLabFile, printLabFile } from './printlab-file';
 import { read3mf } from './read';
 import { write3mf } from './write';
-import { readZip } from '../cad/mesh';
-import { addObject, arrange } from './store';
+import { readZip, writeZip } from '../cad/mesh';
+import { addObject, arrange, isArchiveName } from './store';
 import { emptyProject, type MeshRef, type Transform } from '$lib/shared/slicer/project';
 
 describe('xml', () => {
@@ -36,6 +43,39 @@ describe('xml', () => {
 		expect(decodeEntities('&#x41;&#66;&quot;&bogus;')).toBe('AB"&bogus;');
 		// utils.cpp xml_unescape only knows &lt; &gt; &amp;.
 		expect(xmlUnescape('&amp;lt; &quot;')).toBe('&lt; &quot;');
+	});
+});
+
+describe('verbatim XML and archive names', () => {
+	it('counts top-level elements of well-formed fragments', () => {
+		expect(xmlFragmentElements('<mesh_stat face_count="12" edges_fixed="0"/>')).toBe(1);
+		expect(xmlFragmentElements('<assemble>\n <item a="1&amp;2"/>\n</assemble>')).toBe(1);
+		expect(xmlFragmentElements('\n  <cut_id id="3"/>\n  <connectors><c/></connectors>\n ')).toBe(2);
+		expect(xmlFragmentElements('<a><![CDATA[x < y]]><!-- c --></a>')).toBe(1);
+		expect(xmlFragmentElements('')).toBe(0);
+	});
+
+	it('refuses XML that would break the file it is pasted into', () => {
+		for (const bad of [
+			'</object><evil/>',
+			'<a>',
+			'<a></b>',
+			'<a x=1/>',
+			'<a x="1"y="2"/>',
+			'text<a/>',
+			'<a>&nope</a>',
+			'<a b="<"/>',
+			'<1a/>',
+			'<a/><!-- open'
+		])
+			expect(xmlFragmentElements(bad), bad).toBe(-1);
+	});
+
+	it('only accepts relative archive paths', () => {
+		expect(isArchiveName('Metadata/plate_1.png')).toBe(true);
+		expect(isArchiveName('[Content_Types].xml')).toBe(true);
+		for (const bad of ['', '/etc/passwd', '../x', 'a/../b', 'a//b', 'a\\b', './a', 'a/', 'a\0b'])
+			expect(isArchiveName(bad), bad).toBe(false);
 	});
 });
 
@@ -197,5 +237,33 @@ describe('broken files', () => {
 				])
 			)
 		).toThrow(/does not exist/);
+	});
+
+	it('refuses archives that unpack to more than the cap', () => {
+		const bomb = writeZip([
+			['3D/3dmodel.model', Buffer.alloc(2_000_000, 32)],
+			['Metadata/big.bin', Buffer.alloc(2_000_000)]
+		]);
+		expect(bomb.length).toBeLessThan(20_000);
+		expect(() => readZip(bomb, () => 'all', 3_000_000)).toThrow('unpacks to more');
+		expect(readZip(bomb, () => 'all', 4_000_000).size).toBe(2);
+		expect(() => read3mf(bomb, { maxUnpackedBytes: 1_000_000 })).toThrow('unpacks to more');
+	});
+
+	it('renumbers plates without a usable number and lists an instance once', () => {
+		const model =
+			'<model><resources><object id="1"><mesh><vertices><vertex x="0" y="0" z="0"/><vertex x="1" y="0" z="0"/><vertex x="0" y="1" z="0"/></vertices><triangles><triangle v1="0" v2="1" v3="2"/></triangles></mesh></object></resources><build><item objectid="1"/></build></model>';
+		const inst =
+			'<model_instance><metadata key="object_id" value="1"/><metadata key="instance_id" value="0"/></model_instance>';
+		const settings = `<config><plate><metadata key="plater_id" value="1"/>${inst}${inst}</plate><plate><metadata key="plater_id" value="1"/></plate><plate></plate></config>`;
+		const { project, warnings } = read3mf(
+			writeZip([
+				['3D/3dmodel.model', Buffer.from(model)],
+				['Metadata/model_settings.config', Buffer.from(settings)]
+			])
+		);
+		expect(project.plates.map((p) => p.index)).toEqual([1, 2, 3]);
+		expect(project.plates[0].instances).toEqual([{ objectId: 'o1', instanceId: 'o1-i1' }]);
+		expect(warnings.filter((w) => w.includes('renumbered'))).toHaveLength(2);
 	});
 });

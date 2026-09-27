@@ -15,6 +15,7 @@ import { AppError } from '../validation';
 import { importMesh, type MeshFormat, type Soup } from '../cad/mesh';
 import { read3mf } from './read';
 import { write3mf } from './write';
+import { isXmlName, xmlFragmentElements } from './xml';
 import {
 	canonicalStl,
 	fromSoup,
@@ -237,18 +238,15 @@ export class ProjectStore implements ProjectStoreService {
 			mesh: (m) => this.geometry(m),
 			file: (p) => this.readBlob(p)
 		});
+		if (buf.length > MAX_PROJECT_BYTES) throw new AppError(413, 'That project is too large.');
 		writeAtomic(path.join(this.projectsDir, `${id}.3mf`), buf);
 		this.writeSidecar(id, clean);
+		const title = (name || clean.meta.title || 'Slicer project').slice(0, 120);
 		this.db
 			.insert(slicerProjects)
-			.values({
-				id,
-				projectId,
-				name: name || clean.meta.title || 'Slicer project',
-				file: `${id}.3mf`
-			})
+			.values({ id, projectId, name: title, file: `${id}.3mf` })
 			.run();
-		this.lab.touch('slicer-project', `Started slicer project “${name}”`, proj.id);
+		this.lab.touch('slicer-project', `Started slicer project “${title}”`, proj.id);
 		return this.summary(id);
 	}
 
@@ -434,11 +432,28 @@ export class ProjectStore implements ProjectStoreService {
 			if (objectIds.has(o.id)) throw new AppError(400, `Two objects share the id ${o.id}.`);
 			objectIds.add(o.id);
 		}
-		for (const [name, entry] of Object.entries(project.passthrough))
+		const plateIndexes = new Set(project.plates.map((p) => p.index));
+		if (plateIndexes.size !== project.plates.length)
+			throw new AppError(400, 'Two plates share a number.');
+		for (const [name, entry] of Object.entries(project.passthrough)) {
+			if (!isArchiveName(name)) throw new AppError(400, 'A kept file has a bad name.');
 			if ('path' in entry) this.readBlob(entry.path);
-			else if (!name || name.includes('..') || name.startsWith('/'))
-				throw new AppError(400, 'A kept file has a bad name.');
-		return { ...project, meshes };
+		}
+		checkVerbatimXml(project);
+		// Sliced G-code no longer matches a project that was edited: Bambu Studio would show the plate
+		// as sliced and could print it. Saving drops it and the plates' gcode_file pointing at it
+		// (bbs_3mf.cpp GCODE_FILE_ATTR, :339), as Bambu Studio's own project save does.
+		const passthrough = Object.fromEntries(
+			Object.entries(project.passthrough).filter(([name]) => !SLICED_GCODE.test(name))
+		);
+		const plates = project.plates.map((plate) => {
+			const gcode = plate.config.gcode_file;
+			if (typeof gcode !== 'string' || !SLICED_GCODE.test(gcode)) return plate;
+			const config = { ...plate.config };
+			delete config.gcode_file;
+			return { ...plate, config };
+		});
+		return { ...project, meshes, passthrough, plates };
 	}
 
 	private writeSidecar(id: string, project: Project) {
@@ -453,6 +468,37 @@ export class ProjectStore implements ProjectStoreService {
 			title: project.meta.title
 		};
 		writeAtomic(path.join(this.projectsDir, `${id}.json`), Buffer.from(JSON.stringify(side)));
+	}
+}
+
+/** Plate G-code (and its checksum) of a sliced project (bbs_3mf.cpp: Metadata/plate_N.gcode). */
+const SLICED_GCODE = /^Metadata\/plate_\d+\.gcode(\.md5)?$/i;
+
+/** A relative path inside the archive: no parent steps, no absolute or Windows paths, no empty parts. */
+export function isArchiveName(name: string): boolean {
+	return (
+		name.length > 0 &&
+		name.length <= 1000 &&
+		!/[\\\0]/.test(name) &&
+		name.split('/').every((part) => part !== '' && part !== '.' && part !== '..')
+	);
+}
+
+/**
+ * The XML a project carries verbatim (unmodelled part elements and model_settings.config entries, cut
+ * information, text_info attribute names) must be well-formed, or a save would break the file.
+ */
+function checkVerbatimXml(project: Project) {
+	const refuse = () => {
+		throw new AppError(400, 'The project holds XML that is not well-formed.');
+	};
+	for (const x of project.modelSettingsXml ?? []) if (xmlFragmentElements(x) !== 1) refuse();
+	for (const o of project.objects) {
+		if (o.cutInfo !== undefined && xmlFragmentElements(o.cutInfo) < 0) refuse();
+		for (const part of o.parts) {
+			for (const x of part.xml ?? []) if (xmlFragmentElements(x) !== 1) refuse();
+			for (const k of Object.keys(part.text ?? {})) if (!isXmlName(k)) refuse();
+		}
 	}
 }
 

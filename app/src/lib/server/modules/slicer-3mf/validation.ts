@@ -5,7 +5,8 @@ import { z } from 'zod';
 const text = (max: number) => z.string().max(max);
 const id = text(80);
 const finite = z.number().finite();
-const configValue = z.union([text(100_000), z.array(text(10_000)).max(1000)]);
+// Per-filament start G-code can be long; the request size limit bounds the total.
+const configValue = z.union([text(100_000), z.array(text(100_000)).max(1000)]);
 const configMap = z.record(text(200), configValue).refine((m) => Object.keys(m).length <= 2000, {
 	message: 'Too many settings.'
 });

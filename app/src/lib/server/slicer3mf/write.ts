@@ -38,7 +38,14 @@ import {
 	type PaintKind
 } from './constants';
 import { printLabFile } from './printlab-file';
-import type { ConfigValue, MeshId, Part, Project } from '$lib/shared/slicer/project';
+import type {
+	ConfigMap,
+	ConfigValue,
+	CustomGcode,
+	MeshId,
+	Part,
+	Project
+} from '$lib/shared/slicer/project';
 
 /** Where the writer gets each mesh's geometry and each `{ path }` passthrough file. */
 export interface WriteSources {
@@ -241,7 +248,7 @@ export function write3mf(project: Project, sources: WriteSources): Buffer {
 							p
 								.customGcode!.items.map(
 									(g) =>
-										`<layer top_z="${formatNumber(g.topZ)}" type="${g.type}" extruder="${g.extruder}" color="${attr(g.color)}" extra="${attr(g.extra)}" gcode="${attr(g.type === 3 ? 'tool_change' : g.extra)}"/>\n`
+										`<layer top_z="${formatNumber(g.topZ)}" type="${g.type}" extruder="${g.extruder}" color="${attr(g.color)}" extra="${attr(g.extra)}" gcode="${attr(legacyGcode(g, project.projectConfig))}"/>\n`
 								)
 								.join('') +
 							(p.customGcode!.mode !== undefined
@@ -301,6 +308,22 @@ export function write3mf(project: Project, sources: WriteSources): Buffer {
 	const rank = (p: string) => (p === CONTENT_TYPES_FILE ? 0 : p === RELATIONSHIPS_FILE ? 1 : 2);
 	out.sort((a, b) => rank(a[0]) - rank(b[0]));
 	return writeZip(out);
+}
+
+/**
+ * The `gcode` attribute of a custom G-code entry, read only by old slicers (bbs_3mf.cpp
+ * _add_custom_gcode_per_print_z_file_to_archive): the pause or template G-code from the settings,
+ * "tool_change", or the entry's own G-code.
+ */
+function legacyGcode(g: CustomGcode, config: ConfigMap): string {
+	const setting = (key: string) => {
+		const v = config[key];
+		return Array.isArray(v) ? (v[0] ?? '') : (v ?? '');
+	};
+	if (g.type === 1) return setting('machine_pause_gcode');
+	if (g.type === 4) return setting('template_custom_gcode');
+	if (g.type === 3) return 'tool_change';
+	return g.extra;
 }
 
 /** One sub-object with its mesh and painting (bbs_3mf.cpp _add_mesh_to_object_stream, :7570). */
