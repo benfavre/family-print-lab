@@ -9,9 +9,9 @@ new Bambu Studio release is a rebase of a handful of small patches, not a merge 
 
 <!-- pin:start -->
 
-| Upstream     | Tag            | Commit                                     | Patch queue                                                                                     |
-| ------------ | -------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 7, 5 patch(es), hash `c0fcb78443f56333fd2b3bdb6f4fb89c88e2360b2a8eb3a3fd790ecd13c184b4` |
+| Upstream | Tag | Commit | Patch queue |
+| --- | --- | --- | --- |
+| Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 10, 6 patch(es), hash `8e4c6e3f8cf8f5fab5698f42d380ddff0b0f9a81597a4db7aba62efbc9046da8` |
 
 <!-- pin:end -->
 
@@ -176,9 +176,10 @@ EXCLUDE_FROM_ALL)` (`SLIC3R_GUI=OFF`, `FLATPAK=ON` so no FFmpeg is copied) and b
 answers `engine.hello` with the pin and no slicing capabilities, which is what the conformance tests
 and the `slicer-protocol` job in ci.yml need (it runs on every pull request, so app-side client
 changes are checked against the engine too). `upstream.sh test` runs ctest, then the app's slicer tests with
-`PRINTLAB_SLICER_PATH` set to the build (protocol conformance and golden slices included).
+`PRINTLAB_SLICER_PATH` set to the build (protocol conformance and golden slices included), plus
+the TypeScript/native 3MF round trips with `PRINTLAB_PROJECT_CODEC` set to the built helper.
 
-The patch queue holds two build fixes and three memory-safety fixes, all marked upstreamable:
+The patch queue holds two build fixes and four memory-safety fixes, all marked upstreamable:
 
 - 0001: the top-level `CMakeLists.txt` asked for OpenGL, GLEW and GLFW even with the GUI off, and
   those are what fails on a headless host.
@@ -192,6 +193,9 @@ The patch queue holds two build fixes and three memory-safety fixes, all marked 
   construct an exclusion polygon from undefined wipe-tower bounds.
 - 0005: release placeholder strings when comparisons change their type or move assignment replaces
   them, and release the 3MF exporter's temporary heap ZIP buffers after their readers finish.
+
+- 0006: copy nullable override defaults through their common typed vector base, avoiding invalid
+  casts between nullable and non-nullable sibling classes during configuration initialisation.
 
 ## State of the engine
 

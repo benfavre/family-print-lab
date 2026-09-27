@@ -1,0 +1,165 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Benjamin Favre <ben@webdesign29.net>
+Date: Sun, 27 Sep 2026 10:32:05 +0000
+Subject: [PATCH] Config: preserve nullable values through shared vector bases
+
+Why: nullable and plain option specialisations are sibling types. UBSan finds invalid casts in override initialisation, volumetric-speed repair and extruder remapping. Use common typed vector bases, preserving the unsigned-char nil sentinel instead of reading 255 as bool.
+
+Files: src/libslic3r/PrintConfig.cpp. Upstreamable: yes; preserves valid configuration types and values independently of the facade.
+
+Co-Authored-By: Codex <noreply@openai.com>
+---
+ src/libslic3r/PrintConfig.cpp | 42 +++++++++++++++++------------------
+ 1 file changed, 21 insertions(+), 21 deletions(-)
+
+diff --git a/src/libslic3r/PrintConfig.cpp b/src/libslic3r/PrintConfig.cpp
+index 7d8ab09..f35605e 100644
+--- a/src/libslic3r/PrintConfig.cpp
++++ b/src/libslic3r/PrintConfig.cpp
+@@ -839,7 +839,7 @@ bool is_nozzle_printable_for_filament(NozzleVolumeType machine_nvt, const std::v
+ 
+ void DynamicPrintConfig::repair_nil_filament_max_volumetric_speed()
+ {
+-    auto* speed_opt   = this->option<ConfigOptionFloats>("filament_max_volumetric_speed");
++    auto* speed_opt   = dynamic_cast<ConfigOptionVector<double>*>(this->option("filament_max_volumetric_speed"));
+     auto* variant_opt = this->option<ConfigOptionStrings>("filament_extruder_variant");
+     auto* self_opt    = this->option<ConfigOptionInts>("filament_self_index");
+     if (!speed_opt || !variant_opt || !self_opt)
+@@ -6487,10 +6487,10 @@ void PrintConfigDef::init_fff_params()
+         else
+             def->mode       = comAdvanced;
+         switch (def->type) {
+-        case coFloats: def->set_default_value(new ConfigOptionFloatsNullable(static_cast<const ConfigOptionFloatsNullable*>(it_opt->second.default_value.get())->values)); break;
+-        case coPercents: def->set_default_value(new ConfigOptionPercentsNullable(static_cast<const ConfigOptionPercentsNullable*>(it_opt->second.default_value.get())->values)); break;
+-        case coBools: def->set_default_value(new ConfigOptionBoolsNullable(static_cast<const ConfigOptionBools*>(it_opt->second.default_value.get())->values)); break;
+-        case coEnums: def->set_default_value(new ConfigOptionEnumsGenericNullable(static_cast<const ConfigOptionEnumsGenericNullable*>(it_opt->second.default_value.get())->values)); break;
++        case coFloats: def->set_default_value(new ConfigOptionFloatsNullable(static_cast<const ConfigOptionVector<double>*>(it_opt->second.default_value.get())->values)); break;
++        case coPercents: def->set_default_value(new ConfigOptionPercentsNullable(static_cast<const ConfigOptionVector<double>*>(it_opt->second.default_value.get())->values)); break;
++        case coBools: def->set_default_value(new ConfigOptionBoolsNullable(static_cast<const ConfigOptionVector<unsigned char>*>(it_opt->second.default_value.get())->values)); break;
++        case coEnums: def->set_default_value(new ConfigOptionEnumsGenericNullable(static_cast<const ConfigOptionVector<int>*>(it_opt->second.default_value.get())->values)); break;
+         default: assert(false);
+         }
+     }
+@@ -6515,10 +6515,10 @@ void PrintConfigDef::init_fff_params()
+ 
+         def->mode = comAdvanced;
+         switch (def->type) {
+-        case coFloats: def->set_default_value(new ConfigOptionFloatsNullable(static_cast<const ConfigOptionFloatsNullable*>(it_opt->second.default_value.get())->values)); break;
+-        case coPercents: def->set_default_value(new ConfigOptionPercentsNullable(static_cast<const ConfigOptionPercentsNullable*>(it_opt->second.default_value.get())->values)); break;
+-        case coBools: def->set_default_value(new ConfigOptionBoolsNullable(static_cast<const ConfigOptionBools*>(it_opt->second.default_value.get())->values)); break;
+-        case coEnums: def->set_default_value(new ConfigOptionEnumsGenericNullable(static_cast<const ConfigOptionEnumsGenericNullable*>(it_opt->second.default_value.get())->values)); break;
++        case coFloats: def->set_default_value(new ConfigOptionFloatsNullable(static_cast<const ConfigOptionVector<double>*>(it_opt->second.default_value.get())->values)); break;
++        case coPercents: def->set_default_value(new ConfigOptionPercentsNullable(static_cast<const ConfigOptionVector<double>*>(it_opt->second.default_value.get())->values)); break;
++        case coBools: def->set_default_value(new ConfigOptionBoolsNullable(static_cast<const ConfigOptionVector<unsigned char>*>(it_opt->second.default_value.get())->values)); break;
++        case coEnums: def->set_default_value(new ConfigOptionEnumsGenericNullable(static_cast<const ConfigOptionVector<int>*>(it_opt->second.default_value.get())->values)); break;
+         default: assert(false);
+         }
+     }
+@@ -8786,7 +8786,7 @@ std::vector<int> DynamicPrintConfig::update_values_to_printer_extruders(DynamicP
+                 }
+                 case coInts:
+                 {
+-                    ConfigOptionInts * opt = this->option<ConfigOptionInts>(key);
++                    ConfigOptionVector<int> * opt = dynamic_cast<ConfigOptionVector<int>*>(this->option(key));
+                     if (!opt) continue;
+                     std::vector<int> new_values;
+ 
+@@ -8801,7 +8801,7 @@ std::vector<int> DynamicPrintConfig::update_values_to_printer_extruders(DynamicP
+                 }
+                 case coFloats:
+                 {
+-                    ConfigOptionFloats * opt = this->option<ConfigOptionFloats>(key);
++                    ConfigOptionVector<double> * opt = dynamic_cast<ConfigOptionVector<double>*>(this->option(key));
+                     if (!opt) continue;
+                     std::vector<double> new_values;
+ 
+@@ -8816,7 +8816,7 @@ std::vector<int> DynamicPrintConfig::update_values_to_printer_extruders(DynamicP
+                 }
+                 case coPercents:
+                 {
+-                    ConfigOptionPercents * opt = this->option<ConfigOptionPercents>(key);
++                    ConfigOptionVector<double> * opt = dynamic_cast<ConfigOptionVector<double>*>(this->option(key));
+                     if (!opt) continue;
+                     std::vector<double> new_values;
+ 
+@@ -8831,7 +8831,7 @@ std::vector<int> DynamicPrintConfig::update_values_to_printer_extruders(DynamicP
+                 }
+                 case coFloatsOrPercents:
+                 {
+-                    ConfigOptionFloatsOrPercents * opt = this->option<ConfigOptionFloatsOrPercents>(key);
++                    ConfigOptionVector<FloatOrPercent> * opt = dynamic_cast<ConfigOptionVector<FloatOrPercent>*>(this->option(key));
+                     if (!opt) continue;
+                     std::vector<FloatOrPercent> new_values;
+ 
+@@ -8846,7 +8846,7 @@ std::vector<int> DynamicPrintConfig::update_values_to_printer_extruders(DynamicP
+                 }
+                 case coBools:
+                 {
+-                    ConfigOptionBools * opt = this->option<ConfigOptionBools>(key);
++                    ConfigOptionVector<unsigned char> * opt = dynamic_cast<ConfigOptionVector<unsigned char>*>(this->option(key));
+                     if (!opt) continue;
+                     std::vector<unsigned char> new_values;
+ 
+@@ -8861,7 +8861,7 @@ std::vector<int> DynamicPrintConfig::update_values_to_printer_extruders(DynamicP
+                 }
+                 case coEnums:
+                 {
+-                    ConfigOptionEnumsGeneric * opt = this->option<ConfigOptionEnumsGeneric>(key);
++                    ConfigOptionVector<int> * opt = dynamic_cast<ConfigOptionVector<int>*>(this->option(key));
+                     if (!opt) continue;
+                     std::vector<int> new_values;
+ 
+@@ -8983,7 +8983,7 @@ void DynamicPrintConfig::update_values_to_printer_extruders_for_multiple_filamen
+                 }
+                 case coInts:
+                 {
+-                    ConfigOptionInts * opt = this->option<ConfigOptionInts>(key);
++                    ConfigOptionVector<int> * opt = dynamic_cast<ConfigOptionVector<int>*>(this->option(key));
+                     if (!opt) continue;
+                     std::vector<int> new_values;
+ 
+@@ -8997,7 +8997,7 @@ void DynamicPrintConfig::update_values_to_printer_extruders_for_multiple_filamen
+                 }
+                 case coFloats:
+                 {
+-                    ConfigOptionFloats * opt = this->option<ConfigOptionFloats>(key);
++                    ConfigOptionVector<double> * opt = dynamic_cast<ConfigOptionVector<double>*>(this->option(key));
+                     if (!opt) continue;
+                     std::vector<double> new_values;
+ 
+@@ -9011,7 +9011,7 @@ void DynamicPrintConfig::update_values_to_printer_extruders_for_multiple_filamen
+                 }
+                 case coPercents:
+                 {
+-                    ConfigOptionPercents * opt = this->option<ConfigOptionPercents>(key);
++                    ConfigOptionVector<double> * opt = dynamic_cast<ConfigOptionVector<double>*>(this->option(key));
+                     if (!opt) continue;
+                     std::vector<double> new_values;
+ 
+@@ -9025,7 +9025,7 @@ void DynamicPrintConfig::update_values_to_printer_extruders_for_multiple_filamen
+                 }
+                 case coFloatsOrPercents:
+                 {
+-                    ConfigOptionFloatsOrPercents * opt = this->option<ConfigOptionFloatsOrPercents>(key);
++                    ConfigOptionVector<FloatOrPercent> * opt = dynamic_cast<ConfigOptionVector<FloatOrPercent>*>(this->option(key));
+                     if (!opt) continue;
+                     std::vector<FloatOrPercent> new_values;
+ 
+@@ -9039,7 +9039,7 @@ void DynamicPrintConfig::update_values_to_printer_extruders_for_multiple_filamen
+                 }
+                 case coBools:
+                 {
+-                    ConfigOptionBools * opt = this->option<ConfigOptionBools>(key);
++                    ConfigOptionVector<unsigned char> * opt = dynamic_cast<ConfigOptionVector<unsigned char>*>(this->option(key));
+                     if (!opt) continue;
+                     std::vector<unsigned char> new_values;
+ 
+@@ -9053,7 +9053,7 @@ void DynamicPrintConfig::update_values_to_printer_extruders_for_multiple_filamen
+                 }
+                 case coEnums:
+                 {
+-                    ConfigOptionEnumsGeneric * opt = this->option<ConfigOptionEnumsGeneric>(key);
++                    ConfigOptionVector<int> * opt = dynamic_cast<ConfigOptionVector<int>*>(this->option(key));
+                     if (!opt) continue;
+                     std::vector<int> new_values;
+ 

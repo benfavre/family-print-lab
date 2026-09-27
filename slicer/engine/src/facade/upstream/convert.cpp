@@ -59,7 +59,10 @@ ConfigMap from_config(const ConfigBase &config) {
 	for (const std::string &key : config.keys()) {
 		const ConfigOption *opt = config.option(key);
 		if (!opt) continue;
-		if (opt->is_vector()) out[key] = static_cast<const ConfigOptionVectorBase *>(opt)->vserialize();
+		// ConfigOptionString::serialize escapes for INI, not the JSON preset boundary.
+		// ConfigOptionStrings::vserialize already returns raw strings (pinned Config.hpp).
+		if (opt->type() == coString) out[key] = static_cast<const ConfigOptionString *>(opt)->value;
+		else if (opt->is_vector()) out[key] = static_cast<const ConfigOptionVectorBase *>(opt)->vserialize();
 		else out[key] = opt->serialize();
 	}
 	return out;

@@ -178,6 +178,12 @@ ResolvedBundle UpstreamFacade::profiles_resolve(const PresetSelection &selection
 	b.filament_presets.clear();
 	for (const PresetRef &f : selection.filaments) b.filament_presets.push_back(f.name);
 	if (!selection.filaments.empty()) b.filaments.select_preset_by_name(selection.filaments.front().name, true);
+	// JSON loading creates generic scalar enums; Preset::printer_technology in the pinned
+	// Preset.hpp expects its concrete enum type. Restore that type at our bundle boundary.
+	auto &printer_config = b.printers.get_edited_preset().config;
+	if (const auto *technology = printer_config.option("printer_technology"))
+		printer_config.set_key_value("printer_technology", new ConfigOptionEnum<PrinterTechnology>(
+		    static_cast<PrinterTechnology>(technology->getInt())));
 	out.full = from_config(b.full_config(false));
 	return out;
 }

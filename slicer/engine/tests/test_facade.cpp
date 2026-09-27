@@ -52,6 +52,8 @@ TEST("slices a cube for the P1S and exports a printable file") {
 	ResolvedBundle bundle = facade->profiles_resolve(sel, "");
 	CHECK(!bundle.full.empty());
 	CHECK(bundle.printer.chain.size() >= 2);
+	// JSON clients need actual line breaks, not the INI serializer's escaped text.
+	CHECK(std::get<std::string>(bundle.full.at("machine_start_gcode")).find('\n') != std::string::npos);
 
 	MeshInfo mesh = facade->mesh_put("cube", write_cube(work), "stl");
 	CHECK_EQ(mesh.triangles, size_t(12));

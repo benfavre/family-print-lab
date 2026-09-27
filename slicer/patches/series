@@ -5,3 +5,4 @@
 0003-Infill-keep-edge-grid-points-alive-through-intersect.patch
 0004-G-code-initialise-caches-and-ignore-absent-wipe-towe.patch
 0005-Memory-release-placeholder-strings-and-temporary-3MF.patch
+0006-Config-preserve-nullable-values-through-shared-vecto.patch
