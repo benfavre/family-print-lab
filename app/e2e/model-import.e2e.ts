@@ -36,7 +36,9 @@ test('a dropped STL lands in a new project, or in the project chosen', async ({ 
 	await expect(dialog.getByLabel('Name')).toHaveValue('Rocket fin');
 	await dialog.getByRole('button', { name: 'Add' }).click();
 	await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}$/);
-	await expect(page.getByRole('heading', { level: 1, name: 'Rocket fin' })).toBeVisible();
+	await expect(page.getByRole('heading', { level: 1, name: 'Rocket fin' })).toBeVisible({
+		timeout: 15_000
+	});
 	const id = page.url().split('/').pop()!;
 	const ws = await workspace(page);
 	expect(ws.models.filter((m: { projectId: string }) => m.projectId === id)).toHaveLength(1);

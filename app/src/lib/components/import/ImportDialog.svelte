@@ -192,7 +192,7 @@
 							href={preview.authorUrl}
 							target="_blank"
 							rel="noopener noreferrer">{preview.author}</a
-						>{:else}{preview.author}{/if} ·
+						>{:else}{preview.author}{/if}&nbsp;·
 				{/if}<a href={preview.url} target="_blank" rel="noopener noreferrer"
 					>{SITE_NAME[preview.site]} ↗</a
 				>
