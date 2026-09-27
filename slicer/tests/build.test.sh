@@ -47,14 +47,18 @@ include("${HELPER}")
 printlab_upstream_facade_platform(facade "${CMAKE_CURRENT_SOURCE_DIR}/upstream")
 get_target_property(definitions facade COMPILE_DEFINITIONS)
 get_target_property(options facade COMPILE_OPTIONS)
+get_target_property(public_libraries facade INTERFACE_LINK_LIBRARIES)
 if(SIMULATE_WINDOWS)
+    if(NOT "crypt32" IN_LIST public_libraries)
+        message(FATAL_ERROR "Windows crypto SDK dependency is not transitive")
+    endif()
     foreach(required _USE_MATH_DEFINES BOOST_ALL_NO_LIB BOOST_USE_WINAPI_VERSION=0x602 BOOST_SYSTEM_USE_UTF8 UNICODE)
         if(NOT required IN_LIST definitions)
             message(FATAL_ERROR "Missing upstream facade definition: ${required}")
         endif()
     endforeach()
-elseif(definitions)
-    message(FATAL_ERROR "Windows definitions leaked to another platform")
+elseif(definitions OR "crypt32" IN_LIST public_libraries)
+    message(FATAL_ERROR "Windows settings leaked to another platform")
 endif()
 if(SIMULATE_WINDOWS AND SIMULATE_MSVC)
     if(NOT "/bigobj" IN_LIST options OR NOT "$<$<CXX_COMPILER_ID:MSVC>:/utf-8>" IN_LIST options)
@@ -78,7 +82,33 @@ for platform in windows-msvc windows-other unix; do
 		-DSIMULATE_WINDOWS="$win" -DSIMULATE_MSVC="$msvc" >"$TEMP/facade-$platform.log" 2>&1 ||
 		{ cat "$TEMP/facade-$platform.log"; fail "$platform facade platform settings"; }
 done
-pass 'facade inherits Windows header settings privately and scopes MSVC options to its compiler'
+pass 'facade inherits private Windows header settings and transitive crypto SDK linking'
+
+# On an actual Windows host, link a consumer of a static facade against the real SDK too. A property
+# assertion alone would not catch misspelt SDK library names or a dependency that failed to propagate.
+if [ "${OS:-}" = Windows_NT ]; then
+	mkdir -p "$TEMP/crypto-link/upstream"
+	printf 'add_library(upstream INTERFACE)\n' >"$TEMP/crypto-link/upstream/CMakeLists.txt"
+	cat >"$TEMP/crypto-link/CMakeLists.txt" <<'CMAKE'
+cmake_minimum_required(VERSION 3.13)
+project(FacadeCryptoLink LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+add_subdirectory(upstream)
+file(WRITE "${CMAKE_BINARY_DIR}/facade.cpp" "#include <windows.h>\n#include <wincrypt.h>\nint facade() { return CertFreeCertificateContext(nullptr) ? 0 : 1; }\n")
+file(WRITE "${CMAKE_BINARY_DIR}/main.cpp" "int facade(); int main() { return facade(); }\n")
+add_library(facade STATIC "${CMAKE_BINARY_DIR}/facade.cpp")
+include("${HELPER}")
+printlab_upstream_facade_platform(facade "${CMAKE_CURRENT_SOURCE_DIR}/upstream")
+add_executable(consumer "${CMAKE_BINARY_DIR}/main.cpp")
+target_link_libraries(consumer PRIVATE facade)
+CMAKE
+	cmake -S "$TEMP/crypto-link" -B "$TEMP/crypto-link-build" \
+		-DHELPER="$SLICER/engine/cmake/UpstreamFacade.cmake" >"$TEMP/crypto-link.log" 2>&1 &&
+		cmake --build "$TEMP/crypto-link-build" --config Release >>"$TEMP/crypto-link.log" 2>&1 ||
+		{ cat "$TEMP/crypto-link.log"; fail 'Windows crypto SDK consumer link'; }
+	pass 'static facade consumer links against the Windows crypto SDK'
+fi
 
 # Reproduce the real layout: a dependency build under the app repository beside a nested upstream
 # repository, with an unpacked archive that has no .git directory of its own.
