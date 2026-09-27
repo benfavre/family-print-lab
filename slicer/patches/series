@@ -17,3 +17,4 @@
 0015-Wipe-tower-retain-an-empty-priming-sequence-when-pri.patch
 0016-Build-require-C-11-for-OCCT-on-AppleClang.patch
 0017-Build-include-ExPolygon-where-ClipperZUtils-uses-its.patch
+0018-Build-include-stringstream-for-numeric-locale-format.patch

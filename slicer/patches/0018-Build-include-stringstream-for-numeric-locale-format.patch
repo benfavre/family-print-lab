@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Benjamin Favre <ben@webdesign29.net>
+Date: Sun, 27 Sep 2026 17:15:06 +0000
+Subject: [PATCH] Build: include stringstream for numeric locale formatting
+
+Why: float_to_string_decimal_point constructs std::stringstream on non-Windows platforms. Apple libc++ only provides its forward declaration through the existing includes, so a build without precompiled headers fails. Include the complete definition where it is used.
+
+Files: src/libslic3r/LocalesUtils.cpp
+
+Upstreamable: yes
+
+Co-Authored-By: Codex <noreply@openai.com>
+---
+ src/libslic3r/LocalesUtils.cpp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/libslic3r/LocalesUtils.cpp b/src/libslic3r/LocalesUtils.cpp
+index 9124f6e..7db5ca4 100644
+--- a/src/libslic3r/LocalesUtils.cpp
++++ b/src/libslic3r/LocalesUtils.cpp
+@@ -4,6 +4,7 @@
+     #include <charconv>
+ #endif
+ #include <stdexcept>
++#include <sstream>
+ 
+ #include <fast_float/fast_float.h>
+ 
