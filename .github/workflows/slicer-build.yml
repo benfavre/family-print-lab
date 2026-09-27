@@ -8,6 +8,8 @@ name: Slicer build
 
 on:
   push:
+    # Tags build this workflow through release.yml; do not duplicate its native builds.
+    branches: ['**']
     paths: ['slicer/**', '.github/workflows/slicer-build.yml']
   workflow_dispatch:
   workflow_call:
