@@ -12,7 +12,7 @@ export default defineConfig({
 	reporter: [['list']],
 	use: {
 		baseURL: `http://127.0.0.1:${PORT}`,
-		channel: 'chrome',
+		// Use Playwright's bundled Chromium, installed with `bunx playwright install chromium`.
 		trace: 'retain-on-failure',
 		launchOptions: { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] }
 	},

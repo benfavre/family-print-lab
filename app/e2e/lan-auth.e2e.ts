@@ -37,7 +37,6 @@ test('another device needs the household password; this computer stays open', as
 	request
 }) => {
 	const phone = await chromium.launch({
-		channel: 'chrome',
 		args: ['--host-resolver-rules=MAP printlab.local 127.0.0.1']
 	});
 	try {
