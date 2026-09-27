@@ -128,6 +128,8 @@ ValidateResult UpstreamFacade::config_validate(const std::string &project_id, in
 		auto model = build_model(*state, p.index, &ids);
 		if (model->objects.empty()) continue;
 		Print print;
+		print.set_plate_origin(Vec3d::Zero());
+		print.set_plate_index(p.index - 1);
 		print.apply(*model, state->config);
 		StringObjectException warning;
 		StringObjectException error = print.validate(&warning);

@@ -1,0 +1,56 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Benjamin Favre <ben@webdesign29.net>
+Date: Sun, 27 Sep 2026 09:56:53 +0000
+Subject: [PATCH] Memory: release moved expressions and temporary 3MF buffers
+
+Why: Valgrind reports leaked string expressions overwritten by move assignment and heap ZIP buffers whose ownership passes to the exporter at finalisation. Release old expression storage before taking ownership, guard self-assignment, and free temporary ZIP memory after its reader finishes.
+
+Files: src/libslic3r/PlaceholderParser.cpp; src/libslic3r/Format/bbs_3mf.cpp. Upstreamable: yes; general ownership corrections independent of the facade.
+
+Co-Authored-By: Codex <noreply@openai.com>
+---
+ src/libslic3r/Format/bbs_3mf.cpp    | 2 ++
+ src/libslic3r/PlaceholderParser.cpp | 3 +++
+ 2 files changed, 5 insertions(+)
+
+diff --git a/src/libslic3r/Format/bbs_3mf.cpp b/src/libslic3r/Format/bbs_3mf.cpp
+index 1c1ff86..99e76f6 100644
+--- a/src/libslic3r/Format/bbs_3mf.cpp
++++ b/src/libslic3r/Format/bbs_3mf.cpp
+@@ -7468,6 +7468,7 @@ void PlateData::parse_filament_info(GCodeProcessorResult *result)
+                         mz_zip_writer_add_from_zip_reader(main, &archive, 0);
+                     }
+                     mz_zip_reader_end(&archive);
++                    mz_free(ppBuf);
+                 }
+             });
+         }
+@@ -8934,6 +8935,7 @@ bool _BBS_3MF_Exporter::_add_gcode_file_to_archive(mz_zip_archive& archive, cons
+                 mz_zip_writer_add_from_zip_reader(&root_archive, &archive, 0);
+             }
+             mz_zip_reader_end(&archive);
++            mz_free(ppBuf);
+             BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ":" << __LINE__ << boost::format(", store  %1% to 3mf %2%\n") % PathSanitizer::sanitize(src_gcode_file) % PathSanitizer::sanitize(gcode_in_3mf);
+         }
+     });
+diff --git a/src/libslic3r/PlaceholderParser.cpp b/src/libslic3r/PlaceholderParser.cpp
+index 10dd7f6..13f65f3 100644
+--- a/src/libslic3r/PlaceholderParser.cpp
++++ b/src/libslic3r/PlaceholderParser.cpp
+@@ -211,6 +211,7 @@ namespace client
+ 
+         expr &operator=(const expr &rhs)
+         {
++            if (this == &rhs) return *this;
+             //BBS: avoid memory leak when call operator= directly before call reset()
+             if (this->type == TYPE_STRING && this->data.s) {
+                 delete this->data.s;
+@@ -228,6 +229,8 @@ namespace client
+ 
+         expr &operator=(expr &&rhs)
+         {
++            if (this == &rhs) return *this;
++            this->reset();
+             type            = rhs.type;
+             this->it_range  = rhs.it_range;
+             data.set(rhs.data);

@@ -11,7 +11,7 @@ new Bambu Studio release is a rebase of a handful of small patches, not a merge 
 
 | Upstream | Tag | Commit | Patch queue |
 | --- | --- | --- | --- |
-| Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 4, 4 patch(es), hash `c95563f664097c4bca9458f704ff8d2d08330ca36efb11eab39b322dc515c99d` |
+| Bambu Studio | `v02.08.02.61` | `926a7192574bcb9b3a732e1ec59a46d79cb45466` | version 5, 5 patch(es), hash `25cd929c3245f89548b26e00ad68ebbcb8ca091ded5fd65769a9b5c2c2331088` |
 
 <!-- pin:end -->
 
