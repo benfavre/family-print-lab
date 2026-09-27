@@ -17,6 +17,14 @@ describe('kid mode access', () => {
 			expect(kidAccess('GET', path, route)).toBe('redirect');
 	});
 
+	it('lets a kid tablet log in again (lan-auth), but not reach the rest of the auth API', () => {
+		expect(kidAccess('GET', '/login', '/login')).toBe('allow');
+		expect(kidAccess('POST', '/login', '/login')).toBe('allow');
+		expect(kidAccess('POST', '/api/auth/login', null)).toBe('allow');
+		expect(kidAccess('GET', '/api/auth', null)).toBe('refuse');
+		expect(kidAccess('PUT', '/api/auth/password', null)).toBe('refuse');
+	});
+
 	it('lets built assets through', () => {
 		expect(kidAccess('GET', '/_app/immutable/x.js', null)).toBe('allow');
 		expect(kidAccess('GET', '/fonts/Geist-Variable.woff2', null)).toBe('allow');

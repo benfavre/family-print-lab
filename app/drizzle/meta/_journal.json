@@ -112,6 +112,13 @@
       "version": "6",
       "when": 1790400900000,
       "tag": "0013_maintenance",
+        "breakpoints": true
+      },
+      {
+        "idx": 16,
+        "version": "6",
+        "when": 1790400960000,
+        "tag": "0021_lan_auth",
       "breakpoints": true
     }
   ]

@@ -6,6 +6,7 @@ import type { Handle } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { runtime } from '../runtime';
 import { kidAccess, kidProfile } from '../kid/session';
+import { auth } from './auth';
 
 // The app is meant for this computer (or a trusted LAN when HOST is set). Reject other Host headers so a
 // malicious web page cannot reach it through DNS rebinding.
@@ -103,4 +104,4 @@ async function compressJson(request: Request, response: Response): Promise<Respo
 	return new Response(gzipSync(body, { level: 5 }), { status: response.status, headers });
 }
 
-export const HANDLES: Handle[] = [hostGuard, crossSiteGuard, kidGuard, securityHeaders];
+export const HANDLES: Handle[] = [hostGuard, crossSiteGuard, auth, kidGuard, securityHeaders];

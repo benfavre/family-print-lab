@@ -49,6 +49,8 @@ export default defineConfig({
 			env: {
 				HOST: '127.0.0.1',
 				PORT: String(PORT),
+				// lan-auth.e2e.ts reaches the app as printlab.local, like a phone on the home network.
+				ALLOWED_HOSTS: 'printlab.local',
 				DATABASE_URL: '.e2e/test.db',
 				BACKUP_DIR: '.e2e/backups',
 				LEGACY_IMPORT: 'src/lib/server/__fixtures__/legacy-v1.json',

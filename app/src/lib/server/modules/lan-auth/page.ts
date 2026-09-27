@@ -1,0 +1,130 @@
+// The login and "set a password first" pages, plain server-rendered HTML: the app's root layout loads
+// the whole workspace for every page, so these must not go through it before someone has logged in.
+// The form sends JSON to /api/auth/login from one small inline script (allowed by its hash). A plain
+// form post is the fallback, but SvelteKit refuses form posts whose Origin differs from the URL it
+// works out, and adapter-node assumes https unless ORIGIN is set, so it only works with ORIGIN.
+import { createHash } from 'node:crypto';
+import type { AuthMode } from '$lib/shared/lan-auth';
+
+const esc = (s: string) =>
+	s.replace(
+		/[&<>"']/g,
+		(c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!
+	);
+
+/** Only same-app paths, so the login page cannot be used to send people elsewhere. */
+export function safeNext(next: string | null | undefined): string {
+	// Browsers drop tabs and newlines from URLs and read "\" as "/", so "/\t/evil.example" is
+	// "//evil.example": refuse control characters and backslashes outright, then let the URL parser
+	// confirm the path stays on this app.
+	if (
+		!next ||
+		!next.startsWith('/') ||
+		[...next].some((c) => c === '\\' || c <= ' ' || c === '\x7f')
+	)
+		return '/';
+	let url: URL;
+	try {
+		url = new URL(next, 'http://app.invalid');
+	} catch {
+		return '/';
+	}
+	if (url.origin !== 'http://app.invalid') return '/';
+	if (url.pathname === '/login' || url.pathname.startsWith('/login/')) return '/';
+	if (url.pathname.startsWith('/api/')) return '/';
+	return url.pathname + url.search + url.hash;
+}
+
+const STYLE = `
+@font-face{font-family:Geist;src:url('/fonts/Geist-Variable.woff2') format('woff2');font-weight:100 900;font-display:swap}
+:root{color-scheme:dark;--bg:#080a0f;--panel:#10131b;--text:#e9f1ff;--muted:#8d9cb6;--line:rgb(255 255 255/.15);--accent:#5ee7ff;--on-accent:#04121a;--err:#ffb3bc}
+@media (prefers-color-scheme:light){:root{color-scheme:light;--bg:#f4f6fb;--panel:#fff;--text:#131a2a;--muted:#5a6780;--line:rgb(0 0 0/.14);--accent:#0b7fa3;--on-accent:#fff;--err:#b3261e}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;background:var(--bg);color:var(--text);font:14px/1.5 Geist,ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+main{width:100%;max-width:380px;padding:28px 24px;border:1px solid var(--line);border-radius:16px;background:var(--panel)}
+h1{margin:0 0 6px;font-size:22px}
+p{margin:0 0 14px;color:var(--muted)}
+label{display:flex;flex-direction:column;gap:5px;margin:0 0 14px;font-size:12.5px;font-weight:500;color:var(--muted)}
+input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--text);font:inherit;font-size:16px}
+input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 25%,transparent)}
+button{width:100%;height:40px;border:0;border-radius:10px;background:var(--accent);color:var(--on-accent);font:inherit;font-weight:600;cursor:pointer}
+.error{color:var(--err)}
+ol{margin:0 0 4px;padding-left:20px;color:var(--muted)}
+li{margin-bottom:6px}
+.brand{margin:0 0 18px;font-size:13px;font-weight:600;letter-spacing:.02em;color:var(--muted)}
+`;
+
+const SCRIPT = `document.querySelector('form').addEventListener('submit', async (e) => {
+	e.preventDefault();
+	const form = e.currentTarget, error = form.querySelector('.error'), button = form.querySelector('button');
+	button.disabled = true;
+	try {
+		const res = await fetch('/api/auth/login', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ secret: form.secret.value, next: form.next.value })
+		});
+		const data = await res.json().catch(() => ({}));
+		if (res.ok) return location.assign(data.next || '/');
+		error.textContent = data.error || 'Could not log in. Try again.';
+	} catch {
+		error.textContent = 'Could not reach Print Lab. Is the computer on?';
+	}
+	error.hidden = false;
+	form.secret.select();
+	button.disabled = false;
+});`;
+const SCRIPT_HASH = createHash('sha256').update(SCRIPT).digest('base64');
+
+/** Only this page's own script; styles inline; requests and the form go to this app only. */
+export const PAGE_CSP = `default-src 'none'; script-src 'sha256-${SCRIPT_HASH}'; connect-src 'self'; style-src 'unsafe-inline'; font-src 'self'; img-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`;
+
+function shell(title: string, body: string) {
+	return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<!-- With the app-wide no-referrer policy a form post sends "Origin: null", which crossSiteGuard refuses. -->
+<meta name="referrer" content="same-origin">
+<title>${esc(title)} · Family Print Lab</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>${STYLE}</style>
+</head>
+<body><main>
+<p class="brand">Family Print Lab</p>
+${body}
+</main></body>
+</html>`;
+}
+
+export function loginPage(o: { mode: AuthMode; next: string; error?: string }): string {
+	const pins = o.mode === 'profiles';
+	return shell(
+		'Log in',
+		`<h1>Log in</h1>
+<p>${pins ? 'Enter the household password, or your own PIN.' : 'Enter the household password.'}</p>
+<form method="post" action="/login">
+<input type="hidden" name="next" value="${esc(safeNext(o.next))}">
+<label>${pins ? 'Password or PIN' : 'Password'}
+<input type="password" name="secret" autocomplete="current-password" required autofocus maxlength="200"></label>
+<p class="error" role="alert"${o.error ? '' : ' hidden'}>${esc(o.error ?? '')}</p>
+<button>Log in</button>
+</form>
+<script>${SCRIPT}</script>`
+	);
+}
+
+export function setupPage(): string {
+	return shell(
+		'Set a password first',
+		`<h1>Set a password on the computer first</h1>
+<p>Print Lab only opens on other devices once it has a household password.</p>
+<ol>
+<li>Open Print Lab on the computer it runs on.</li>
+<li>Go to Integrations, then Access from other devices.</li>
+<li>Choose a household password, then come back here.</li>
+</ol>`
+	);
+}

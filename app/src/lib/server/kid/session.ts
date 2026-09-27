@@ -30,8 +30,9 @@ export function setKidCookie(cookies: Cookies, profileId: string, secure: boolea
 	});
 }
 
-export function clearKidCookie(cookies: Cookies) {
-	cookies.delete(KID_COOKIE, { path: '/' });
+/** `secure` as when it was set: a Secure deletion over plain http is ignored by the browser. */
+export function clearKidCookie(cookies: Cookies, secure: boolean) {
+	cookies.delete(KID_COOKIE, { path: '/', httpOnly: true, sameSite: 'strict', secure });
 }
 
 // Model files: the preview mesh (GET) and the thumbnails the kid page renders after saving (PUT).
@@ -49,6 +50,8 @@ export function kidAccess(
 	routeId: string | null,
 	moduleReads: RegExp[] = []
 ): 'allow' | 'redirect' | 'refuse' {
+	// Logging in (lan-auth): a kid tablet whose session ran out must reach the login page.
+	if (pathname === '/login' || pathname === '/api/auth/login') return 'allow';
 	if (pathname === '/api/kid' || pathname.startsWith('/api/kid/')) return 'allow';
 	if (pathname.startsWith('/api/')) {
 		const read = method === 'GET' || method === 'HEAD';

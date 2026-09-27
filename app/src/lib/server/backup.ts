@@ -27,10 +27,15 @@ export interface RestoreResult {
 /**
  * Meta rows a restore keeps from the running computer instead of taking them from the backup (its
  * printers stay, so the one-time BAMBU_* import must not run again and bring back a removed printer).
+ * Its access settings (household password, login mode) stay too, so a restore never reopens or
+ * locks the app for other devices.
  */
-const OWN_META = ['cloud', 'printers_env_imported'];
-/** Tables a restore keeps from the running computer: its printers (addresses, access codes) belong to this network. */
-const OWN_TABLES = new Set(['printers']);
+const OWN_META = ['cloud', 'printers_env_imported', 'settings:lan-auth'];
+/**
+ * Tables a restore keeps from the running computer: its printers (addresses, access codes) belong to
+ * this network, and its signed-in devices and profile PINs go with its access settings.
+ */
+const OWN_TABLES = new Set(['printers', 'sessions', 'profile_pins']);
 
 export class Backups {
 	private timer?: NodeJS.Timeout;
@@ -185,6 +190,14 @@ export class Backups {
 							'UPDATE jobs SET printer_id = NULL WHERE printer_id IS NOT NULL AND printer_id NOT IN (SELECT id FROM printers)'
 						)
 						.run();
+				// Sessions and PINs kept from this computer may name profiles the backup does not have.
+				for (const table of ['sessions', 'profile_pins'])
+					if (tablesOf('main').includes(table))
+						client
+							.prepare(
+								`DELETE FROM ${q(table)} WHERE profile_id IS NOT NULL AND profile_id NOT IN (SELECT id FROM profiles)`
+							)
+							.run();
 				const broken = client.pragma('foreign_key_check') as unknown[];
 				if (broken.length)
 					throw new AppError(409, 'That backup does not fit together; nothing was changed.');

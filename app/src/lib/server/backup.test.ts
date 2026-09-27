@@ -98,6 +98,40 @@ describe('backups', () => {
 		}
 	});
 
+	it("keeps this computer's access settings, signed-in devices and PINs, minus profiles the backup lacks", async () => {
+		const { root, db, lab, backups, profileId } = workspace();
+		try {
+			const run = (sql: string, ...args: string[]) => db.$client.prepare(sql).run(...args);
+			run('INSERT INTO meta (key, value) VALUES (\'settings:lan-auth\', \'{"mode":"off"}\')');
+			const snap = await backups.create('manual');
+			// Set after the backup: a password, a household device, and a PIN for a new profile.
+			run('UPDATE meta SET value = \'{"mode":"password"}\' WHERE key = \'settings:lan-auth\'');
+			const later = lab.createProfile({ name: 'Later maker', color: 'violet' });
+			run(
+				"INSERT INTO sessions (id, profile_id, expires_at) VALUES ('s-house', NULL, '2099-01-01'), ('s-later', ?, '2099-01-01')",
+				later
+			);
+			run(
+				"INSERT INTO profile_pins (profile_id, hash) VALUES (?, 'h1'), (?, 'h2')",
+				profileId,
+				later
+			);
+			await backups.restore(snap.file);
+			expect(
+				db.$client.prepare("SELECT value FROM meta WHERE key = 'settings:lan-auth'").get()
+			).toEqual({
+				value: '{"mode":"password"}'
+			});
+			expect(db.$client.prepare('SELECT id FROM sessions').all()).toEqual([{ id: 's-house' }]);
+			expect(db.$client.prepare('SELECT profile_id FROM profile_pins').all()).toEqual([
+				{ profile_id: profileId }
+			]);
+		} finally {
+			db.$client.close();
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it('restores the oldest kept snapshot even when the safety copy pushes it past the limit', async () => {
 		const { root, db, lab, backups, profileId } = workspace();
 		try {
