@@ -8,8 +8,8 @@ name: Slicer build
 on:
   push:
     # Tags build this workflow through release.yml; do not duplicate its native builds.
-    branches: ["**"]
-    paths: ["slicer/**", "!slicer/**/*.md", ".github/workflows/slicer-build.yml"]
+    branches: ['**']
+    paths: ['slicer/**', '!slicer/**/*.md', '.github/workflows/slicer-build.yml']
   workflow_dispatch:
     inputs:
       platform:
@@ -74,6 +74,9 @@ jobs:
         run: slicer/scripts/upstream.sh fetch
       - name: Headless Windows runtime copy regression
         run: python slicer/tests/windows-dll-copy.test.py
+      - name: macOS runtime dependency closure regression
+        if: runner.os != 'Windows'
+        run: python slicer/tests/macos-runtime.test.py
       - name: Windows SDK definitions without precompiled headers
         run: python slicer/tests/windows-platform.test.py
       - name: Dependency cache key

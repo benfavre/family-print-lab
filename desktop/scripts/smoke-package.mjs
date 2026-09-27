@@ -118,6 +118,13 @@ try {
 		throw new Error(`Unsupported installer platform: ${process.platform}`);
 	}
 	const engineDir = path.join(resources, 'app/server/engine');
+	if (process.platform === 'darwin')
+		// Audit load commands, so Homebrew installed on the CI host cannot conceal a missing dylib.
+		run('python3', [
+			path.resolve(desktop, '../slicer/scripts/bundle-macos-runtime.py'),
+			'--audit',
+			engineDir
+		]);
 	const manifest = JSON.parse(fs.readFileSync(path.join(engineDir, 'engine.json'), 'utf8'));
 	assert.equal(manifest.platform, `${process.platform}-${process.arch}`);
 	const engine = path.join(
