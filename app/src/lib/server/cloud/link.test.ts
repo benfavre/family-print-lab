@@ -243,6 +243,22 @@ describe('Print Lab Cloud link', () => {
 		expect(link.status().shareProgress).toBe(false);
 	});
 
+	it('never falls back to v1, which sends status in the clear, once there is a phone key', async () => {
+		await sim.close();
+		sim = await startCloudSim(0, '127.0.0.1', [1]);
+		const link = newLink();
+		const started = await link.link();
+		link.phoneKey();
+		link.setShareProgress(true);
+		printer.status = printing('RUNNING', 40);
+		expect(sim.link(started.pairing!.userCode)).toBe(true);
+		await until(() => /Update Print Lab Cloud/.test(link.status().error ?? ''), 'refusal');
+		await new Promise((r) => setTimeout(r, 100));
+		expect(sim.state().hello).toBeNull();
+		expect(sim.state().printerMessages).toBe(0);
+		expect(link.status().protocol).toBe(2);
+	});
+
 	it('summarizes the printer without temperatures, trays or errors', () => {
 		expect(summarizePrinter({ configured: false })).toBeNull();
 		expect(summarizePrinter({ configured: true, connected: false })).toMatchObject({

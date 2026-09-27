@@ -49,7 +49,14 @@ interface Stored {
 		last: { at: string; size: number } | null;
 		error: string | null;
 	};
-	link: { deviceToken: string; deviceId: string; account: string; linkedAt: string } | null;
+	link: {
+		deviceToken: string;
+		deviceId: string;
+		account: string;
+		linkedAt: string;
+		/** This cloud has welcomed protocol v2, so a later refusal of v2 is never a reason to downgrade. */
+		v2?: boolean;
+	} | null;
 }
 
 export interface RequestSummary {
@@ -585,13 +592,23 @@ export class CloudLink extends EventEmitter {
 			if (this.ping) clearInterval(this.ping);
 			if (e.code === 4401) return this.forget('This computer was unlinked in Print Lab Cloud.');
 			// A cloud that does not know v2 yet refuses the hello: speak v1 to it (one printer, no
-			// remote control), and try v2 again on the next connection, in case it was updated.
-			if (e.code === 4400 && !this.welcomed && this.protocol === 2) {
+			// remote control), and try v2 again on the next connection, in case it was updated. Never
+			// with a phone key, or once this cloud has spoken v2: v1 status travels in the clear, so a
+			// cloud could otherwise refuse v2 to read what the phone key keeps sealed.
+			const v2Only = !!this.phoneKeys() || !!this.stored.link?.v2;
+			if (e.code === 4400 && !this.welcomed && this.protocol === 2 && !v2Only) {
 				this.protocol = 1;
 				return void this.connect();
 			}
+			const refused = e.code === 4400 && !this.welcomed && this.protocol === 2;
 			this.protocol = PROTOCOL;
-			this.reconnectLater(e.code === 4400 ? e.reason || 'Update Family Print Lab.' : null);
+			this.reconnectLater(
+				refused
+					? 'Update Print Lab Cloud: it does not speak the protocol that keeps printer status sealed.'
+					: e.code === 4400
+						? e.reason || 'Update Family Print Lab.'
+						: null
+			);
 		};
 		ws.onerror = () => {};
 	}
@@ -610,11 +627,18 @@ export class CloudLink extends EventEmitter {
 			this.error = null;
 			this.plan = m.plan === true;
 			if (
-				typeof m.account === 'string' &&
 				this.stored.link &&
-				m.account !== this.stored.link.account
+				((typeof m.account === 'string' && m.account !== this.stored.link.account) ||
+					(this.protocol === 2 && !this.stored.link.v2))
 			)
-				this.save({ ...this.stored, link: { ...this.stored.link, account: m.account } });
+				this.save({
+					...this.stored,
+					link: {
+						...this.stored.link,
+						...(typeof m.account === 'string' && { account: m.account }),
+						...(this.protocol === 2 && { v2: true })
+					}
+				});
 			this.set('online');
 			this.ping = setInterval(() => ws.readyState === WebSocket.OPEN && ws.send('ping'), 30_000);
 			this.lastSent = '';
@@ -735,8 +759,9 @@ export class CloudLink extends EventEmitter {
 		);
 	}
 
-	/** v1: the first enabled printer only. */
+	/** v1: the first enabled printer only; nothing in the clear once a phone key exists. */
 	private printerSummary() {
+		if (this.phoneKeys()) return null;
 		const first = this.host?.statuses().find((p) => p.configured && p.enabled !== false);
 		return this.stored.shareProgress && first ? summarizePrinter(first) : null;
 	}
