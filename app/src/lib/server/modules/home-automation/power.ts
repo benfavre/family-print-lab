@@ -82,7 +82,7 @@ export interface PowerTimings {
 export const DEFAULT_TIMINGS: PowerTimings = {
 	onlineTimeoutMs: 180_000,
 	pollMs: 500,
-	retryMs: 5000,
+	retryMs: 10_000,
 	offCheckMs: 30_000
 };
 
