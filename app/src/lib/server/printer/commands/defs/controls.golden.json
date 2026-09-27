@@ -1,0 +1,702 @@
+[
+	{
+		"name": "print.print_speed",
+		"model": "C12",
+		"params": {
+			"level": 3
+		},
+		"source": "OpenBambuAPI print.print_speed; Bambu Studio command_set_printing_speed",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "print_speed",
+				"param": "3"
+			}
+		}
+	},
+	{
+		"name": "system.ledctrl",
+		"model": "C12",
+		"params": {
+			"node": "chamber_light",
+			"mode": "on"
+		},
+		"source": "ha-bambulab CHAMBER_LIGHT_ON",
+		"qos": 0,
+		"payload": {
+			"system": {
+				"sequence_id": "SEQ",
+				"command": "ledctrl",
+				"led_node": "chamber_light",
+				"led_mode": "on",
+				"led_on_time": 500,
+				"led_off_time": 500,
+				"loop_times": 0,
+				"interval_time": 0
+			}
+		}
+	},
+	{
+		"name": "system.ledctrl",
+		"model": "O1D",
+		"params": {
+			"node": "chamber_light2",
+			"mode": "off"
+		},
+		"source": "ha-bambulab CHAMBER_LIGHT_2_OFF",
+		"qos": 0,
+		"payload": {
+			"system": {
+				"sequence_id": "SEQ",
+				"command": "ledctrl",
+				"led_node": "chamber_light2",
+				"led_mode": "off",
+				"led_on_time": 500,
+				"led_off_time": 500,
+				"loop_times": 0,
+				"interval_time": 0
+			}
+		}
+	},
+	{
+		"name": "system.ledctrl",
+		"model": "O1D",
+		"params": {
+			"node": "heatbed_light",
+			"mode": "on"
+		},
+		"source": "ha-bambulab HEATBED_LIGHT_ON",
+		"qos": 0,
+		"payload": {
+			"system": {
+				"sequence_id": "SEQ",
+				"command": "ledctrl",
+				"led_node": "heatbed_light",
+				"led_mode": "on",
+				"led_on_time": 0,
+				"led_off_time": 0,
+				"loop_times": 0,
+				"interval_time": 0
+			}
+		}
+	},
+	{
+		"name": "print.set_nozzle_temp",
+		"model": "N6",
+		"params": {
+			"temp": 220,
+			"nozzle": 1
+		},
+		"source": "Bambu Studio command_set_nozzle_new (dual nozzle)",
+		"qos": 1,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "set_nozzle_temp",
+				"extruder_index": 1,
+				"target_temp": 220
+			}
+		}
+	},
+	{
+		"name": "print.set_nozzle_temp",
+		"model": "C12",
+		"params": {
+			"temp": 215
+		},
+		"source": "Bambu Studio command_set_nozzle",
+		"qos": 1,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "gcode_line",
+				"param": "M104 S215\n"
+			}
+		}
+	},
+	{
+		"name": "print.set_bed_temp",
+		"model": "N6",
+		"params": {
+			"temp": 60
+		},
+		"source": "Bambu Studio command_set_bed, fun bit 39 set",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "set_bed_temp",
+				"temp": 60
+			}
+		}
+	},
+	{
+		"name": "print.set_bed_temp",
+		"model": "C12",
+		"params": {
+			"temp": 60
+		},
+		"source": "Bambu Studio command_set_bed, no fun",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "gcode_line",
+				"param": "M140 S60\n"
+			}
+		}
+	},
+	{
+		"name": "print.set_ctt",
+		"model": "N6",
+		"params": {
+			"temp": 45
+		},
+		"source": "Bambu Studio DevChamberCtrl.cpp CtrlSetChamberTemp",
+		"qos": 1,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "set_ctt",
+				"ctt_val": 45
+			}
+		}
+	},
+	{
+		"name": "print.set_fan",
+		"model": "N6",
+		"params": {
+			"fan": "part",
+			"percent": 50
+		},
+		"source": "Bambu Studio DevFan.cpp command_control_fan_new (new protocol + airduct)",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "set_fan",
+				"fan_index": 1,
+				"speed": 50
+			}
+		}
+	},
+	{
+		"name": "print.set_fan",
+		"model": "N6",
+		"params": {
+			"fan": "secondaryAux",
+			"percent": 30
+		},
+		"source": "Bambu Studio DevFan.h FAN_REMOTE_COOLING_1_IDX = 10",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "set_fan",
+				"fan_index": 10,
+				"speed": 30
+			}
+		}
+	},
+	{
+		"name": "print.set_fan",
+		"model": "C12",
+		"params": {
+			"fan": "aux",
+			"percent": 50
+		},
+		"source": "Bambu Studio DevFan.cpp command_control_fan, floor(5 * 25.5)",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "gcode_line",
+				"param": "M106 P2 S127 \n"
+			}
+		}
+	},
+	{
+		"name": "print.set_fan",
+		"model": "BL-P001",
+		"params": {
+			"fan": "part",
+			"percent": 100
+		},
+		"source": "X1C sends fun but has no airduct: M106",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "gcode_line",
+				"param": "M106 P1 S255 \n"
+			}
+		}
+	},
+	{
+		"name": "print.set_airduct",
+		"model": "N6",
+		"params": {
+			"mode": 1
+		},
+		"source": "ha-bambulab AIRDUCT_SET_MODE_TEMPLATE",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "set_airduct",
+				"modeId": 1,
+				"submode": -1
+			}
+		}
+	},
+	{
+		"name": "print.back_to_center",
+		"model": "N6",
+		"params": {},
+		"source": "Bambu Studio DevAxisCtrl.cpp Ctrl_GoHome, fun bit 32",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "back_to_center"
+			}
+		}
+	},
+	{
+		"name": "print.back_to_center",
+		"model": "C12",
+		"params": {},
+		"source": "ha-bambulab HOME_GCODE",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "gcode_line",
+				"param": "G28\n"
+			}
+		}
+	},
+	{
+		"name": "print.xyz_ctrl",
+		"model": "N6",
+		"params": {
+			"axis": "X",
+			"distance": 10
+		},
+		"source": "Bambu Studio DevAxisCtrl.cpp Ctrl_Axis, fun bit 38",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "xyz_ctrl",
+				"axis": "X",
+				"dir": 1,
+				"mode": 1
+			}
+		}
+	},
+	{
+		"name": "print.xyz_ctrl",
+		"model": "N6",
+		"params": {
+			"axis": "Z",
+			"distance": -1
+		},
+		"source": "Bambu Studio DevAxisCtrl.cpp Ctrl_Axis, core XY",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "xyz_ctrl",
+				"axis": "Z",
+				"dir": -1,
+				"mode": 0
+			}
+		}
+	},
+	{
+		"name": "print.xyz_ctrl",
+		"model": "N9",
+		"params": {
+			"axis": "Y",
+			"distance": 10
+		},
+		"source": "Bambu Studio DevAxisCtrl.cpp Ctrl_Axis, i3 inverts Y",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "xyz_ctrl",
+				"axis": "Y",
+				"dir": -1,
+				"mode": 1
+			}
+		}
+	},
+	{
+		"name": "print.xyz_ctrl",
+		"model": "N1",
+		"params": {
+			"axis": "Y",
+			"distance": 10
+		},
+		"source": "Bambu Studio DevAxisCtrl.cpp Ctrl_Axis G-code, i3 inverts Y",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "gcode_line",
+				"param": "M211 S \nM211 X1 Y1 Z1\nM1002 push_ref_mode\nG91 \nG1 Y-10.0 F3000\nM1002 pop_ref_mode\nM211 R\n"
+			}
+		}
+	},
+	{
+		"name": "print.xyz_ctrl",
+		"model": "C12",
+		"params": {
+			"axis": "X",
+			"distance": 50
+		},
+		"source": "ha-bambulab MOVE_AXIS_GCODE",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "gcode_line",
+				"param": "M211 S \nM211 X1 Y1 Z1\nM1002 push_ref_mode\nG91 \nG1 X50.0 F3000\nM1002 pop_ref_mode\nM211 R\n"
+			}
+		}
+	},
+	{
+		"name": "print.set_extrusion_length",
+		"model": "N6",
+		"params": {
+			"length": 10,
+			"nozzle": 1
+		},
+		"source": "Bambu Studio command_extruder_control",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "set_extrusion_length",
+				"extruder_index": 1,
+				"length": 10
+			}
+		}
+	},
+	{
+		"name": "print.set_extrusion_length",
+		"model": "C12",
+		"params": {
+			"length": -10
+		},
+		"source": "ha-bambulab EXTRUDER_GCODE; Bambu Studio Ctrl_Axis E",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "gcode_line",
+				"param": "M83 \nG0 E-10.0 F900\n"
+			}
+		}
+	},
+	{
+		"name": "print.select_extruder",
+		"model": "N6",
+		"params": {
+			"nozzle": 1
+		},
+		"source": "Bambu Studio DevCtrl.cpp command_select_extruder",
+		"qos": 1,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "select_extruder",
+				"extruder_index": 1
+			}
+		}
+	},
+	{
+		"name": "print.buzzer_ctrl",
+		"model": "O1D",
+		"params": {
+			"mode": 0
+		},
+		"source": "Bambu Studio command_stop_buzzer",
+		"qos": 1,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "buzzer_ctrl",
+				"mode": 0
+			}
+		}
+	},
+	{
+		"name": "print.ams_change_filament",
+		"model": "N6",
+		"params": {
+			"tray": 1
+		},
+		"source": "Bambu Studio command_ams_change_filament: target = ams*4+slot, PETG 240-260",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "ams_change_filament",
+				"curr_temp": -1,
+				"tar_temp": 250,
+				"ams_id": 0,
+				"target": 1,
+				"slot_id": 1
+			}
+		}
+	},
+	{
+		"name": "print.ams_change_filament",
+		"model": "N6",
+		"params": {
+			"tray": 0
+		},
+		"source": "tray index 0: target = ams_id",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "ams_change_filament",
+				"curr_temp": -1,
+				"tar_temp": 215,
+				"ams_id": 0,
+				"target": 0,
+				"slot_id": 0
+			}
+		}
+	},
+	{
+		"name": "print.ams_change_filament",
+		"model": "N6",
+		"params": {
+			"tray": 254
+		},
+		"source": "new protocol external spool: its own id",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "ams_change_filament",
+				"curr_temp": -1,
+				"tar_temp": -1,
+				"ams_id": 254,
+				"target": 254,
+				"slot_id": 0
+			}
+		}
+	},
+	{
+		"name": "print.ams_change_filament",
+		"model": "C12",
+		"params": {
+			"tray": 255
+		},
+		"source": "older printers: external spool is 254",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "ams_change_filament",
+				"curr_temp": 215,
+				"tar_temp": 255,
+				"ams_id": 254,
+				"target": 254,
+				"slot_id": 0
+			}
+		},
+		"status": {
+			"activeTray": 0
+		}
+	},
+	{
+		"name": "print.ams_change_filament",
+		"model": "C12",
+		"params": {
+			"tray": 133
+		},
+		"source": "AMS HT: target = ams id",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "ams_change_filament",
+				"curr_temp": -1,
+				"tar_temp": -1,
+				"ams_id": 133,
+				"target": 133,
+				"slot_id": 0
+			}
+		}
+	},
+	{
+		"name": "print.ams_change_filament:unload",
+		"model": "N6",
+		"params": {},
+		"source": "Bambu Studio on_ams_unload",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "ams_change_filament",
+				"curr_temp": 210,
+				"tar_temp": 210,
+				"ams_id": 1,
+				"target": 255,
+				"slot_id": 255
+			}
+		},
+		"status": {
+			"activeTray": 6
+		}
+	},
+	{
+		"name": "print.ams_control",
+		"model": "C12",
+		"params": {
+			"action": "resume"
+		},
+		"source": "ha-bambulab RETRY_LOAD_FILAMENT_TEMPLATE",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "ams_control",
+				"param": "resume"
+			}
+		}
+	},
+	{
+		"name": "print.calibration",
+		"model": "BL-P001",
+		"params": {
+			"lidar": true,
+			"bedLeveling": true,
+			"vibration": true,
+			"motorNoise": false
+		},
+		"source": "Bambu Studio command_start_calibration bits",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "calibration",
+				"option": 7
+			}
+		}
+	},
+	{
+		"name": "print.skip_objects",
+		"model": "N6",
+		"params": {
+			"ids": [3, 7]
+		},
+		"source": "Bambu Studio command_task_partskip",
+		"qos": 1,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "skip_objects",
+				"obj_list": [3, 7]
+			}
+		}
+	},
+	{
+		"name": "print.print_option",
+		"model": "N1",
+		"params": {
+			"option": "autoRecovery",
+			"enabled": true
+		},
+		"source": "Bambu Studio DevPrintOptions.cpp command_set_printing_option",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "print_option",
+				"option": 1,
+				"auto_recovery": true
+			}
+		}
+	},
+	{
+		"name": "print.print_option",
+		"model": "N1",
+		"params": {
+			"option": "sound",
+			"enabled": false
+		},
+		"source": "Bambu Studio command_set_prompt_sound; ha-bambulab PROMPT_SOUND_DISABLE",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "print_option",
+				"sound_enable": false
+			}
+		}
+	},
+	{
+		"name": "print.print_option",
+		"model": "N6",
+		"params": {
+			"option": "nozzleBlob",
+			"enabled": true
+		},
+		"source": "Bambu Studio command_nozzle_blob_detect",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "print_option",
+				"nozzle_blob_detect": true
+			}
+		}
+	},
+	{
+		"name": "xcam.xcam_control_set",
+		"model": "N6",
+		"params": {
+			"detector": "printing_monitor",
+			"enabled": true,
+			"sensitivity": "medium"
+		},
+		"source": "Bambu Studio DevPrintOptions.cpp command_xcam_control",
+		"qos": 0,
+		"payload": {
+			"xcam": {
+				"sequence_id": "SEQ",
+				"command": "xcam_control_set",
+				"module_name": "printing_monitor",
+				"control": true,
+				"enable": true,
+				"print_halt": true,
+				"halt_print_sensitivity": "medium"
+			}
+		}
+	},
+	{
+		"name": "print.gcode_line:custom",
+		"model": "N1",
+		"params": {
+			"lines": ["G1 X10", "M400"]
+		},
+		"source": "ha-bambulab SEND_GCODE_TEMPLATE",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "gcode_line",
+				"param": "G1 X10\nM400\n"
+			}
+		}
+	}
+]
