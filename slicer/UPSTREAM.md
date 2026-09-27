@@ -351,6 +351,20 @@ in every engine build, so ZIP reads and writes retain alignment sanitizer checks
   an 865-second cached-dependency build. The refreshed queue-19 Linux AppImage starts successfully
   and loads all 56 bundled printer profiles.
 
+- The facade now uses Boost.Nowide streams and the pinned CLI's UTF-8 filesystem setup for
+  Windows account, project and resource paths. Project round trips, preview output and all five
+  golden slices exercise Unicode directories; the golden suite also relocates its profiles there.
+  The thumbnail writer has an independent Unicode-path regression in the protocol preflight.
+  The local incremental rebuild took 32.13 seconds; 13 native, ten protocol and 105 integration
+  tests pass (one protocol-only skip). The refreshed Linux installer also passes from a Unicode
+  installation/data directory. macOS passes the same 13 native and 105 integration tests, with
+  a 1,027-second (17 minutes 7 seconds) cached-dependency build.
+- Windows compiled the upstream sources and facade in its next attempt, then failed at final
+  linkage after 37 minutes 25 seconds: static OpenSSL's CAPI engine needed `crypt32`. The facade
+  now propagates that SDK library to its native consumers, matching the pinned upstream libcurl
+  interface. An actual MSVC SDK link probe passes before the full native build. Complete Windows
+  runtime and installed-package verification remains pending; release publication is gated on it.
+
 For a future rebuild, from the repository root:
 
 ```

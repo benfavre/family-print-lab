@@ -262,3 +262,11 @@ queue-19 rebuild took 4 minutes 21 seconds at 24 workers, followed by all 13 nat
 and 105 integration tests. Its refreshed AppImage passes the installed-app and bundled-profile checks. Windows native and Windows/macOS packaged release verification are
 still pending. MSVC startup output now has an early redirect and a separate static-initialiser
 regression, so third-party startup messages cannot corrupt the NDJSON protocol.
+
+The Unicode-path follow-up passes all 1,489 app tests (four expected skips), with check and lint
+clean. Native project files, profiles, scratch files, toolpath previews and PNG thumbnails now
+exercise accented and non-Latin paths, including the Linux installed-app test. macOS passes the
+same native regressions. Windows source compilation succeeds; its static-OpenSSL linker dependency
+is corrected and passes a real SDK link preflight, with the full native retry still running.
+Candidate packaging rejects stale native artifacts before building installers. An intentional CI
+negative check confirmed that old source artifacts are rejected and packaging is skipped.
