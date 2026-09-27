@@ -73,10 +73,8 @@ describe('which controls a printer has', () => {
 
 	it('uses set_fan only with the new protocol and an airduct', () => {
 		expect(newFanProtocol(emptySnapshot({ airductMode: 0 }))).toBe(false);
-		expect(
-			newFanProtocol(emptySnapshot({ airductMode: 0, firmwareSupport: { partSkip: true } }))
-		).toBe(true);
-		expect(newFanProtocol(emptySnapshot({ firmwareSupport: { partSkip: true } }))).toBe(false);
+		expect(newFanProtocol(emptySnapshot({ airductMode: 0, newProtocol: true }))).toBe(true);
+		expect(newFanProtocol(emptySnapshot({ newProtocol: true }))).toBe(false);
 	});
 
 	it('explains why nothing works when offline or without Developer Mode', () => {

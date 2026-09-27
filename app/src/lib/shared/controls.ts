@@ -154,12 +154,8 @@ export const bedSlinger = (model: PrinterModel) => model.series === 'A1' || mode
 /** Dual-nozzle printers get Bambu Studio's per-extruder commands (StatusPanel.cpp nozzle_num == 2). */
 export const dualNozzle = (t: ControlTarget) =>
 	t.model.nozzles === 2 || (t.status?.nozzles.length ?? 0) > 1;
-/**
- * Bambu Studio's "new protocol" (DeviceManager.cpp check_enable_np: the report carries cfg, fun, aux and
- * stat). The snapshot keeps only what `fun` decodes to, so a report with any `fun` bits stands in for it.
- */
-export const newProtocol = (s: PrinterSnapshot | null) =>
-	!!s && Object.keys(s.firmwareSupport ?? {}).length > 0;
+/** Bambu Studio's "new protocol" (is_enable_np; DeviceManager.cpp check_enable_np, report.ts). */
+export const newProtocol = (s: PrinterSnapshot | null) => !!s?.newProtocol;
 /** set_fan instead of M106: new protocol and an airduct (Bambu Studio Widgets/FanControl.cpp command_control_fan). */
 export const newFanProtocol = (s: PrinterSnapshot | null) =>
 	newProtocol(s) && s!.airductMode !== null;

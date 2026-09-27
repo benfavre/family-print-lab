@@ -304,6 +304,8 @@
 		"count": 0
 	},
 	"developerMode": true,
+	"newProtocol": true,
+	"amsNewProtocol": false,
 	"firmwareSupport": {
 		"mqttBedTemp": true,
 		"mqttHoming": true,

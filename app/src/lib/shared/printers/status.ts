@@ -200,8 +200,16 @@ export interface PrinterSnapshot {
 	/** Bit 29 of `fun` clear (ha-bambulab Print_Fun_Values.MQTT_SIGNATURE_REQUIRED); null without `fun`. */
 	developerMode: boolean | null;
 	/**
+	 * Bambu Studio's "new protocol" (is_enable_np): the report carries cfg, fun, aux and stat
+	 * (DeviceManager.cpp check_enable_np ~4338). Worked out on the merged report, so deltas keep it.
+	 */
+	newProtocol: boolean;
+	/** is_enable_ams_np: bit 9 of `flag3` (DeviceManager.cpp ~3111). */
+	amsNewProtocol: boolean;
+	/**
 	 * Feature bits the printer itself reports, decoded with flags.ts (Bambu Studio DeviceManager.cpp
-	 * ~4430–4480, DevAxis.cpp ~15): undefined when the source string is absent.
+	 * ~4430–4480, DevAxis.cpp ~15): undefined when the source string is absent. Empty without the new
+	 * protocol, as Bambu Studio reads them only in parse_new_info (~4356).
 	 */
 	firmwareSupport: {
 		mqttBedTemp?: boolean;
@@ -300,6 +308,8 @@ export function emptySnapshot(over: Partial<PrinterSnapshot> = {}): PrinterSnaps
 		prepareProgress: null,
 		plate: { index: null, count: null },
 		developerMode: null,
+		newProtocol: false,
+		amsNewProtocol: false,
 		firmwareSupport: {},
 		firmware: { version: null, modules: [] },
 		upgrade: { available: false, version: null, state: null },

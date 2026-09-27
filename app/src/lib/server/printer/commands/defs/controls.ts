@@ -351,7 +351,10 @@ export default [
 		build: (o, ctx) => {
 			const external = o.tray === EXT_MAIN || o.tray === EXT_DEPUTY;
 			const { ams_id, slot_id } = amsSlotOf(o.tray);
-			const amsId = external && !newProtocol(ctx.status) ? EXT_DEPUTY : ams_id;
+			// Bambu Studio StatusPanel.cpp on_ams_load_curr ~4951: the tray's own ams id under the new
+			// protocol or the AMS one (is_enable_ams_np), else 254.
+			const np = newProtocol(ctx.status) || !!ctx.status?.amsNewProtocol;
+			const amsId = external && !np ? EXT_DEPUTY : ams_id;
 			// Bambu Studio: target = ams_id * 4 + slot for AMS units (ams_id < 16), else the ams id (tray
 			// index 0 is special-cased the same way).
 			const index = amsId < 16 ? amsId * 4 + slot_id : 0;

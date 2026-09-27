@@ -231,6 +231,8 @@
 		"count": null
 	},
 	"developerMode": null,
+	"newProtocol": false,
+	"amsNewProtocol": true,
 	"firmwareSupport": {},
 	"firmware": {
 		"version": "01.08.02.00",
@@ -513,6 +515,8 @@
 			"count": null
 		},
 		"developerMode": null,
+		"newProtocol": false,
+		"amsNewProtocol": true,
 		"firmwareSupport": {},
 		"firmware": {
 			"version": "01.08.02.00",

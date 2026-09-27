@@ -554,7 +554,32 @@
 			}
 		},
 		"status": {
-			"activeTray": 0
+			"activeTray": 0,
+			"amsNewProtocol": false
+		}
+	},
+	{
+		"name": "print.ams_change_filament",
+		"model": "C12",
+		"params": {
+			"tray": 255
+		},
+		"source": "flag3 bit 9 (is_enable_ams_np, DeviceManager.cpp ~3111): the external spool's own ams id, 255 (on_ams_load_curr ~4951)",
+		"qos": 0,
+		"payload": {
+			"print": {
+				"sequence_id": "SEQ",
+				"command": "ams_change_filament",
+				"curr_temp": 255,
+				"tar_temp": 255,
+				"ams_id": 255,
+				"target": 255,
+				"slot_id": 0
+			}
+		},
+		"status": {
+			"activeTray": 0,
+			"amsNewProtocol": true
 		}
 	},
 	{

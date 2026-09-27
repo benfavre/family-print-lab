@@ -356,7 +356,10 @@ export function parseReport(raw: Raw, ctx: ParseContext): PrinterSnapshot {
 	const caps = capabilitiesFor(model.code, firmware);
 	const device = obj(p.device);
 	const ams = obj(p.ams);
-	const support = firmwareSupport(p.fun, p.fun2);
+	// Bambu Studio reads the feature bits only under the new protocol (parse_new_info, ~4356).
+	const newProtocol = ['cfg', 'fun', 'aux', 'stat'].every((k) => typeof p[k] === 'string');
+	const support = newProtocol ? firmwareSupport(p.fun, p.fun2) : {};
+	const flag3 = num(p.flag3);
 
 	// Extruders and what each one has loaded.
 	const extruder = obj(device.extruder);
@@ -544,6 +547,8 @@ export function parseReport(raw: Raw, ctx: ParseContext): PrinterSnapshot {
 		prepareProgress: num(p.gcode_file_prepare_percent),
 		plate: { index: num(p.plate_idx ?? p.plate_id), count: num(p.plate_cnt) },
 		developerMode: developerMode(p.fun),
+		newProtocol,
+		amsNewProtocol: flag3 !== null && ((flag3 >> 9) & 1) === 1,
 		firmwareSupport: support,
 		firmware: { version: firmware, modules: versions },
 		upgrade: {

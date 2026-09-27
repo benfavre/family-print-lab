@@ -354,6 +354,25 @@ describe('flags', () => {
 			remoteDrying: true
 		});
 	});
+
+	it('uses the new protocol only when cfg, fun, aux and stat all arrive (check_enable_np)', () => {
+		const f = load('x2d');
+		const full = parse(f, fresh(f));
+		expect(full.newProtocol).toBe(true);
+		expect(full.firmwareSupport.partSkip).toBe(true);
+		// `fun` alone (ha-bambulab const.py reads it for Developer Mode) is not the new protocol.
+		const raw = fresh(f);
+		delete raw.cfg;
+		delete raw.aux;
+		delete raw.stat;
+		const alone = parse(f, raw);
+		expect(alone.newProtocol).toBe(false);
+		expect(alone.firmwareSupport).toEqual({});
+		expect(alone.developerMode).toBe(full.developerMode);
+		// A later delta without those keys keeps it, since it is read from the merged report.
+		const merged = mergeReport(fresh(f), { mc_percent: 50 });
+		expect(parse(f, merged).newProtocol).toBe(true);
+	});
 });
 
 describe('model catalogue', () => {
