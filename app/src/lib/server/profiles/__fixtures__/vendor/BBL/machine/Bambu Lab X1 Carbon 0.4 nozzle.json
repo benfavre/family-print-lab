@@ -1,0 +1,20 @@
+{
+    "type": "machine",
+    "name": "Bambu Lab X1 Carbon 0.4 nozzle",
+    "inherits": "fdm_x1_common",
+    "from": "system",
+    "setting_id": "GM001",
+    "instantiation": "true",
+    "printer_model": "Bambu Lab X1 Carbon",
+    "printer_variant": "0.4",
+    "nozzle_diameter": [
+        "0.4"
+    ],
+    "default_print_profile": "0.20mm Standard @BBL X1C",
+    "default_filament_profile": [
+        "Bambu PLA Basic @BBL X1C"
+    ],
+    "include": [
+        "Bambu Lab X1 Carbon 0.4 nozzle template machine_start_gcode"
+    ]
+}

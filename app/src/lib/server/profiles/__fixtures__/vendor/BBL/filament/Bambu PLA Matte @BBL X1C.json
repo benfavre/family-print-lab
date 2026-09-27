@@ -1,0 +1,15 @@
+{
+    "type": "filament",
+    "name": "Bambu PLA Matte @BBL X1C",
+    "inherits": "fdm_filament_pla",
+    "from": "system",
+    "filament_id": "GFA01",
+    "setting_id": "GFSA01",
+    "instantiation": "true",
+    "filament_vendor": [
+        "Bambu Lab"
+    ],
+    "compatible_printers": [
+        "Bambu Lab X1 Carbon 0.4 nozzle"
+    ]
+}

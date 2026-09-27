@@ -1,0 +1,7 @@
+{
+    "type": "machine_model",
+    "name": "Bambu Lab A1 mini",
+    "nozzle_diameter": "0.4",
+    "model_id": "N1",
+    "default_materials": "Bambu PLA Basic @BBL A1M"
+}

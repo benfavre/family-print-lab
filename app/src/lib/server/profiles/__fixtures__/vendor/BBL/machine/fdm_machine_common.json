@@ -1,0 +1,16 @@
+{
+    "type": "machine",
+    "name": "fdm_machine_common",
+    "from": "system",
+    "instantiation": "false",
+    "printer_technology": "FFF",
+    "nozzle_diameter": [
+        "0.4"
+    ],
+    "retraction_length": [
+        "0.8"
+    ],
+    "machine_start_gcode": "G28",
+    "printable_height": "250",
+    "printer_settings_id": ""
+}

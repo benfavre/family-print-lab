@@ -1,0 +1,111 @@
+{
+    "name": "Bambulab",
+    "url": "",
+    "version": "01.00.00.01",
+    "force_update": "0",
+    "description": "Test vendor",
+    "machine_model_list": [
+        {
+            "name": "Bambu Lab X1 Carbon",
+            "sub_path": "machine/Bambu Lab X1 Carbon.json"
+        },
+        {
+            "name": "Bambu Lab A1 mini",
+            "sub_path": "machine/Bambu Lab A1 mini.json"
+        }
+    ],
+    "machine_list": [
+        {
+            "name": "fdm_machine_common",
+            "sub_path": "machine/fdm_machine_common.json"
+        },
+        {
+            "name": "fdm_x1_common",
+            "sub_path": "machine/fdm_x1_common.json"
+        },
+        {
+            "name": "Bambu Lab X1 Carbon 0.4 nozzle template machine_start_gcode",
+            "sub_path": "machine/Bambu Lab X1 Carbon 0.4 nozzle template machine_start_gcode.json"
+        },
+        {
+            "name": "Bambu Lab X1 Carbon 0.4 nozzle",
+            "sub_path": "machine/Bambu Lab X1 Carbon 0.4 nozzle.json"
+        },
+        {
+            "name": "Bambu Lab X1 Carbon 0.2 nozzle",
+            "sub_path": "machine/Bambu Lab X1 Carbon 0.2 nozzle.json"
+        },
+        {
+            "name": "Bambu Lab X1 Carbon 0.6 nozzle",
+            "sub_path": "machine/Bambu Lab X1 Carbon 0.6 nozzle.json"
+        },
+        {
+            "name": "Bambu Lab A1 mini 0.4 nozzle",
+            "sub_path": "machine/Bambu Lab A1 mini 0.4 nozzle.json"
+        }
+    ],
+    "process_list": [
+        {
+            "name": "fdm_process_common",
+            "sub_path": "process/fdm_process_common.json"
+        },
+        {
+            "name": "0.20mm Standard @BBL X1C",
+            "sub_path": "process/0.20mm Standard @BBL X1C.json"
+        },
+        {
+            "name": "0.12mm Fine @BBL X1C",
+            "sub_path": "process/0.12mm Fine @BBL X1C.json"
+        },
+        {
+            "name": "0.10mm Standard @BBL X1C 0.2 nozzle",
+            "sub_path": "process/0.10mm Standard @BBL X1C 0.2 nozzle.json"
+        },
+        {
+            "name": "0.20mm Standard @BBL A1M",
+            "sub_path": "process/0.20mm Standard @BBL A1M.json"
+        },
+        {
+            "name": "0.16mm Mini only @Test",
+            "sub_path": "process/0.16mm Mini only @Test.json"
+        }
+    ],
+    "filament_list": [
+        {
+            "name": "fdm_filament_common",
+            "sub_path": "filament/fdm_filament_common.json"
+        },
+        {
+            "name": "fdm_filament_pla",
+            "sub_path": "filament/fdm_filament_pla.json"
+        },
+        {
+            "name": "fdm_filament_template_dual",
+            "sub_path": "filament/fdm_filament_template_dual.json"
+        },
+        {
+            "name": "Bambu PLA Basic @base",
+            "sub_path": "filament/Bambu PLA Basic @base.json"
+        },
+        {
+            "name": "Bambu PLA Basic @BBL X1C",
+            "sub_path": "filament/Bambu PLA Basic @BBL X1C.json"
+        },
+        {
+            "name": "Bambu PLA Basic @BBL A1M",
+            "sub_path": "filament/Bambu PLA Basic @BBL A1M.json"
+        },
+        {
+            "name": "Bambu PLA Matte @BBL X1C",
+            "sub_path": "filament/Bambu PLA Matte @BBL X1C.json"
+        },
+        {
+            "name": "Bambu PETG HF @BBL X1C",
+            "sub_path": "filament/Bambu PETG HF @BBL X1C.json"
+        },
+        {
+            "name": "Generic PLA",
+            "sub_path": "filament/Generic PLA.json"
+        }
+    ]
+}

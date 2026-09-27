@@ -1,0 +1,14 @@
+{
+    "type": "filament",
+    "name": "fdm_filament_template_dual",
+    "from": "system",
+    "instantiation": "false",
+    "filament_extruder_variant": [
+        "Direct Drive Standard",
+        "Direct Drive High Flow"
+    ],
+    "filament_retraction_length": [
+        "nil",
+        "nil"
+    ]
+}

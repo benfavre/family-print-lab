@@ -1,0 +1,14 @@
+{
+    "type": "machine",
+    "name": "fdm_x1_common",
+    "inherits": "fdm_machine_common",
+    "from": "system",
+    "instantiation": "false",
+    "printable_height": "250",
+    "retraction_length": [
+        "0.8"
+    ],
+    "extruder_variant_list": [
+        "Direct Drive Standard,Direct Drive High Flow"
+    ]
+}

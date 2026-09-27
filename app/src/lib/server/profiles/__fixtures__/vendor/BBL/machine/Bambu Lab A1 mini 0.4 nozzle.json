@@ -1,0 +1,18 @@
+{
+    "type": "machine",
+    "name": "Bambu Lab A1 mini 0.4 nozzle",
+    "inherits": "fdm_machine_common",
+    "from": "system",
+    "setting_id": "GM020",
+    "instantiation": "true",
+    "printer_model": "Bambu Lab A1 mini",
+    "printer_variant": "0.4",
+    "nozzle_diameter": [
+        "0.4"
+    ],
+    "printable_height": "180",
+    "default_print_profile": "0.20mm Standard @BBL A1M",
+    "default_filament_profile": [
+        "Bambu PLA Basic @BBL A1M"
+    ]
+}

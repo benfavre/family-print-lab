@@ -1,0 +1,11 @@
+{
+    "type": "process",
+    "name": "0.20mm Standard @BBL A1M",
+    "inherits": "fdm_process_common",
+    "from": "system",
+    "instantiation": "true",
+    "wall_loops": "3",
+    "compatible_printers": [
+        "Bambu Lab A1 mini 0.4 nozzle"
+    ]
+}
