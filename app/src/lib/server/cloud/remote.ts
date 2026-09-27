@@ -117,12 +117,18 @@ const SERIOUS = new Set(['fatal', 'serious']);
 const ID = /^[\w-]{1,80}$/;
 /** Snapshots the app takes per minute for the phone, whatever the cloud asks. */
 const SNAPSHOTS_PER_MINUTE = 150;
+/**
+ * Refused commands in a minute before the rest are dropped unchecked. Each refusal is noted at most
+ * once a minute (an activity line bumps the workspace, which every open tab fetches again).
+ */
+const REFUSALS_PER_MINUTE = 30;
 
 export class Remote {
 	private events = new Map<string, PushEvent>();
 	private queueEvent: PushEvent | null = null;
 	private replay = new ReplayCache();
 	private snapshotTimes: number[] = [];
+	private refusals = { since: 0, count: 0, unnoted: 0, notedAt: 0 };
 	private unsubscribe: (() => void)[] = [];
 
 	constructor(
@@ -306,9 +312,11 @@ export class Remote {
 		const keys = this.keys();
 		if (!keys) return { ok: false, error: 'Show the phone key on the computer and scan it first.' };
 		const refuse = (why: string) => {
-			this.lab.touch('cloud', `Refused a command from the phone (${why})`);
+			this.noteRefusal(why);
 			return { ok: false, error: `Refused: ${why}.` };
 		};
+		if (this.refusalBudgetSpent())
+			return { ok: false, error: 'Refused: too many refused commands. Try again in a minute.' };
 		if (!verifyControlMac(keys, fields, m.mac))
 			return refuse('it was not signed with this household’s phone key');
 		if (Math.abs(Date.now() - fields.at) > CONTROL_WINDOW)
@@ -333,6 +341,29 @@ export class Remote {
 				error: error instanceof AppError ? error.message : 'The printer did not take it.'
 			};
 		}
+	}
+
+	private refusalBudgetSpent(now = Date.now()) {
+		if (now - this.refusals.since >= 60_000)
+			this.refusals = { ...this.refusals, since: now, count: 0 };
+		return this.refusals.count >= REFUSALS_PER_MINUTE;
+	}
+
+	/** One activity line a minute at most, counting the ones in between. */
+	private noteRefusal(why: string, now = Date.now()) {
+		this.refusals.count++;
+		if (now - this.refusals.notedAt < 60_000) {
+			this.refusals.unnoted++;
+			return;
+		}
+		const more = this.refusals.unnoted;
+		this.refusals.unnoted = 0;
+		this.refusals.notedAt = now;
+		this.lab.touch(
+			'cloud',
+			`Refused a command from the phone (${why})` +
+				(more ? `; ${more} more refused in the minute before` : '')
+		);
 	}
 
 	/**

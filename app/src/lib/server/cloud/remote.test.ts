@@ -115,6 +115,7 @@ describe('Print Lab Cloud protocol v2', () => {
 			ok: false,
 			error: expect.stringMatching(/not signed with this household’s phone key/)
 		});
+		expect(t.rt.lab.snapshot().activity[0].message).toMatch(/Refused a command from the phone/);
 		const stop = command(x2d, 'stop');
 		expect(await sim.control({ ...stop, action: 'pause' })).toMatchObject({ ok: false });
 		expect(await sim.control(command(x2d, 'pause', { at: Date.now() - 3 * 60_000 }))).toMatchObject(
@@ -128,12 +129,13 @@ describe('Print Lab Cloud protocol v2', () => {
 		expect(t.rt.lab.snapshot().activity[0].message).toMatch(
 			/^Paused .+ from the phone, parent@example\.com$/
 		);
-		// Replayed: the same signed command again is refused, even though it verifies.
+		// Replayed: the same signed command again is refused, even though it verifies (and noted with
+		// the next refusal a minute on, not straight away).
 		expect(await sim.control(pause)).toMatchObject({
 			ok: false,
 			error: expect.stringMatching(/already applied/)
 		});
-		expect(t.rt.lab.snapshot().activity[0].message).toMatch(/Refused a command from the phone/);
+		expect(t.rt.lab.snapshot().activity[0].message).toMatch(/^Paused .+ from the phone/);
 
 		expect(await sim.control(command(x2d, 'resume'))).toEqual({ ok: true });
 		await until(() => job.sim.state.gcode_state === 'RUNNING', 'resumed printer');

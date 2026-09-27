@@ -132,6 +132,25 @@ describe('the phone’s view of the printers', () => {
 	});
 });
 
+describe('refused commands', () => {
+	it('are noted once a minute at most, and a flood is dropped unchecked', async () => {
+		const { remote, lab } = setup();
+		const other = phoneKeys(newPhoneKey());
+		const forged = () => {
+			const c = { commandId: randomUUID(), printerId: 'a', action: 'pause', at: Date.now() };
+			return { ...c, mac: controlMac(other, c as Parameters<typeof controlMac>[1]) };
+		};
+		const changeId = () => lab.snapshot().changeId;
+		const before = { lines: lab.snapshot().activity.length, change: changeId() };
+		const answers = [];
+		for (let i = 0; i < 40; i++) answers.push(await remote.control(forged()));
+		expect(answers[0].error).toMatch(/not signed with this household’s phone key/);
+		expect(answers[39].error).toMatch(/too many refused commands/);
+		expect(lab.snapshot().activity.length - before.lines).toBe(1);
+		expect(changeId() - before.change).toBe(1);
+	});
+});
+
 describe('the queue on the phone', () => {
 	const view = (plateClearNeeded = false) => ({
 		items: [
