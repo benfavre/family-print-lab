@@ -15,6 +15,7 @@ import { POST as ask } from '../../../../routes/api/kid/things/[id]/ask/+server'
 import { GET as photo } from '../../../../routes/api/kids/gallery/[id]/image/+server';
 import { POST as upload } from '../../../../routes/api/kids/gallery/+server';
 import { GET as me } from '../../../../routes/api/kids/me/+server';
+import { GET as meCheck } from '../../../../routes/api/kids/me/check/+server';
 import { load as certificateLoad } from '../../../../routes/family/certificate/[jobId]/+page.server';
 import CertificatePage from '../../../../routes/family/certificate/[jobId]/+page.svelte';
 import kidsModule from './module';
@@ -162,6 +163,33 @@ describe('asking within limits', () => {
 		);
 	});
 
+	it('keeps limits to kids and checks only a child’s own things', async () => {
+		const dad = t.rt.lab.createProfile({ name: 'Dad', color: 'orange' });
+		expect(() => kids().setLimits(dad, { printsPerDay: 1 })).toThrow(/kid mode/);
+		const sam = kid('Sam');
+		const tia = kid('Tia');
+		kids().setLimits(sam.id, { printsPerDay: 0 });
+		const hers = await makeThing(t.rt, tia, 'stencil', {});
+		// Sam cannot ask for (or probe the limits with) Tia's thing: the same 404 as the lab gives.
+		const asked = await call<{ error: string }>(ask, {
+			kid: sam,
+			params: { id: hers.projectId },
+			body: {}
+		});
+		expect(asked).toMatchObject({ status: 404, body: { error: 'That project no longer exists.' } });
+		const probe = await call(meCheck, {
+			kid: sam,
+			url: `http://localhost/api/kids/me/check?project=${hers.projectId}`
+		});
+		expect(probe.status).toBe(404);
+		const mine = await makeThing(t.rt, sam, 'stencil', {});
+		const own = await call<{ ok: boolean; message: string }>(meCheck, {
+			kid: sam,
+			url: `http://localhost/api/kids/me/check?project=${mine.projectId}`
+		});
+		expect(own.body).toMatchObject({ ok: false, message: expect.stringMatching(/today/) });
+	});
+
 	it('says yes on its own to small prints when the parent allowed it', async () => {
 		const ada = kid('Ada');
 		const made = await makeThing(t.rt, ada, 'stencil', {});
@@ -285,6 +313,45 @@ describe('when a kid’s print finishes', () => {
 		expect(kids().gallery(noa.id)[0]).toMatchObject({ jobId, source: 'camera' });
 		kids().setSettings({ snapshots: false });
 	}, 30_000);
+
+	it('stops inviting a photo once the grown-up says no photo', async () => {
+		const una = kid('Una');
+		const jobId = await approvedJob(una);
+		finish(jobId, 'una-1');
+		const wanted = () =>
+			kids()
+				.photosWanted()
+				.map((p) => p.jobId);
+		expect(wanted()).toContain(jobId);
+		kids().dismissPhoto(jobId);
+		expect(wanted()).not.toContain(jobId);
+		expect(() => kids().dismissPhoto('no-such-job')).toThrow(/no longer exists/);
+	});
+
+	it('takes one camera photo at a time when a grown-up asks', async () => {
+		const eli = kid('Eli');
+		const jobId = await approvedJob(eli);
+		finish(jobId, 'eli-1');
+		const first = kids().captureNow(jobId);
+		await expect(kids().captureNow(jobId)).rejects.toMatchObject({ status: 409 });
+		expect((await first).source).toBe('camera');
+		expect(kids().gallery(eli.id)).toHaveLength(1);
+	});
+
+	it('earns badges for a job marked as printed by hand', async () => {
+		const max = kid('Max');
+		const jobId = await approvedJob(max);
+		const badge = t.nextEvent('kid.badge.earned', (e) => e.profileId === max.id);
+		// No printer involved: the grown-up marks it printed on the Print jobs page.
+		t.rt.lab.transitionJob(jobId, { to: 'Printing' });
+		t.rt.lab.transitionJob(jobId, { to: 'Succeeded' });
+		expect(await badge).toMatchObject({ badge: 'first-print', jobId });
+		expect(
+			kids()
+				.overview()
+				.kids.find((k) => k.profileId === max.id)?.printsLastWeek
+		).toBe(1);
+	});
 
 	it('has no certificate before the print finished', async () => {
 		const jobId = await approvedJob(kid('Kai'));

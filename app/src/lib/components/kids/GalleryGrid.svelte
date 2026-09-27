@@ -4,7 +4,8 @@
 	import { galleryImageUrl, type GalleryItem } from '$lib/shared/kids';
 	import Avatar from '../Avatar.svelte';
 
-	// Photos of things the family made. Grown-ups get the certificate link and can remove photos.
+	// Photos of things the family made. Grown-ups get the certificate link, can change a caption and
+	// remove photos.
 	let { items }: { items: GalleryItem[] } = $props();
 	const { lab, ui } = useApp();
 
@@ -14,6 +15,20 @@
 			month: 'short',
 			year: 'numeric'
 		});
+
+	let editing = $state<string | null>(null);
+	let caption = $state('');
+
+	function edit(item: GalleryItem) {
+		editing = item.id;
+		caption = item.caption;
+	}
+
+	async function saveCaption(e: SubmitEvent, item: GalleryItem) {
+		e.preventDefault();
+		if (await lab.call('PATCH', `/api/kids/gallery/${item.id}`, { caption }, 'Caption saved.'))
+			editing = null;
+	}
 
 	async function remove(item: GalleryItem) {
 		if (
@@ -37,7 +52,22 @@
 				loading="lazy"
 			/>
 			<div class="photo-body">
-				<p class="caption">{item.caption || item.projectTitle || 'Something we made'}</p>
+				{#if editing === item.id}
+					<form class="caption-form" onsubmit={(e) => saveCaption(e, item)}>
+						<!-- svelte-ignore a11y_autofocus -->
+						<input
+							aria-label="Caption"
+							maxlength="200"
+							placeholder={item.projectTitle ?? 'Something we made'}
+							bind:value={caption}
+							autofocus
+							onkeydown={(e) => e.key === 'Escape' && (editing = null)}
+						/>
+						<button class="mini primary">Save</button>
+					</form>
+				{:else}
+					<p class="caption">{item.caption || item.projectTitle || 'Something we made'}</p>
+				{/if}
 				<p class="meta">
 					<Avatar profile={maker} />
 					<span
@@ -52,6 +82,12 @@
 							>🏅 Certificate</a
 						>
 					{/if}
+					<button
+						class="mini icon edit"
+						aria-label="Change caption"
+						title="Change caption"
+						onclick={() => edit(item)}>✎</button
+					>
 					<button
 						class="mini icon"
 						aria-label="Remove photo"
@@ -119,5 +155,16 @@
 	}
 	.photo-actions a {
 		text-decoration: none;
+	}
+	.photo-actions .edit {
+		margin-left: auto;
+	}
+	.caption-form {
+		display: flex;
+		gap: 6px;
+	}
+	.caption-form input {
+		flex: 1;
+		min-width: 0;
 	}
 </style>

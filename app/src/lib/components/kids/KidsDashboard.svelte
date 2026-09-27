@@ -5,7 +5,7 @@
 	import { badgeInfo, type KidOverview, type KidsOverview } from '$lib/shared/kids';
 	import Avatar from '../Avatar.svelte';
 	import LimitsForm from './LimitsForm.svelte';
-	import PhotoUpload from './PhotoUpload.svelte';
+	import PhotoWantedActions from './PhotoWantedActions.svelte';
 
 	// The parent's dashboard on the Family page: each child's limits and how much is used, badges,
 	// requests against the limits, and finished prints waiting for a photo.
@@ -13,6 +13,17 @@
 	const feed = kidsFeed<KidsOverview>(lab, () => '/api/kids');
 	const data = $derived(feed.data);
 	let editing = $state<string | null>(null);
+	// Time zones the limits can use ('' = this computer's, whichever it is).
+	const zones = (() => {
+		try {
+			return Intl.supportedValuesOf('timeZone');
+		} catch {
+			return [];
+		}
+	})();
+
+	const day = (iso: string) =>
+		new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 
 	function meters(k: KidOverview) {
 		const l = k.limits;
@@ -98,12 +109,23 @@
 					{#if k.limits.needApprovalOverGrams !== null && editing !== k.profileId}
 						<p class="auto">Says yes by itself up to {k.limits.needApprovalOverGrams} g.</p>
 					{/if}
-					{#each k.recentRequests.filter((r) => r.check) as r (r.id)}
-						<p class="waiting-request" class:over={!r.check?.ok}>
-							Waiting: “{r.projectTitle}”, about {r.grams} g ·
-							{r.check?.ok ? 'fits the limits' : r.check?.parentText}
-						</p>
-					{/each}
+					{#if k.recentRequests.length}
+						<ul class="asks" aria-label="Recent asks">
+							{#each k.recentRequests as r (r.id)}
+								{#if r.check}
+									<li class="waiting-request" class:over={!r.check.ok}>
+										Waiting: “{r.projectTitle}”, about {r.grams} g ·
+										{r.check.ok ? 'fits the limits' : r.check.parentText}
+									</li>
+								{:else}
+									<li>
+										“{r.projectTitle}” · {r.status === 'Approved' ? 'said yes' : 'not this time'}
+										· {day(r.createdAt)}
+									</li>
+								{/if}
+							{/each}
+						</ul>
+					{/if}
 					<div class="badges" aria-label="Badges">
 						{#each k.badges as b (b.badge)}
 							{@const info = badgeInfo(b.badge)}
@@ -128,29 +150,7 @@
 							<span
 								><strong>{lab.profile(w.profileId)?.name ?? 'A kid'}</strong> made {w.projectTitle}</span
 							>
-							<span class="wanted-actions">
-								<PhotoUpload jobId={w.jobId} mini />
-								{#if data.cameraAvailable}
-									<button
-										class="mini"
-										onclick={() =>
-											lab.call(
-												'POST',
-												`/api/kids/photos/${w.jobId}/capture`,
-												{},
-												'Photo added to the gallery.'
-											)}>Printer camera</button
-									>
-								{/if}
-								<button
-									class="mini"
-									onclick={() => lab.call('POST', `/api/kids/photos/${w.jobId}/dismiss`, {})}
-									>No photo</button
-								>
-								<a class="mini" href={resolve('/family/certificate/[jobId]', { jobId: w.jobId })}
-									>Certificate</a
-								>
-							</span>
+							<PhotoWantedActions jobId={w.jobId} camera={data.cameraAvailable} />
 						</li>
 					{/each}
 				</ul>
@@ -171,6 +171,19 @@
 					>{/if}</span
 			>
 		</label>
+		{#if zones.length}
+			<label class="field zone-setting"
+				>Days, weeks and months start in
+				<select
+					value={data.settings.timeZone ?? ''}
+					onchange={(e) =>
+						lab.call('PATCH', '/api/kids/settings', { timeZone: e.currentTarget.value || null })}
+				>
+					<option value="">This computer’s time zone ({data.timeZone})</option>
+					{#each zones as z (z)}<option value={z}>{z.replaceAll('_', ' ')}</option>{/each}
+				</select>
+			</label>
+		{/if}
 	{/if}
 </section>
 
@@ -260,10 +273,16 @@
 		background: var(--amber);
 	}
 	.auto,
-	.waiting-request {
+	.asks {
 		margin: 0;
 		color: var(--muted);
 		font-size: 12.5px;
+	}
+	.asks {
+		display: grid;
+		gap: 4px;
+		padding: 0;
+		list-style: none;
 	}
 	.waiting-request.over {
 		color: var(--amber);
@@ -300,14 +319,6 @@
 		gap: 8px;
 		font-size: 13.5px;
 	}
-	.wanted-actions {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-	}
-	.wanted-actions a {
-		text-decoration: none;
-	}
 	.camera-setting {
 		display: flex;
 		gap: 8px;
@@ -317,5 +328,9 @@
 	}
 	.camera-setting small {
 		color: var(--dim);
+	}
+	.zone-setting {
+		margin: 0;
+		max-width: 420px;
 	}
 </style>

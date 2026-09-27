@@ -67,9 +67,11 @@ export function checkLimits(limits: KidLimits, usage: LimitUsage, grams: number)
 		grams,
 		usage,
 		limits,
+		// A model without a known volume weighs "0 g": never said yes to without a grown-up.
 		autoApprove:
 			reason === null &&
 			limits.needApprovalOverGrams !== null &&
+			grams > 0 &&
 			grams <= limits.needApprovalOverGrams
 	};
 }

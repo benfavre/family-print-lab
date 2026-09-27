@@ -109,6 +109,16 @@ export class KidsService {
 		return p;
 	}
 
+	/** A child's own project (the same 404 lab.requestPrint gives for anyone else's). */
+	private ownProject(profileId: string, projectId: string) {
+		const p = this.d.db
+			.select({ profileId: projects.profileId })
+			.from(projects)
+			.where(eq(projects.id, projectId))
+			.get();
+		if (p?.profileId !== profileId) throw new AppError(404, 'That project no longer exists.');
+	}
+
 	limits(profileId: string): KidLimits {
 		const row = this.d.db.select().from(kidLimits).where(eq(kidLimits.profileId, profileId)).get();
 		if (!row) return { ...NO_LIMITS };
@@ -122,7 +132,11 @@ export class KidsService {
 	}
 
 	setLimits(profileId: string, input: unknown): KidLimits {
-		this.profile(profileId);
+		if (!this.profile(profileId).kid)
+			throw new AppError(
+				400,
+				'Limits are for children in kid mode. Turn kid mode on for them first.'
+			);
 		const limits = parse(kidLimitsInput, input);
 		const updatedAt = this.now().toISOString();
 		this.d.db
@@ -163,8 +177,8 @@ export class KidsService {
 		return this.gramsFor(model?.currentVersionId ?? null, spoolId);
 	}
 
-	/** A child's requests with their estimate, newest first. */
-	private requests(profileId: string, since?: string) {
+	/** A child's requests with their estimate, newest first (optionally since a time, or only the newest). */
+	private requests(profileId: string, o: { since?: string; limit?: number } = {}) {
 		const rows = this.d.db
 			.select({
 				id: printRequests.id,
@@ -181,11 +195,15 @@ export class KidsService {
 			.innerJoin(projects, eq(projects.id, printRequests.projectId))
 			.leftJoin(jobs, eq(jobs.id, printRequests.jobId))
 			.where(
-				since
-					? and(eq(printRequests.profileId, profileId), sql`${printRequests.createdAt} >= ${since}`)
+				o.since
+					? and(
+							eq(printRequests.profileId, profileId),
+							sql`${printRequests.createdAt} >= ${o.since}`
+						)
 					: eq(printRequests.profileId, profileId)
 			)
 			.orderBy(desc(printRequests.createdAt))
+			.limit(o.limit ?? -1)
 			.all();
 		return rows.map((r) => ({
 			...r,
@@ -199,7 +217,7 @@ export class KidsService {
 	 */
 	private counted(profileId: string): CountedAsk[] {
 		const since = new Date(this.now().getTime() - 32 * 86_400_000).toISOString();
-		return this.requests(profileId, since)
+		return this.requests(profileId, { since })
 			.filter(
 				(r) =>
 					r.status === 'Waiting' ||
@@ -219,6 +237,7 @@ export class KidsService {
 
 	/** Before a child's request is saved: refuses kindly when it is over a limit. */
 	checkAsk(profileId: string, projectId: string, body: unknown): LimitCheck {
+		this.ownProject(profileId, projectId);
 		const spoolId =
 			body &&
 			typeof body === 'object' &&
@@ -321,7 +340,33 @@ export class KidsService {
 
 	/** Brings badges up to date for every child (on start, for history made before this module). */
 	refreshAllBadges() {
+		this.historyMark = this.successMark();
 		for (const p of this.kidProfiles()) this.refreshBadges(p.id);
+	}
+
+	private historyMark = '';
+
+	/** What changes when a kid's print succeeds (or stops counting): cheap to read. */
+	private successMark() {
+		const row = this.d.db
+			.select({
+				n: sql<number>`count(*)`,
+				last: sql<string | null>`max(coalesce(${jobs.finishedAt}, ${jobs.updatedAt}))`
+			})
+			.from(jobs)
+			.innerJoin(projects, eq(projects.id, jobs.projectId))
+			.innerJoin(profiles, eq(profiles.id, projects.profileId))
+			.where(and(eq(jobs.status, 'Succeeded'), isNotNull(profiles.kid)))
+			.get();
+		return `${row?.n ?? 0}:${row?.last ?? ''}`;
+	}
+
+	/**
+	 * After a job changed (e.g. marked as printed by hand): brings badges up to date only when kids'
+	 * successful prints changed, so edits and sends do not re-read every child's history.
+	 */
+	refreshBadgesIfChanged() {
+		if (this.successMark() !== this.historyMark) this.refreshAllBadges();
 	}
 
 	private kidProfiles() {
@@ -474,6 +519,7 @@ export class KidsService {
 
 	/** The grown-up does not want a photo of this print. */
 	dismissPhoto(jobId: string) {
+		this.jobOwner(jobId);
 		const s = this.d.settings.get();
 		if (!s.dismissed.includes(jobId))
 			this.d.settings.set({ ...s, dismissed: [...s.dismissed, jobId].slice(-200) });
@@ -490,8 +536,10 @@ export class KidsService {
 		const jobId = e.jobId;
 		let owner: { profileId: string; title: string };
 		try {
-			owner = this.jobOwner(jobId);
-			if (!this.profile(owner.profileId).kid) return Promise.resolve();
+			const row = this.jobOwner(jobId);
+			// The lab closes the job first; one it could not close (unknown task) is left alone.
+			if (row.status !== 'Succeeded' || !this.profile(row.profileId).kid) return Promise.resolve();
+			owner = row;
 			this.refreshBadges(owner.profileId);
 		} catch (error) {
 			this.d.log(`Could not update badges: ${(error as Error).message}`);
@@ -520,12 +568,19 @@ export class KidsService {
 				409,
 				'No camera to take a photo with. Add one from your phone or computer instead.'
 			);
+		if (this.capturing.has(jobId)) throw new AppError(409, 'Already taking a photo of this print.');
+		this.capturing.add(jobId);
 		try {
 			return await this.capture(camera, owner.printerId, jobId, owner);
 		} catch (error) {
 			throw new AppError(502, `The camera did not give a photo: ${(error as Error).message}`);
+		} finally {
+			this.capturing.delete(jobId);
 		}
 	}
+
+	/** Jobs a grown-up is taking a camera photo of right now. */
+	private capturing = new Set<string>();
 
 	private async capture(
 		camera: CameraService,
@@ -566,21 +621,19 @@ export class KidsService {
 		limits: KidLimits,
 		usage: ReturnType<KidsService['usage']>
 	) {
-		return this.requests(profileId)
-			.slice(0, 5)
-			.map((r): KidRequestSummary => ({
-				id: r.id,
-				projectId: r.projectId,
-				projectTitle: r.projectTitle,
-				status: r.status,
-				grams: r.grams,
-				createdAt: r.createdAt,
-				// A waiting request is already counted in the usage: check what is left without it.
-				check:
-					r.status === 'Waiting'
-						? checkLimits(limits, withoutOne(usage, r, this.now(), this.timeZone()), r.grams)
-						: null
-			}));
+		return this.requests(profileId, { limit: 5 }).map((r): KidRequestSummary => ({
+			id: r.id,
+			projectId: r.projectId,
+			projectTitle: r.projectTitle,
+			status: r.status,
+			grams: r.grams,
+			createdAt: r.createdAt,
+			// A waiting request is already counted in the usage: check what is left without it.
+			check:
+				r.status === 'Waiting'
+					? checkLimits(limits, withoutOne(usage, r, this.now(), this.timeZone()), r.grams)
+					: null
+		}));
 	}
 
 	overview(): KidsOverview {
@@ -600,7 +653,19 @@ export class KidsService {
 						.where(eq(galleryItems.profileId, p.id))
 						.get()?.n ?? 0,
 				recentRequests: this.requestSummaries(p.id, limits, usage),
-				printsLastWeek: this.history(p.id).filter((h) => h.at >= weekAgo).length
+				printsLastWeek:
+					this.d.db
+						.select({ n: sql<number>`count(*)` })
+						.from(jobs)
+						.innerJoin(projects, eq(projects.id, jobs.projectId))
+						.where(
+							and(
+								eq(projects.profileId, p.id),
+								eq(jobs.status, 'Succeeded'),
+								sql`coalesce(${jobs.finishedAt}, ${jobs.updatedAt}) >= ${weekAgo}`
+							)
+						)
+						.get()?.n ?? 0
 			};
 		});
 		return {
@@ -623,6 +688,7 @@ export class KidsService {
 
 	/** Whether this child could ask for this project now (kind words when not). */
 	selfCheck(profileId: string, projectId: string, spoolId: string | null) {
+		this.ownProject(profileId, projectId);
 		const check = this.check(profileId, this.estimateFor(projectId, spoolId));
 		return { ok: check.ok, message: check.message, autoApprove: check.autoApprove };
 	}

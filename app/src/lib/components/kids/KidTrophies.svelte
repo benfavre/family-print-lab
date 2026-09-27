@@ -3,8 +3,8 @@
 	import { kidsFeed } from '$lib/client/modules/kids/feed.svelte';
 	import { BADGES, badgeInfo, galleryImageUrl, type KidSelf } from '$lib/shared/kids';
 
-	// Kid mode: a celebration for new badges ('party', at the top of the page), or the child's badges
-	// and their own photos ('shelf').
+	// Kid mode: a celebration for new badges and a gentle "not today" once the limits are reached
+	// ('party', at the top of the page), or the child's badges and their own photos ('shelf').
 	let {
 		kidId,
 		show,
@@ -60,6 +60,10 @@
 		</div>
 		<button class="kid-button berry" onclick={celebrated}>Yay! 🎉</button>
 	</section>
+{/if}
+
+{#if show === 'party' && feed.data?.blocked}
+	<p class="not-today" role="status">{feed.data.blocked}</p>
 {/if}
 
 {#if show === 'shelf' && feed.data}
@@ -148,6 +152,13 @@
 		70% {
 			transform: scale(1.2);
 		}
+	}
+	.not-today {
+		margin: 0 0 18px;
+		padding: 14px 18px;
+		border-radius: 22px;
+		background: #eef0ff;
+		font-weight: 650;
 	}
 	.badges {
 		display: grid;

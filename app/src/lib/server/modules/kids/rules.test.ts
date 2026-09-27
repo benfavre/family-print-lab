@@ -103,6 +103,8 @@ describe('limits', () => {
 		const small = { ...NO_LIMITS, needApprovalOverGrams: 15 };
 		expect(checkLimits(small, usage, 15).autoApprove).toBe(true);
 		expect(checkLimits(small, usage, 16).autoApprove).toBe(false);
+		// An unknown weight (no volume) always goes to a grown-up.
+		expect(checkLimits(small, usage, 0).autoApprove).toBe(false);
 		expect(checkLimits(NO_LIMITS, usage, 1).autoApprove).toBe(false);
 		expect(checkLimits({ ...small, printsPerDay: 0 }, usage, 1).autoApprove).toBe(false);
 	});

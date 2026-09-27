@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { fileUrl } from '$lib/client/models';
 	import { galleryImageUrl, type Certificate } from '$lib/shared/kids';
 
 	let { data }: { data: { certificate: Certificate } } = $props();
@@ -17,7 +18,7 @@
 		c.photoId
 			? galleryImageUrl(c.photoId)
 			: c.thumbnail
-				? `/api/models/${c.thumbnail.modelId}/versions/${c.thumbnail.versionId}/thumbnail.webp`
+				? fileUrl(c.thumbnail.modelId, c.thumbnail.versionId, 'thumbnail.webp')
 				: null
 	);
 	const date = $derived(

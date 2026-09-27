@@ -7,6 +7,7 @@
 	import Avatar from '$lib/components/Avatar.svelte';
 	import GalleryGrid from '$lib/components/kids/GalleryGrid.svelte';
 	import PhotoUpload from '$lib/components/kids/PhotoUpload.svelte';
+	import PhotoWantedActions from '$lib/components/kids/PhotoWantedActions.svelte';
 
 	const { lab } = useApp();
 	// ?profile=<id> opens the gallery on one maker.
@@ -73,14 +74,7 @@
 						<span
 							><strong>{lab.profile(w.profileId)?.name ?? 'A kid'}</strong> made {w.projectTitle}</span
 						>
-						<span class="wanted-actions">
-							<PhotoUpload jobId={w.jobId} mini />
-							<button
-								class="mini"
-								onclick={() => lab.call('POST', `/api/kids/photos/${w.jobId}/dismiss`, {})}
-								>No photo</button
-							>
-						</span>
+						<PhotoWantedActions jobId={w.jobId} camera={!!overview.data?.cameraAvailable} />
 					</li>
 				{/each}
 			</ul>
@@ -162,10 +156,6 @@
 		gap: 8px;
 		align-items: center;
 		justify-content: space-between;
-	}
-	.wanted-actions {
-		display: flex;
-		gap: 6px;
 	}
 	.hint {
 		color: var(--muted);

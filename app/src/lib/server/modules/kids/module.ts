@@ -67,7 +67,7 @@ export default defineModule({
 			timer = setTimeout(() => {
 				timer = undefined;
 				try {
-					kids.refreshAllBadges();
+					kids.refreshBadgesIfChanged();
 				} catch (error) {
 					ctx.log(`Could not update badges: ${(error as Error).message}`);
 				}
