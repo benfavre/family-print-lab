@@ -33,6 +33,8 @@ for (const dir of ['drizzle', 'resources']) {
 // The settings template the desktop app offers as printlab.env.
 fs.copyFileSync(path.join(app, '.env.example'), path.join(server, 'env.example'));
 console.log('• copied drizzle/, resources/ and env.example');
+if (!fs.existsSync(path.join(server, 'resources/bambu/profiles/BBL.json')))
+	console.warn('! no slicer presets in resources/bambu/profiles: run bun run profiles:fetch in app/');
 
 // The build is ES modules; say so for its folder (main.cjs outside it stays CommonJS).
 fs.writeFileSync(path.join(server, 'package.json'), '{ "type": "module" }\n');

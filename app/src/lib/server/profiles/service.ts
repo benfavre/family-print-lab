@@ -227,8 +227,13 @@ export class SlicerProfiles {
 		const material = job.material || spool?.material || 'PLA';
 		const lib = this.profiles;
 		const base = lib.defaults(model, nozzle, material);
-		const printer = s.printer ?? base.printer;
-		let process = s.process ?? null;
+		// A deleted user preset falls back to the default, like a missing one.
+		const alive = <T extends PresetRef>(r: T | null | undefined): T | null => {
+			if (!r || r.source !== 'user') return r ?? null;
+			return this.store.get(r.userPresetId ?? '') || this.store.byName(r.kind, r.name) ? r : null;
+		};
+		const printer = alive(s.printer) ?? base.printer;
+		let process = alive(s.process);
 		if (!process) {
 			const layer = Number(job.layerHeight);
 			const picked =
@@ -240,10 +245,12 @@ export class SlicerProfiles {
 					: undefined;
 			process = picked ? { kind: 'process', name: picked.name, source: 'system' } : base.process;
 		}
-		const filaments = s.filaments?.length
-			? s.filaments
-			: spool?.filamentPreset
-				? [spool.filamentPreset]
+		const chosen = (s.filaments ?? []).map(alive).filter((r): r is PresetRef => !!r);
+		const spoolPreset = alive(spool?.filamentPreset);
+		const filaments = chosen.length
+			? chosen
+			: spoolPreset
+				? [this.forPrinter(spoolPreset, printer)]
 				: base.filaments;
 
 		// The job's own fields, as slicer.ts applies them to the command line's presets.
@@ -271,6 +278,19 @@ export class SlicerProfiles {
 				}))
 			}
 		};
+	}
+
+	/**
+	 * A spool's system filament preset for another printer: the same Bambu filament (filament_id) in
+	 * that printer's variant ("Bambu PLA Basic @BBL X1C" → "… @BBL A1M"), else as it is.
+	 */
+	private forPrinter(ref: PresetRef, printer: PresetRef): PresetRef {
+		if (ref.source !== 'system') return ref;
+		const list = this.profiles.compatible(printer, 'filament').filter((f) => f.source === 'system');
+		if (list.some((f) => f.name === ref.name)) return ref;
+		const id = this.profiles.vendorSet()?.get('filament', ref.name)?.filamentId;
+		const same = id ? list.find((f) => f.filamentId === id) : undefined;
+		return same ? { kind: 'filament', name: same.name, source: 'system' } : ref;
 	}
 
 	/** The flat config a job slices with (slicer-engine calls this when both are present). */

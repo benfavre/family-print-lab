@@ -22,7 +22,8 @@
 		"db:studio": "drizzle-kit studio",
 		"start": "node --env-file-if-exists=.env tools/serve.js",
 		"dev:sim": "tsx tools/dev-sim.ts",
-		"sim": "tsx tools/printer-sim.ts"
+		"sim": "tsx tools/printer-sim.ts",
+		"profiles:fetch": "tsx tools/fetch-profiles.ts"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",

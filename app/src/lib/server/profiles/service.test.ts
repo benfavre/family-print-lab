@@ -354,6 +354,11 @@ describe('a job’s slicer settings', () => {
 		expect(set.body.preset.name).toBe('Generic PLA');
 		expect(set.body.workspace.spools[0].filamentPreset.name).toBe('Generic PLA');
 		expect(s.forJob(jobId).selection.filaments[0].name).toBe('Generic PLA');
+		// A preset for another printer becomes the same Bambu filament for the job's printer.
+		s.setSpoolPreset(spoolId, {
+			preset: { kind: 'filament', name: 'Bambu PLA Basic @BBL X1C', source: 'system' }
+		});
+		expect(s.forJob(jobId).selection.filaments[0].name).toBe('Bambu PLA Basic @BBL A1M');
 		const wrong = await call(spoolRoute.PUT, {
 			method: 'PUT',
 			params: { id: spoolId },
@@ -383,6 +388,17 @@ describe('a job’s slicer settings', () => {
 		expect(b.full.different_settings_to_system?.[0]).toBe(
 			'enable_support;sparse_infill_density;support_type;wall_loops'
 		);
+		// A deleted user preset falls back to the default.
+		const temp = s.createUser({
+			kind: 'process',
+			name: 'Short-lived',
+			from: { kind: 'process', name: '0.20mm Standard @BBL A1M', source: 'system' }
+		});
+		s.setJobSettings(jobId, {
+			process: { kind: 'process', name: 'Short-lived', source: 'user', userPresetId: temp.id }
+		});
+		s.removeUser(temp.id);
+		expect(s.forJob(jobId).selection.process.name).toBe('0.16mm Mini only @Test');
 		// Clearing everything stores nothing.
 		await call(jobRoute.PUT, { method: 'PUT', params: { id: jobId }, body: {} });
 		expect(s.jobSettings(jobId)).toEqual({});
