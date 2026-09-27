@@ -188,11 +188,15 @@ export class VisionChecker {
 			frame: outcome.frame
 		});
 
-		const decision = printing ? decide(outcome, settings, w, now) : { alert: false, pause: false };
+		// A print that is already paused cannot be paused again (and was told about already).
+		const running = s?.gcodeState === 'RUNNING';
+		const decision = printing
+			? decide(outcome, { ...settings, autoPause: settings.autoPause && running }, w, now)
+			: { alert: false, pause: false };
 		if (decision.alert || decision.pause) {
 			let paused = false;
 			let reason = outcome.reason;
-			if (decision.pause && s?.gcodeState === 'RUNNING') {
+			if (decision.pause) {
 				try {
 					await p.send('print.pause', {});
 					paused = true;

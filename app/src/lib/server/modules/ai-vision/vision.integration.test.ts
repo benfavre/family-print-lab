@@ -148,6 +148,10 @@ describe.skipIf(!ffmpeg)('the rough check on a simulated print', () => {
 		const count = t.rt.module('ai-vision')!.store.list(id).length;
 		await new Promise((r) => setTimeout(r, 2500));
 		expect(t.rt.module('ai-vision')!.store.list(id).length).toBe(count);
+		// Checked again by hand while paused: it still sees spaghetti but does not alert again.
+		await until(() => t.rt.printers.get(id)?.snapshot?.gcodeState === 'PAUSE');
+		const again = await t.rt.module('ai-vision')!.checkNow(id);
+		expect(again).toMatchObject({ verdict: 'spaghetti', alerted: false, paused: false });
 		sim.print.stop();
 	});
 
