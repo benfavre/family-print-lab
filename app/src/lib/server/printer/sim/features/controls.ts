@@ -213,8 +213,6 @@ function handle(
 			sim.log(`⇥ loaded tray ${global} (simulated)`);
 			return { result: 'success' };
 		}
-		case 'ams_control':
-			return { result: 'success' };
 		case 'calibration': {
 			if (busy(sim)) return { result: 'failed', reason: 'The printer is busy' };
 			const option = Number(msg.option) || 0;

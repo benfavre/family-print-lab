@@ -1,7 +1,7 @@
 // Printer errors on the simulated printer: control-page buttons raise real codes from Bambu's data
 // (AMS runout, nozzle clog, first-layer problem, unrecognised hotend) and the answers Bambu Studio
-// sends clear them (resume, ignore, clean_print_error, ams_control, buzzer_ctrl; a hotend recheck or
-// stopped AMS drying counts as solved here). The core feature handles resume and stop; a resumed or
+// sends clear them (resume, ignore, clean_print_error, ams_control; the controls feature answers
+// buzzer_ctrl; a hotend recheck or stopped AMS drying counts as solved here). The core feature handles resume and stop; a resumed or
 // ended print clears the alert on the next step.
 // Codes from Bambu Studio v02.08.02.61 resources/hms/hms_en_20P.json and hms_en_22E.json:
 // 07xx2s00_00020001 "AMS <unit> Slot <s+1> filament has run out", print error 070u8011 "AMS filament ran
@@ -79,9 +79,6 @@ export const hms: SimFeature = {
 					sim.log('✓ print error cleared');
 					sim.report();
 				}
-				return { result: 'success' };
-			case 'buzzer_ctrl':
-				sim.log('🔕 buzzer off');
 				return { result: 'success' };
 			case 'refresh_nozzle':
 				sim.log('🔍 hotend rechecked');
