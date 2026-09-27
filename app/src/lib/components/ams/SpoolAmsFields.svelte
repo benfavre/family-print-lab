@@ -10,12 +10,9 @@
 	const app = useApp();
 	const s = $derived(spool as AmsSpool | null);
 	const printers = $derived(app.lab.printerList.filter((p) => p.id));
-	$effect(() =>
-		amsLinks.watch(
-			app,
-			printers.map((p) => p.id!)
-		)
-	);
+	// A string, so the effect re-runs only when the set of printers changes (not on every report).
+	const ids = $derived(printers.map((p) => p.id!).join(','));
+	$effect(() => amsLinks.watch(app, ids ? ids.split(',') : []));
 	const link = $derived(s ? amsLinks.whereIs(s.id) : undefined);
 	const where = $derived.by(() => {
 		if (!link) return '';

@@ -67,12 +67,14 @@
 				near(`#${t.color!.replace('#', '').slice(0, 6)}`, s.colorHex)
 		);
 	// Spools linked to a tray (ams package) say exactly where they are; others fall back to a guess.
-	$effect(() =>
-		amsLinks.watch(
-			app,
-			lab.printerList.filter((p) => p.id).map((p) => p.id!)
-		)
+	// A string, so the effect re-runs only when the set of printers changes (not on every report).
+	const printerIds = $derived(
+		lab.printerList
+			.filter((p) => p.id)
+			.map((p) => p.id!)
+			.join(',')
 	);
+	$effect(() => amsLinks.watch(app, printerIds ? printerIds.split(',') : []));
 	function loadedIn(s: Spool) {
 		const link = amsLinks.whereIs(s.id);
 		if (!link) return null;
