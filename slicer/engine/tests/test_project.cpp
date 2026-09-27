@@ -1,6 +1,7 @@
 #include <limits>
 #include "check.hpp"
 #include "features/project/common.hpp"
+#include "features/project/layer_profile.hpp"
 #include "rpc/convert.hpp"
 using namespace printlab;
 using namespace printlab::project_io;
@@ -47,5 +48,15 @@ TEST("project conversion retains every protocol extension instead of dropping un
 	Json input = Json::parse(
 		R"({"format":1,"meta":{"title":"Stored","designer":"A","extras":{"Custom":"x"}},"presets":{"printer":{"kind":"printer","name":"","source":"project"},"process":{"kind":"process","name":"","source":"project"},"filaments":[]},"projectConfig":{},"filaments":[],"plates":[],"objects":[],"meshes":{},"passthrough":{"extra.bin":{"base64":"AA=="}},"modelSettingsXml":["<assemble/>"]})");
 	CHECK_EQ(to_json(project_from(input, "project"), {}), input);
+}
+TEST("two-point profiles retain interpolation and do not override later edits") {
+	Json original = Json::parse("[0,0.2,20,0.1]");
+	Json expanded = studio_layer_profile(original);
+	CHECK_EQ(expanded.size(), size_t(6));
+	CHECK_EQ(expanded[2], Json(10));
+	CHECK_EQ(restore_layer_profile(expanded, original), original);
+	expanded.as_array()[3] = Json(0.18);
+	CHECK_EQ(restore_layer_profile(expanded, original), expanded);
+	CHECK_EQ(restore_layer_profile(Json(), original), Json());
 }
 CHECK_MAIN

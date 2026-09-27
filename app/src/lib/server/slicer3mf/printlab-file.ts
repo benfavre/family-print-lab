@@ -1,7 +1,9 @@
 // Metadata/print_lab.json: the app's own facts about a project that a 3MF has no place for (which AMS
 // tray and spool each filament uses, which nozzle, and whether a preset is a system or user preset).
+// Also keeps exact two-point layer profiles when the compatible side file needs a third point.
 // Bambu Studio and OrcaSlicer skip files they do not know, and drop this one when they save.
 import { z } from 'zod';
+import { twoPointProfile } from './layer-profile';
 import type { FilamentSlot, PresetRef, PresetSelection, Project } from '$lib/shared/slicer/project';
 
 export const PRINT_LAB_FORMAT = 1;
@@ -14,6 +16,7 @@ const presetRef = z.object({
 });
 const schema = z.object({
 	format: z.literal(PRINT_LAB_FORMAT),
+	layerHeightProfiles: z.array(z.array(z.number().finite()).length(4).nullable()).optional(),
 	presets: z
 		.object({
 			printer: presetRef.optional(),
@@ -38,6 +41,7 @@ const schema = z.object({
 });
 
 export interface PrintLabFile {
+	layerHeightProfiles?: (number[] | null)[];
 	presets?: { printer?: PresetRef; process?: PresetRef; filaments?: (PresetRef | undefined)[] };
 	filaments?: (Pick<FilamentSlot, 'tray' | 'spoolId' | 'nozzle'> | undefined)[];
 }
@@ -49,6 +53,7 @@ export function parsePrintLabFile(text: string | null): PrintLabFile | null {
 		const r = schema.safeParse(JSON.parse(text));
 		if (!r.success) return null;
 		return {
+			layerHeightProfiles: r.data.layerHeightProfiles,
 			presets: r.data.presets && {
 				printer: r.data.presets.printer,
 				process: r.data.presets.process,
@@ -72,11 +77,16 @@ export function printLabFile(project: Project): string | null {
 			? { tray: f.tray, spoolId: f.spoolId, nozzle: f.nozzle }
 			: null
 	);
-	if (refs.every(plain) && extras.every((e) => e === null)) return null;
+	const profiles = project.objects.map((o) =>
+		twoPointProfile(o.layerHeightProfile) ? o.layerHeightProfile : null
+	);
+	const hasProfiles = profiles.some((p) => p !== null);
+	if (refs.every(plain) && extras.every((e) => e === null) && !hasProfiles) return null;
 	return (
 		JSON.stringify(
 			{
 				format: PRINT_LAB_FORMAT,
+				layerHeightProfiles: hasProfiles ? profiles : undefined,
 				presets: {
 					printer: p.printer,
 					process: p.process,

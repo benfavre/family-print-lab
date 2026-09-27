@@ -2,6 +2,7 @@
 // is written back into Bambu's archive layout; unknown archive entries retain their exact bytes.
 // origin: BambuStudio src/libslic3r/Format/bbs_3mf.cpp @ 926a7192574bcb9b3a732e1ec59a46d79cb45466
 #include "common.hpp"
+#include "layer_profile.hpp"
 
 namespace printlab::project_io {
 namespace {
@@ -268,7 +269,7 @@ Files write(const Json &project, const LoadMesh &load,
 		const auto &o = objects[i];
 		std::string id = std::to_string(i + 1);
 		if (o["layerHeightProfile"].size() >= 4)
-			heights += "object_id=" + id + "|" + values(o["layerHeightProfile"], ";") + "\n";
+			heights += "object_id=" + id + "|" + values(studio_layer_profile(o["layerHeightProfile"]), ";") + "\n";
 		if (o["heightRanges"].size()) {
 			ranges += "<object id=\"" + id + "\">\n";
 			for (const auto &r : array(o["heightRanges"])) {
@@ -318,6 +319,14 @@ Files write(const Json &project, const LoadMesh &load,
 	if (sequence.size())
 		out[SEQUENCE] = sequence.dump();
 	bool own = false;
+	Json lab_profiles = Json::array();
+	bool has_profiles = false;
+	for (const auto &o : array(project["objects"])) {
+		bool keep = two_point_profile(o["layerHeightProfile"]);
+		lab_profiles.push_back(keep ? o["layerHeightProfile"] : Json());
+		has_profiles |= keep;
+	}
+	own |= has_profiles;
 	auto plain = [](const Json &ref) { return ref["source"] == Json("project") && !ref.has("userPresetId"); };
 	for (const auto *kind : {"printer", "process"})
 		own |= !plain(project["presets"][kind]);
@@ -334,13 +343,16 @@ Files write(const Json &project, const LoadMesh &load,
 		lab_slots.push_back(extras.size() ? extras : Json());
 		lab_refs.push_back(f["preset"]);
 	}
-	if (own)
-		out[LAB] = object({{"format", 1},
+	if (own) {
+		Json lab = object({{"format", 1},
 						   {"presets", object({{"printer", project["presets"]["printer"]},
 											   {"process", project["presets"]["process"]},
 											   {"filaments", lab_refs}})},
-						   {"filaments", lab_slots}})
-					   .dump();
+						   {"filaments", lab_slots}});
+		if (has_profiles)
+			lab["layerHeightProfiles"] = lab_profiles;
+		out[LAB] = lab.dump();
+	}
 	for (const auto &kv : fields(project["passthrough"]))
 		if (!out.count(kv.first))
 			out[kv.first] =

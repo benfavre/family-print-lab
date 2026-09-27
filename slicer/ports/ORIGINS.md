@@ -83,3 +83,7 @@ listed here: it is read through `app/tools/lib/upstream.ts` and regenerated on e
 | `slicer/engine/src/facade/upstream/presets.cpp`                        | BambuStudio | `src/libslic3r/PresetBundle.cpp`                         | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
 | `slicer/engine/src/facade/upstream/presets.cpp`                        | BambuStudio | `src/libslic3r/Print.cpp`                                | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
 | `app/src/lib/server/profiles/library.ts`                               | BambuStudio | `src/libslic3r/PresetBundle.cpp`                         | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
+| `app/src/lib/server/slicer3mf/layer-profile.ts`                        | BambuStudio | `src/libslic3r/Format/bbs_3mf.cpp`                       | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
+| `app/src/lib/server/slicer3mf/layer-profile.ts`                        | BambuStudio | `src/libslic3r/Slicing.cpp`                              | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
+| `slicer/engine/src/features/project/layer_profile.hpp`                 | BambuStudio | `src/libslic3r/Format/bbs_3mf.cpp`                       | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
+| `slicer/engine/src/features/project/layer_profile.hpp`                 | BambuStudio | `src/libslic3r/Slicing.cpp`                              | `926a7192574bcb9b3a732e1ec59a46d79cb45466` |
